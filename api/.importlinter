@@ -1,0 +1,10 @@
+[importlinter]
+root_package = app
+include_external_packages = false
+
+[importlinter:contract:layers]
+name = Layers
+type = layers
+containers = app
+layers =
+    main

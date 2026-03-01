@@ -1,0 +1,2 @@
+# Run from api/: uv run invoke server.start | uv run invoke db.migrate
+collection: tasks

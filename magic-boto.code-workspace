@@ -1,0 +1,31 @@
+{
+  "folders": [
+    {
+      "path": ".",
+      "name": "magic-boto"
+    },
+    {
+      "path": "api",
+      "name": "api"
+    }
+  ],
+  "settings": {
+    "python.defaultInterpreterPath": "${workspaceFolder:api}/.venv/Scripts/python.exe",
+    "files.exclude": {
+      "api": true
+    },
+    "sqltools.connections": [
+      {
+        "ssh": "Disabled",
+        "previewLimit": 50,
+        "server": "localhost",
+        "port": 5432,
+        "driver": "PostgreSQL",
+        "name": "magicboto",
+        "database": "magicboto",
+        "username": "magicboto",
+        "password": "magicboto"
+      }
+    ]
+  }
+}
