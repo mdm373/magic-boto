@@ -3,8 +3,12 @@ root_package = app
 include_external_packages = false
 
 [importlinter:contract:layers]
-name = Layers
+name = app
 type = layers
 containers = app
 layers =
     main
+    routers
+    schema | models
+    db
+exhaustive = true

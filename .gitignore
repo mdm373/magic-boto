@@ -1,4 +1,5 @@
 .env
+ui/.env
 api/.venv/
 
 # Python

@@ -1,12 +1,12 @@
-"""Database connection; uses POSTGRES_* from environment."""
+"""Database connection; uses settings for POSTGRES_*."""
 
-import os
 from collections.abc import AsyncGenerator
 from typing import cast
 
 import asyncpg
 from asyncpg import Pool
 from asyncpg.pool import PoolConnectionProxy
+from settings import get_settings
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -21,12 +21,11 @@ _async_session_factory: async_sessionmaker[AsyncSession] | None = None
 
 
 def get_database_url() -> str:
-    host = os.environ.get("POSTGRES_HOST", "localhost")
-    port = os.environ.get("POSTGRES_PORT", "5432")
-    user = os.environ.get("POSTGRES_USER", "magicboto")
-    password = os.environ.get("POSTGRES_PASSWORD", "magicboto")
-    db = os.environ.get("POSTGRES_DB", "magicboto")
-    return f"postgresql://{user}:{password}@{host}:{port}/{db}"
+    s = get_settings()
+    return (
+        f"postgresql://{s.postgres_user}:{s.postgres_password}"
+        f"@{s.postgres_host}:{s.postgres_port}/{s.postgres_db}"
+    )
 
 
 def get_async_sqlalchemy_url() -> str:

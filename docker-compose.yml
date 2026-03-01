@@ -13,10 +13,42 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-magicboto} -d ${POSTGRES_DB:-magicboto}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-magicboto} -d ${POSTGRES_DB:-magicboto}" ]
       interval: 5s
       timeout: 5s
       retries: 5
 
+  api:
+    build: ./api
+    container_name: magic-boto-api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./api/app:/app/app
+    command: [ "uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload" ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  ui:
+    image: massif01/chatraw:latest
+    container_name: magic-boto-ui
+    restart: unless-stopped
+    ports:
+      - "8080:51111"
+    volumes:
+      - chatraw_data:/app/data
+    environment:
+      - PORT=51111
+      - DATA_DIR=/app/data
+    depends_on:
+      - api
+
 volumes:
   postgres_data:
+  chatraw_data:

@@ -3,19 +3,12 @@
 # Then: psql   or   pg_dump -s -f db/schema.sql
 
 $ErrorActionPreference = "Stop"
-$ScriptDir = Split-Path -Parent $PSScriptRoot
-$RepoRoot = (Resolve-Path (Join-Path $ScriptDir "..")).Path
+$RepoRoot = (Get-Item $PSScriptRoot).Parent.Parent.FullName
+. (Join-Path $RepoRoot "scripts\load-env.ps1")
 $EnvFile = Join-Path $RepoRoot ".env"
 if (-not (Test-Path $EnvFile)) {
     Write-Warning "No .env at repo root. Copy .env.example to .env first."
     return
-}
-Get-Content $EnvFile | ForEach-Object {
-    if ($_ -match '^\s*([^#][^=]+)=(.*)$') {
-        $key = $matches[1].Trim()
-        $val = $matches[2].Trim()
-        [Environment]::SetEnvironmentVariable($key, $val, "Process")
-    }
 }
 # Set PG* from POSTGRES_* so psql/pg_dump use these with no connection args (single source of truth)
 $env:PGHOST     = if ($env:POSTGRES_HOST) { $env:POSTGRES_HOST } else { "localhost" }

@@ -1,6 +1,6 @@
 # magic-boto-api
 
-API server for magic-boto; the LLM uses it as a **tool** (card search, inventory, etc.). Phase 1: healthcheck only. Phase 2: Postgres + card endpoints.
+Single API server for magic-boto: **agent** (OpenAI-compatible chat under `/openapi/v1/`) + **tools** (card search, deck validation, rules). The agent runs the tool loop in-process; tool HTTP routes exist for contract and debugging. See [docs/PROJECT-PLAN.md](../docs/PROJECT-PLAN.md).
 
 ## Setup
 
@@ -15,19 +15,23 @@ uv sync
 From this directory, either use **Invoke** (loads `.env` from repo root automatically) or run uvicorn directly:
 
 ```powershell
-uv run invoke server.start
+uv run invoke serve.start
 ```
 
 Or: `uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000`
 
 Open http://localhost:8000/docs for OpenAPI, http://localhost:8000/health for the healthcheck.
 
+## Development with Docker
+
+From the **repo root**, `docker compose up` runs the stack. The API service mounts `api/app` and runs uvicorn with `--reload`, so edits under `app/` take effect without rebuilding.
+
 ## Invoke tasks
 
 From `api/`, tasks load `.env` from the repo root so you don’t need to dot-source env first.
 
-- **server.start** — run the API server (uvicorn).
-- **db.migrate** — run Alembic migrations (`alembic upgrade head`).
+- **serve.start** — run the API server (uvicorn).
+- **migrate** — run Alembic migrations (`alembic upgrade head`).
 
 List all: `uv run invoke --list`.
 
@@ -41,7 +45,7 @@ From this directory:
 
 ## Migrations (Alembic)
 
-From `api/`: `uv run invoke db.migrate` (loads env), or `uv run alembic upgrade head` with `POSTGRES_*` set. See `migrations/README.md`.
+From `api/`: `uv run invoke migrate` (loads env), or `uv run alembic upgrade head` with `POSTGRES_*` set. See `migrations/README.md`.
 
 ## Env
 

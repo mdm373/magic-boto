@@ -13,7 +13,7 @@ This document is the **single source of truth** for the magic-boto project: visi
 - **Data:** A Postgres backend populated with:
   - **Card definitions** — primary source: **MTG JSON** (e.g. AllPrintings or API v5 at `https://mtgjson.com/api/v5/`). They provide JSON, SQL, and SQLite; builds update daily.
   - **Your own MTG inventory** — cards you own, in separate schema/tables.
-- **API:** A separate API server that the LLM uses as a **tool** (e.g. search cards, check inventory, suggest decks).
+- **API:** A single API server that exposes both **tool endpoints** (cards, deck validation, format rules) and an **OpenAI-compatible chat surface** so a generic chat UI can talk to an agent that uses those tools. The agent (orchestration + tool loop) and tools live in the same server; the LLM runs in LM Studio.
 
 ---
 
@@ -21,32 +21,43 @@ This document is the **single source of truth** for the magic-boto project: visi
 
 ```mermaid
 flowchart LR
-  User --> LLM
-  LLM <--> APIServer["API server (tool)"]
-  APIServer <--> Postgres[(Postgres)]
+  User --> ChatUI["Chat UI (ChatRaw)"]
+  ChatUI --> API["API server (agent + tools)"]
+  API --> LMStudio["LM Studio (model)"]
+  API --> Postgres[(Postgres)]
   Postgres --> CardDefs[Card definitions]
   Postgres --> Inventory[Inventory]
 ```
 
-- **User** talks to the **LLM** (local).
-- The **LLM** calls the **API server** via tool/function calling (search, filter, suggest).
-- The **API server** reads and writes **Postgres** (card catalog + inventory).
+- **User** talks to a **chat UI** (e.g. ChatRaw) — no custom UI in the repo.
+- The **chat UI** calls the API server at `/openapi/v1/chat/completions` (and optionally `/openapi/v1/models`). It sends one request and receives one final assistant message; it never sees tool calls.
+- The **API server** is one FastAPI app that:
+  - **Agent:** Exposes OpenAI-format routes under `/openapi/v1/`. For each chat request it runs the tool loop: call LM Studio → if the model returns `tool_calls`, execute tool logic **in-process** → call LM Studio again → repeat until the model returns a final answer. Returns only that final answer to the client.
+  - **Tools:** Card lookup, deck validation, format rules, etc. Implemented as shared code; the agent calls it in-process. The same logic is exposed as HTTP routes (e.g. `/mtgjson/v1/cards/...`) for **contract clarity and debugging**.
+- **LM Studio** runs the model locally (OpenAI-compatible API). The API server calls it; LM Studio never talks to Postgres or to the tool HTTP routes.
+- **Postgres** holds the card catalog (MTGJSON) and app schema (inventory, etc.).
 
-**Later (optional):** Add RAG/embeddings (e.g. **pgvector**) for semantic search over card text.
+This is an **Agent-as-a-Backend** pattern: the client gets a single request/response; the server owns the tool loop.
 
-### What is RAG?
+### Rules and validation
 
-**RAG (Retrieval-Augmented Generation)** means giving the LLM access to external data at answer time instead of (or in addition to) whatever was in its training. In practice: you turn your data (e.g. card text, rules) into **embeddings** (vector representations), store them in a vector DB (e.g. Postgres with **pgvector**), and on each question you **retrieve** the most relevant chunks and inject them into the prompt. The model then “augments” its answer using that retrieved context. For deck building, RAG could let the LLM search card text by meaning (e.g. “cards that care about +1/+1 counters”) rather than only by keyword or structured filters.
+- **Deterministic rules** (deck legality, Commander format, etc.) live in code (in the API app or a shared package). Exposed via HTTP for debugging and a clear tool contract. The agent uses this logic in-process when dispatching tools.
+
+### RAG (optional, later)
+
+- **Orchestration** (when to retrieve, inject into prompt): in the **agent** (same server).
+- **Backend** (vector search, rules/card snippets): in the **API** (endpoints or shared code). Indexing/scripts can live under API or db. No separate RAG service.
 
 ---
 
 ## Components
 
-| Component    | Role |
-|-------------|------|
-| **Postgres** | Card catalog + inventory. Consider **pgvector** later for RAG. |
-| **API server** | Exposes endpoints the LLM calls as tools (language TBD: e.g. FastAPI, Node, Go). |
-| **LLM layer** | Local inference (e.g. LM Studio). The API server is the “tool” the model calls. |
+| Component     | Role |
+|---------------|------|
+| **Postgres**  | Card catalog + inventory. Consider **pgvector** later for RAG. |
+| **API server** | Single FastAPI app: agent (OpenAI chat under `/openapi/v1/`) + tools (MTGJSON, deck validate, rules). Agent runs the tool loop in-process; tool HTTP routes for contract/debug. |
+| **LM Studio** | Local inference (OpenAI-compatible). API server calls it; it does not call the API. |
+| **Chat UI**   | Existing solution (e.g. ChatRaw). Configure API base URL in the UI (e.g. `http://api:8000/openapi`). No custom UI in repo. |
 
 ---
 
@@ -57,58 +68,69 @@ flowchart LR
 
 ---
 
-## LLM tooling (software-dev-friendly, minimal ML)
+## LLM tooling
 
-### Running / interacting (priority)
+### Running the model
 
-- **LM Studio** (recommended): Desktop app with a GUI for discovering, downloading, and running local models (e.g. Llama, Qwen). Exposes an OpenAI-compatible API (typically `http://localhost:1234/v1`), supports tool/function calling with compatible models, and is well suited for stable sessions and experimenting with prompts.
-- **Ollama:** CLI-first alternative; good for scripting and Docker; also exposes an OpenAI-compatible API at `http://localhost:11434`.
+- **LM Studio** (recommended): Desktop app with a GUI for discovering, downloading, and running local models (e.g. Llama, Qwen). Exposes an OpenAI-compatible API (typically `http://localhost:1234/v1`), supports tool/function calling with compatible models.
+- **Ollama:** CLI-first alternative; also exposes an OpenAI-compatible API.
 
-### Tool calling
+### LM Studio setup and models
 
-The API server’s endpoints are exposed to the LLM as **tools**: each tool has a name, description, and parameters (e.g. JSON schema). LM Studio’s API (and Ollama’s) accept these tool definitions in the chat request and can return tool calls; your app runs the corresponding API requests and feeds results back to the LLM.
+- **Install:** [lmstudio.ai](https://lmstudio.ai). In Settings, ensure the NVIDIA GPU is selected for inference.
+- **Config:** Set **`LM_STUDIO_BASE_URL`** in repo `.env` (default `http://localhost:1234`). When the API runs in Docker and LM Studio is on the host, use `http://host.docker.internal:1234`.
+- **Server:** In LM Studio, start the **Local Server** (Develop → Local Server). The API (and later the agent) call this URL for `/v1/models` and `/v1/chat/completions`.
+- **Models (tool calling + this project):** Use GGUF models that support function/tool calling. Good options:
+  - **7B–14B (fast):** Qwen 2.5 7B/14B Instruct, Llama 3.2 8B Instruct, Mistral 7B Instruct v0.2. Quant: Q5_K_M or Q8_0.
+  - **32B (higher quality, ~24 GB VRAM):** Qwen 2.5 32B Instruct, Llama 3.1 32B Instruct. Quant: Q4_K_M or Q5_K_M.
+- **Quantization:** Prefer Q4_K_M / Q5_K_M / Q8_0. Avoid very low quants (e.g. Q2_K) for reliable tool use.
+- **Reference hardware (this repo):** RTX 4090 (24 GB VRAM), 64 GB RAM — can run 32B quantized or 70B in low quant; 7B–14B recommended for speed and tool use.
+
+### OpenAI-compatible surface (for the chat UI)
+
+- **Path prefix:** Nest under `/openapi` so versioning stays under one namespace. Routes: `/openapi/v1/chat/completions`, `/openapi/v1/models`.
+- **Required:** `POST /openapi/v1/chat/completions`. Recommended: `GET /openapi/v1/models` (or add model IDs manually in the UI).
+- **Behavior:** The server performs the full tool loop and returns only the final assistant message. The UI never sees `tool_calls`. Until the agent loop is implemented, `/openapi/v1/models` and `/openapi/v1/chat/completions` pass through to LM Studio so you can test the UI and server architecture.
 
 ### Training (optional, later)
 
-- Start **without** fine-tuning: a good system prompt + tool use + (optionally) RAG over card text is often enough.
-- If you later fine-tune: use **Unsloth** or **Axolotl** (higher-level), or the Hugging Face **transformers + PEFT** stack. Expect to need a GPU with e.g. 8GB+ VRAM; treat this as optional.
+- Start **without** fine-tuning: a good system prompt + tool use + (optionally) RAG is often enough.
+- If you later fine-tune: use **SFT/LoRA** (e.g. Unsloth, Axolotl, or Hugging Face **transformers + PEFT**). Expect a GPU with e.g. 8GB+ VRAM. **RLHF** is optional and out of scope for now.
 
 ---
 
-## Monorepo layout (to be created)
+## Monorepo layout
 
-A root **docker-compose** at the repo root brings up the stack (e.g. Postgres) for local development.
+A root **docker-compose** at the repo root brings up the stack: Postgres, API (when containerized), and chat UI. Each subproject is one part of the stack.
 
 | Path | Purpose |
 |------|---------|
 | `docs/` | Project plan and future design docs. |
 | `db/` | Postgres schema, migrations, and/or scripts to ingest MTG JSON and inventory. |
-| `api/` | API server used by the LLM as a tool. |
-| `llm/` (optional) | Scripts for talking to LM Studio (prompts, tool definitions), and later RAG/fine-tuning if needed. |
-
-Exact names can be chosen when creating the first services.
+| `api/` | Single API server: agent (OpenAI chat under `/openapi/v1/`) + tools (cards, deck, rules). |
+| `ui/` | Config for the chat UI only (e.g. `ui/.env.example`, `ui/README.md`). No separate docker-compose; the `ui` service is defined in root compose. |
 
 ### IDE and multiple Python projects (open at repo root)
 
 Pylance **ignores** `venvPath`/`venv` in pyrightconfig and uses the **selected Python interpreter** per workspace folder. So with the repo opened at root, the only way to get the right env per project is a **multi-root workspace**:
 
 1. **Open `magic-boto.code-workspace`** (not the plain folder). The workspace defines two roots: `magic-boto` (repo) and `api`. The default interpreter is set to `api/.venv`, so files under `api/` use that venv and imports resolve.
-2. **When you add another Python project (e.g. `llm/`):** add a third folder to `magic-boto.code-workspace`: `{ "path": "llm", "name": "llm" }`. Then run **Python: Select Interpreter** and choose `llm\.venv\Scripts\python.exe` when you’re in a file under `llm/`; the IDE will remember that folder’s interpreter. Each project root gets its own interpreter; no symlinks and no single global venv.
+2. **When you add another Python project:** add a third folder to the workspace and set its interpreter. Each project root gets its own interpreter.
 
-Keep `api/pyrightconfig.json` (and later `llm/pyrightconfig.json`) for CLI tooling (e.g. Pyright/mypy run from that project’s directory). No root `pyrightconfig.json` is used when you open the workspace file.
+Keep `api/pyrightconfig.json` for CLI tooling (e.g. Pyright/mypy run from that project’s directory). No root `pyrightconfig.json` is used when you open the workspace file.
 
 ---
 
 ## Summary of recommendations
 
-| Area       | Recommendation |
-|------------|----------------|
-| Card data  | MTG JSON (AllPrintings or v5 API); SQL/SQLite builds for Postgres ingestion. |
-| Backend    | Postgres; pgvector later if you add RAG. |
-| API server | Separate service; LLM calls it via tool/function calling. |
-| Run LLM    | LM Studio (primary); Ollama as CLI/scripting option. |
-| Tool use   | LM Studio supports tool calling; API server = the tool backend. |
-| Training   | Optional; start with prompt + tools; later: Unsloth / Axolotl / HF stack. |
+| Area | Recommendation |
+|------|----------------|
+| Card data | MTG JSON (AllPrintings or v5 API); SQL/SQLite builds for Postgres ingestion. |
+| Backend | Postgres; pgvector later if you add RAG. |
+| API server | Single FastAPI app: agent + tools in one process; tool loop in-process; HTTP tool routes for contract/debug. |
+| Run LLM | LM Studio (primary); Ollama as alternative. |
+| Chat UI | Existing solution (ChatRaw); set API base URL in the UI to `http://<host>:<port>/openapi`. |
+| Training | Optional; start with prompt + tools; later SFT/LoRA if needed; RLHF out of scope. |
 
 ---
 
@@ -116,4 +138,5 @@ Keep `api/pyrightconfig.json` (and later `llm/pyrightconfig.json`) for CLI tooli
 
 - This file is the **project north star**. Prefer it for scope, architecture, and tech choices.
 - When adding features or new services, align with the architecture and data sources described here.
+- **Prefer existing libraries over custom code:** use official or standard libraries for types, protocols, and integrations (e.g. OpenAI API types from the `openai` package) instead of reimplementing from spec.
 - In subsequent tasks, reference this doc (e.g. “see docs/PROJECT-PLAN.md” or “follow the plan in docs/PROJECT-PLAN.md”).

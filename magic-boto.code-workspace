@@ -1,18 +1,18 @@
 {
   "folders": [
-    {
-      "path": ".",
-      "name": "magic-boto"
-    },
-    {
-      "path": "api",
-      "name": "api"
-    }
+    {"path": ".", "name": "magic-boto"},
+    {"path": "api", "name": "api"},
+    {"path": "ui", "name": "ui"},
+    {"path": "db", "name": "db"},
+    {"path": "docs", "name": "docs"}
   ],
   "settings": {
     "python.defaultInterpreterPath": "${workspaceFolder:api}/.venv/Scripts/python.exe",
     "files.exclude": {
-      "api": true
+      "api": true,
+      "ui": true,
+      "db": true,
+      "docs": true
     },
     "sqltools.connections": [
       {

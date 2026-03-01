@@ -1,10 +1,10 @@
-"""Migrations env; uses POSTGRES_* from environment. Run from api/ with env set."""
+"""Migrations env; uses settings for POSTGRES_*. Run from api/ with env or .env at repo root."""
 
 import asyncio
-import os
 from logging.config import fileConfig
 
 from alembic import context
+from settings import get_settings
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
@@ -18,12 +18,11 @@ target_metadata = None
 
 
 def get_url() -> str:
-    host = os.environ.get("POSTGRES_HOST", "localhost")
-    port = os.environ.get("POSTGRES_PORT", "5432")
-    user = os.environ.get("POSTGRES_USER", "magicboto")
-    password = os.environ.get("POSTGRES_PASSWORD", "magicboto")
-    db = os.environ.get("POSTGRES_DB", "magicboto")
-    return f"postgresql+asyncpg://{user}:{password}@{host}:{port}/{db}"
+    s = get_settings()
+    return (
+        f"postgresql+asyncpg://{s.postgres_user}:{s.postgres_password}"
+        f"@{s.postgres_host}:{s.postgres_port}/{s.postgres_db}"
+    )
 
 
 def run_migrations_offline() -> None:
