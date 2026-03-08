@@ -18,21 +18,48 @@ services:
       timeout: 5s
       retries: 5
 
-  api:
-    build: ./api
-    container_name: magic-boto-api
+  tools_api:
+    build: ./tools_api
+    container_name: magic-boto-tools-api
     restart: unless-stopped
     env_file: .env
     environment:
       POSTGRES_HOST: postgres
       LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
+      TOOLS_API_PORT: ${TOOLS_API_PORT:-8000}
     ports:
-      - "8000:8000"
+      - "${TOOLS_API_LOCAL_PORT:-8000}:${TOOLS_API_PORT:-8000}"
     volumes:
-      - ./api/app:/app/app
-    command: [ "uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload" ]
+      - ./tools_api/app:/app/app
+    command: [ "sh", "-c", "uv run uvicorn app.main:app --host 0.0.0.0 --port ${TOOLS_API_PORT:-8000} --reload" ]
+    healthcheck:
+      test: [ "CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')\" || exit 1" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     depends_on:
       postgres:
+        condition: service_healthy
+
+  agent_api:
+    build: ./agent_api
+    container_name: magic-boto-agent-api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
+      AGENT_API_PORT: ${AGENT_API_PORT:-8000}
+      TOOLS_API_BASE_URL: http://tools_api:${TOOLS_API_PORT:-8000}
+      OPENAI_PROXY_BASE_URL: ${OPENAI_PROXY_BASE_URL:-http://host.docker.internal:1234}
+    ports:
+      - "${AGENT_LOCAL_PORT:-8001}:${AGENT_API_PORT:-8000}"
+    volumes:
+      - ./agent_api/app:/app/app
+      - ./agent_api/settings.py:/app/settings.py
+    command: [ "sh", "-c", "uv run uvicorn app.main:app --host 0.0.0.0 --port ${AGENT_API_PORT:-8000} --reload" ]
+    depends_on:
+      tools_api:
         condition: service_healthy
 
   ui:
@@ -40,14 +67,14 @@ services:
     container_name: magic-boto-ui
     restart: unless-stopped
     ports:
-      - "8080:51111"
+      - "${UI_LOCAL_PORT:-8080}:51111"
     volumes:
       - chatraw_data:/app/data
     environment:
       - PORT=51111
       - DATA_DIR=/app/data
     depends_on:
-      - api
+      - agent_api
 
 volumes:
   postgres_data:

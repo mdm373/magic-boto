@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict pF16GIyJHlslmywul3M1rlRtYwzP6gqw9UAS31bBd9exsq7e6XeHbrMQfZmAiVM
+\restrict WgtIsCclnAkBZ0EkgowL8BBEcXdhNKkkAhJ2vBK1BFcxFt9q6s9y5uZeBxL40HV
 
 -- Dumped from database version 16.13
 -- Dumped by pg_dump version 16.13
@@ -445,6 +445,25 @@ CREATE TABLE mtgjson.tokens (
 ALTER TABLE mtgjson.tokens OWNER TO magicboto;
 
 --
+-- Name: alembic_version; Type: TABLE; Schema: public; Owner: magicboto
+--
+
+CREATE TABLE public.alembic_version (
+    version_num character varying(32) NOT NULL
+);
+
+
+ALTER TABLE public.alembic_version OWNER TO magicboto;
+
+--
+-- Name: alembic_version alembic_version_pkc; Type: CONSTRAINT; Schema: public; Owner: magicboto
+--
+
+ALTER TABLE ONLY public.alembic_version
+    ADD CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num);
+
+
+--
 -- Name: idx_cardForeignData_language; Type: INDEX; Schema: mtgjson; Owner: magicboto
 --
 
@@ -456,6 +475,13 @@ CREATE INDEX "idx_cardForeignData_language" ON mtgjson."cardForeignData" USING b
 --
 
 CREATE INDEX "idx_cardForeignData_uuid" ON mtgjson."cardForeignData" USING btree (uuid);
+
+
+--
+-- Name: idx_cardIdentifiers_scryfallId; Type: INDEX; Schema: mtgjson; Owner: magicboto
+--
+
+CREATE INDEX "idx_cardIdentifiers_scryfallId" ON mtgjson."cardIdentifiers" USING btree ("scryfallId");
 
 
 --
@@ -592,8 +618,23 @@ CREATE INDEX idx_tokens_uuid ON mtgjson.tokens USING btree (uuid);
 
 
 --
+-- Name: uq_cards_uuid; Type: INDEX; Schema: mtgjson; Owner: magicboto
+--
+
+CREATE UNIQUE INDEX uq_cards_uuid ON mtgjson.cards USING btree (uuid);
+
+
+--
+-- Name: cardIdentifiers fk_cardIdentifiers_card; Type: FK CONSTRAINT; Schema: mtgjson; Owner: magicboto
+--
+
+ALTER TABLE ONLY mtgjson."cardIdentifiers"
+    ADD CONSTRAINT "fk_cardIdentifiers_card" FOREIGN KEY (uuid) REFERENCES mtgjson.cards(uuid);
+
+
+--
 -- PostgreSQL database dump complete
 --
 
-\unrestrict pF16GIyJHlslmywul3M1rlRtYwzP6gqw9UAS31bBd9exsq7e6XeHbrMQfZmAiVM
+\unrestrict WgtIsCclnAkBZ0EkgowL8BBEcXdhNKkkAhJ2vBK1BFcxFt9q6s9y5uZeBxL40HV
 

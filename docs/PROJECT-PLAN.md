@@ -78,7 +78,7 @@ This is an **Agent-as-a-Backend** pattern: the client gets a single request/resp
 ### LM Studio setup and models
 
 - **Install:** [lmstudio.ai](https://lmstudio.ai). In Settings, ensure the NVIDIA GPU is selected for inference.
-- **Config:** Set **`LM_STUDIO_BASE_URL`** in repo `.env` (default `http://localhost:1234`). When the API runs in Docker and LM Studio is on the host, use `http://host.docker.internal:1234`.
+- **Config:** Set **`OPENAI_PROXY_BASE_URL`** in repo `.env` (default `http://localhost:1234`). When the API runs in Docker and the proxy is on the host, use `http://host.docker.internal:1234`.
 - **Server:** In LM Studio, start the **Local Server** (Develop → Local Server). The API (and later the agent) call this URL for `/v1/models` and `/v1/chat/completions`.
 - **Models (tool calling + this project):** Use GGUF models that support function/tool calling. Good options:
   - **7B–14B (fast):** Qwen 2.5 7B/14B Instruct, Llama 3.2 8B Instruct, Mistral 7B Instruct v0.2. Quant: Q5_K_M or Q8_0.

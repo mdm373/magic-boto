@@ -1,1 +1,0 @@
-"""MTGJSON-compatible API namespace."""
