@@ -11,6 +11,8 @@ class Settings(BaseSettings):
 
     openai_proxy_base_url: str = "http://localhost:1234"
     openai_proxy_timeout: float = 120.0
+    openai_proxy_api_key: str | None = None
+    openai_proxy_model: str = "claude-sonnet-4-6"
     tools_api_base_url: str = "http://localhost:8000"
     tools_api_timeout: float = 30.0
     max_tool_rounds: int = 10

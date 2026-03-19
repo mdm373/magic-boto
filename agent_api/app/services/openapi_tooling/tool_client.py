@@ -1,14 +1,25 @@
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from http import HTTPMethod
 from typing import Any
 
 import httpx
 from loguru import logger
-from openapi_pydantic import OpenAPI, ParameterLocation, PathItem, Reference
+from openapi_pydantic import OpenAPI, Operation, ParameterLocation, PathItem, Reference
 
 from .path_method_ops import PathMethodOperations
+
+
+def _path_param_names(path_item: PathItem, operation: Operation) -> Sequence[str]:
+    """Path param names from operation and path_item."""
+    names: set[str] = set()
+    for param in (operation.parameters or []) + (path_item.parameters or []):
+        if isinstance(param, Reference):
+            continue
+        if param.param_in == ParameterLocation.PATH:
+            names.add(param.name)
+    return list(names)
 
 
 class OpenAPIToolClient:
@@ -38,11 +49,9 @@ class OpenAPIToolClient:
         if not isinstance(args, dict):
             args = {}
         path = path_info.path_template
-        for param in path_info.path_item.parameters or []:
-            if isinstance(param, Reference):
-                continue
-            if param.param_in == ParameterLocation.PATH and param.name in args:
-                path = path.replace(f"{{{param.name}}}", str(args.pop(param.name, "")))
+        for param_name in _path_param_names(path_info.path_item, path_info.operation):
+            if param_name in args:
+                path = path.replace(f"{{{param_name}}}", str(args.pop(param_name, "")))
         method = path_info.method
         response = await self._request(method, path, args)
         response.raise_for_status()
@@ -64,6 +73,7 @@ class OpenAPIToolClient:
 class PathInfo:
     path_template: str
     path_item: PathItem
+    operation: Operation
     method: HTTPMethod
 
 
@@ -76,6 +86,9 @@ def _index_paths(path_method_ops: PathMethodOperations, spec: OpenAPI) -> Mappin
             if op is None or not op.operationId:
                 continue
             indexed[op.operationId] = PathInfo(
-                path_template=path_template, path_item=path_item, method=method
+                path_template=path_template,
+                path_item=path_item,
+                operation=op,
+                method=method,
             )
     return indexed

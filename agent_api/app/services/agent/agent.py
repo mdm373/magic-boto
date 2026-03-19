@@ -16,11 +16,16 @@ from .message_to_param import assistant_message_to_param
 
 class Agent:
     def __init__(
-        self, tooling: OpenAPITooling, max_tool_rounds: int, open_api_client: AsyncOpenAI
+        self,
+        tooling: OpenAPITooling,
+        max_tool_rounds: int,
+        open_api_client: AsyncOpenAI,
+        model: str,
     ) -> None:
         self._tooling = tooling
         self._max_tool_rounds = max_tool_rounds
         self._open_api_client = open_api_client
+        self._model = model
 
     async def run_chat_loop(self, body: CompletionCreateParams) -> ChatCompletion:
         """
@@ -29,13 +34,12 @@ class Agent:
         """
         raw_messages = body.get("messages") or []
         messages = list(raw_messages)
-        model = body.get("model") or ""
         temperature = body.get("temperature")
         max_tokens = body.get("max_tokens")
         current_messages = ensure_agent_system_context(messages)
         for _ in range(self._max_tool_rounds):
             data = await self._open_api_client.chat.completions.create(
-                model=model,
+                model=self._model,
                 messages=current_messages,
                 tools=self._tooling.get_tools(),
                 tool_choice="auto",

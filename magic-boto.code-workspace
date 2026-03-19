@@ -1,18 +1,16 @@
 {
   "folders": [
     {"path": ".", "name": "magic-boto"},
+    {"path": "docs", "name": "docs"},
     {"path": "tools_api", "name": "tools_api"},
     {"path": "agent_api", "name": "agent_api"},
     {"path": "ui", "name": "ui"},
-    {"path": "db", "name": "db"},
-    {"path": "docs", "name": "docs"}
   ],
   "settings": {
     "files.exclude": {
       "tools_api": true,
       "agent_api": true,
       "ui": true,
-      "db": true,
       "docs": true
     },
     "sqltools.connections": [

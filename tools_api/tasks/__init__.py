@@ -5,7 +5,7 @@ from typing import cast
 
 from invoke import Collection
 
-from tasks import build, lint, migrate, serve
+from tasks import build, generate, lint, migrate, populate, serve
 
 
 def _from_module(module: ModuleType) -> Collection:
@@ -14,6 +14,8 @@ def _from_module(module: ModuleType) -> Collection:
 
 ns = Collection()
 ns.add_collection(_from_module(build), name="build")
+ns.add_collection(_from_module(generate), name="generate")
 ns.add_collection(_from_module(serve), name="serve", default=True)
 ns.add_collection(_from_module(migrate), name="migrate")
 ns.add_collection(_from_module(lint), name="lint")
+ns.add_collection(_from_module(populate), name="populate")

@@ -106,8 +106,8 @@ A root **docker-compose** at the repo root brings up the stack: Postgres, API (w
 | Path | Purpose |
 |------|---------|
 | `docs/` | Project plan and future design docs. |
-| `db/` | Postgres schema, migrations, and/or scripts to ingest MTG JSON and inventory. |
-| `api/` | Single API server: agent (OpenAI chat under `/openapi/v1/`) + tools (cards, deck, rules). |
+| `tools_api/` | Tools API + DB/migrations/tasks (includes MTGJSON seed + schema dump tasks). |
+| `agent_api/` | Agent API (OpenAI chat under `/openapi/v1/`). |
 | `ui/` | Config for the chat UI only (e.g. `ui/.env.example`, `ui/README.md`). No separate docker-compose; the `ui` service is defined in root compose. |
 
 ### IDE and multiple Python projects (open at repo root)

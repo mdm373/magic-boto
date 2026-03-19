@@ -24,7 +24,8 @@ class MtgjsonCardIdentifiersModel(Base):
         ForeignKey("mtgjson.cards.uuid"),
         primary_key=True,
     )
-    scryfall_id: Mapped[str | None] = mapped_column("scryfallId", String)
+    card_id: Mapped[str | None] = mapped_column("scryfallId", String)
+    oracle_id: Mapped[str | None] = mapped_column("scryfallOracleId", String)
 
     card: Mapped[MtgjsonCardModel | None] = relationship(
         "MtgjsonCardModel",

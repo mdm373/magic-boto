@@ -2,7 +2,7 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: magic-boto-db
+    container_name: magic-boto-tools-db
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-magicboto}
@@ -11,7 +11,7 @@ services:
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - tools_db_postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-magicboto} -d ${POSTGRES_DB:-magicboto}" ]
       interval: 5s
@@ -52,6 +52,8 @@ services:
       AGENT_API_PORT: ${AGENT_API_PORT:-8000}
       TOOLS_API_BASE_URL: http://tools_api:${TOOLS_API_PORT:-8000}
       OPENAI_PROXY_BASE_URL: ${OPENAI_PROXY_BASE_URL:-http://host.docker.internal:1234}
+      OPENAI_PROXY_API_KEY: ${OPENAI_PROXY_API_KEY}
+      OPENAI_PROXY_MODEL: ${OPENAI_PROXY_MODEL:-default}
     ports:
       - "${AGENT_LOCAL_PORT:-8001}:${AGENT_API_PORT:-8000}"
     volumes:
@@ -77,5 +79,5 @@ services:
       - agent_api
 
 volumes:
-  postgres_data:
+  tools_db_postgres_data:
   chatraw_data:

@@ -5,10 +5,12 @@ import sys
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
+from fastapi.responses import JSONResponse
 from loguru import logger
 
 from .db import close_async_engine, close_pool, get_async_engine, get_pool
+from .errors import InternalError, InvalidRequestError
 from .routers import v1_router
 
 logger.remove()
@@ -35,6 +37,24 @@ app: FastAPI = FastAPI(
 )
 
 app.include_router(v1_router)
+
+
+@app.exception_handler(InvalidRequestError)
+async def validation_error_handler(request: Request, exc: InvalidRequestError) -> JSONResponse:
+    """Convert validator errors into the standard 422 response."""
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"detail": str(exc)},
+    )
+
+
+@app.exception_handler(InternalError)
+async def internal_error_handler(request: Request, exc: InternalError) -> JSONResponse:
+    logger.exception("Internal error: {}", exc)
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": "Internal server error"},
+    )
 
 
 @app.get("/health")

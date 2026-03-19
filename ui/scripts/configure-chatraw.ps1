@@ -8,7 +8,7 @@ $RepoRoot = (Get-Item $PSScriptRoot).Parent.Parent.FullName
 
 $uiPort = if ($env:UI_LOCAL_PORT) { $env:UI_LOCAL_PORT } else { "8080" }
 $baseUrl = "http://localhost:$uiPort"
-$apiUrl = "http://agent_api:8000/openapi/v1"
+$apiUrl = "http://agent_api:8000/open_ai/v1"
 $modelId = [Environment]::GetEnvironmentVariable("CHATRAW_DEFAULT_MODEL_ID", "Process")
 if (-not $modelId) { $modelId = "default" }
 

@@ -69,8 +69,8 @@ isProject: false
 ### Phase 2 (later): Postgres and card endpoints
 
 - Add **POSTGRES_***-based DB connection (e.g. in `api/app/dependencies.py`); optional healthcheck DB ping.
-- Connect to Postgres using **POSTGRES_*** from the environment (same as [db/scripts/load-db-env.ps1](db/scripts/load-db-env.ps1)).
-- Query `**mtgjson`** schema (e.g. `SELECT ... FROM mtgjson.cards WHERE ...`). Table names depend on the mtgjson dump; you can inspect [db/schema.sql](db/schema.sql) if you’ve dumped it, or probe with a simple endpoint that lists tables in `mtgjson`.
+- Connect to Postgres using **POSTGRES_*** from the environment.
+- Query `**mtgjson`** schema (e.g. `SELECT ... FROM mtgjson.cards WHERE ...`). Table names depend on the mtgjson dump; you can inspect `tools_api/debug/schema.sql` if you’ve dumped it, or probe with a simple endpoint that lists tables in `mtgjson`.
 - No migrations in the API repo for now; the catalog is read-only and lives in `mtgjson`; app-specific tables (inventory) come later.
 
 ### 3. Starter endpoints
@@ -83,8 +83,8 @@ Exact SQL and response shapes depend on the mtgjson schema (table and column nam
 
 ### 4. Running the API
 
-- **Local:** From the **api/** directory, load env if needed (e.g. dot-source [db/scripts/load-db-env.ps1](db/scripts/load-db-env.ps1) or run with env file), then `uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000`. Document in **api/README.md**.
-- **Optional:** Add an **api** service to [docker-compose.yml](docker-compose.yml) that builds from `api/` and depends on `postgres` with `POSTGRES_`* set from env_file, so `docker compose up` brings up DB + API. Can be a follow-up to keep the first iteration “run on host with uvicorn.”
+- **Local:** From the **api/** directory, load env if needed (e.g. via `.\scripts\load-env.ps1` at repo root or set env vars another way), then `uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000`. Document in **api/README.md**.
+- **Optional:** Add an **api** service to [docker-compose.yml](docker-compose.yml) that builds from `api/` and depends on `postgres` with `POSTGRES`_* set from env_file, so `docker compose up` brings up DB + API. Can be a follow-up to keep the first iteration “run on host with uvicorn.”
 
 ### 5. Docs and project plan
 

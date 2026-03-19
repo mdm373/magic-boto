@@ -1,13 +1,11 @@
 """OpenAI-compatible v1 routes: models pass-through and chat completions with tool execution."""
 
-import json
 from collections.abc import AsyncIterator
 from typing import Literal
 
 from fastapi import Depends, Request
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRouter
-from loguru import logger
 from openai.types.chat.chat_completion import ChatCompletion
 from openai.types.chat.chat_completion_chunk import (
     ChatCompletionChunk,
@@ -18,25 +16,22 @@ from openai.types.chat.completion_create_params import CompletionCreateParams
 from pydantic import TypeAdapter
 from sse_starlette import EventSourceResponse, ServerSentEvent
 
-from .errors import invalid_request_error
-from .services import Agent, HttpProxy
+from app.errors import invalid_request_error
+from app.services import create_agent, create_openai_proxy
 
 OBJECT_CHAT_COMPLETION_CHUNK: Literal["chat.completion.chunk"] = "chat.completion.chunk"
 
 _COMPLETION_BODY_ADAPTER: TypeAdapter[CompletionCreateParams] = TypeAdapter(CompletionCreateParams)
 
-health_router = APIRouter(tags=["health"])
 
-
-def create_openapi_v1_router(
-    agent: Agent,
-    openai_proxy: HttpProxy,
-) -> APIRouter:
+async def create_open_ai_router() -> APIRouter:
     """
     Build the OpenAPI v1 router with tools and spec injected. Call once at startup
     after loading resources; server is not ready until then.
     """
-    router = APIRouter(prefix="/v1", tags=["openapi"])
+    router = APIRouter(prefix="/v1", tags=["open_ai"])
+    agent = await create_agent()
+    openai_proxy = create_openai_proxy()
 
     @router.get("/models")
     async def list_models(request: Request) -> JSONResponse:
@@ -53,12 +48,6 @@ def create_openapi_v1_router(
         return completion
 
     return router
-
-
-@health_router.get("/")
-def health() -> dict[str, str]:
-    """Healthcheck."""
-    return {"status": "ok"}
 
 
 async def _parse_completion_body(request: Request) -> CompletionCreateParams:

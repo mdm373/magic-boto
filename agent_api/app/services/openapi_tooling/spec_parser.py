@@ -22,12 +22,59 @@ from .path_method_ops import PathMethodOperations
 # Media type for JSON request/response bodies (OpenAPI content key).
 APPLICATION_JSON = "application/json"
 
+# Ref prefix for components/schemas (we only resolve these for tool param schemas).
+COMPONENTS_SCHEMAS_REF_PREFIX = "#/components/schemas/"
+
 
 @dataclass(frozen=True)
 class SchemaProp:
     key: str
     schema: Schema
     required: bool
+
+
+def _resolve_schema_ref(openapi_spec: OpenAPI, ref: str) -> Schema | None:
+    """Resolve #/components/schemas/<name> to the Schema; other refs return None."""
+    if not ref.startswith(COMPONENTS_SCHEMAS_REF_PREFIX):
+        return None
+    name = ref.removeprefix(COMPONENTS_SCHEMAS_REF_PREFIX)
+    components = openapi_spec.components
+    if not components or not components.schemas:
+        return None
+    resolved = components.schemas.get(name)
+    if resolved is None:
+        return None
+    if isinstance(resolved, Schema):
+        return resolved
+    if isinstance(resolved, Reference):
+        return _resolve_schema_ref(openapi_spec, resolved.ref)
+    return None
+
+
+def _resolve_param_schema(
+    openapi_spec: OpenAPI,
+    param_schema: Schema | Reference | None,
+    default: Schema,
+) -> Schema:
+    """Resolve refs in a parameter schema so the tool definition has inline type/enum."""
+    if param_schema is None:
+        return default
+    if isinstance(param_schema, Reference):
+        resolved = _resolve_schema_ref(openapi_spec, param_schema.ref)
+        return resolved if resolved is not None else default
+    if param_schema.anyOf:
+        resolved_any_of: list[Schema | Reference] = []
+        for item in param_schema.anyOf:
+            if isinstance(item, Reference):
+                r = _resolve_schema_ref(openapi_spec, item.ref)
+                if r is None:
+                    resolved_any_of.append(item)
+                    continue
+                resolved_any_of.append(r)
+                continue
+            resolved_any_of.append(item)
+        return Schema(anyOf=resolved_any_of, enum=None)
+    return param_schema
 
 
 class OpenAPISpecParser:
@@ -41,22 +88,27 @@ class OpenAPISpecParser:
         """
         Convert OpenAPI paths to OpenAI-format tool definitions.
         Uses operationId as function name, summary as description, path/query/body as parameters.
+        Resolves $ref in parameter schemas so tools get inline type/enum.
         """
         tools: list[ChatCompletionFunctionToolParam] = []
         paths = openapi_spec.paths or {}
         for _, path_item in paths.items():
-            tools += self._parse_path_item(path_item)
+            tools += self._parse_path_item(path_item, openapi_spec)
         return tools
 
-    def _parse_path_item(self, path_item: PathItem) -> list[ChatCompletionFunctionToolParam]:
+    def _parse_path_item(
+        self, path_item: PathItem, openapi_spec: OpenAPI
+    ) -> list[ChatCompletionFunctionToolParam]:
         tools: list[ChatCompletionFunctionToolParam] = []
         for method in self._path_method_ops.supported_methods():
             op = self._path_method_ops.get_path_method_operation(path_item, method)
             if op is None or not op.operationId:
                 continue
             desc = op.summary or op.description or op.operationId
-            parameters_schema = self._parse_function_params(op)
-            params_dict = parameters_schema.model_dump(mode="json", by_alias=True)
+            parameters_schema = self._parse_function_params(op, openapi_spec)
+            params_dict = parameters_schema.model_dump(
+                mode="json", by_alias=True, exclude_none=True
+            )
             tools.append(
                 ChatCompletionFunctionToolParam(
                     type="function",
@@ -69,12 +121,12 @@ class OpenAPISpecParser:
             )
         return tools
 
-    def _parse_function_params(self, op: Operation) -> Schema:
+    def _parse_function_params(self, op: Operation, openapi_spec: OpenAPI) -> Schema:
         props: list[SchemaProp] = []
         for param in op.parameters or []:
             if isinstance(param, Reference):
                 continue
-            props.append(self._parse_parameter(param))
+            props.append(self._parse_parameter(param, openapi_spec))
         if op.requestBody and not isinstance(op.requestBody, Reference):
             props.extend(self._parse_body(op.requestBody))
         return Schema(
@@ -84,12 +136,10 @@ class OpenAPISpecParser:
             enum=None,
         )
 
-    def _parse_parameter(self, param: Parameter) -> SchemaProp:
+    def _parse_parameter(self, param: Parameter, openapi_spec: OpenAPI) -> SchemaProp:
         required = param.required or param.param_in == ParameterLocation.PATH
-        if param.param_schema and not isinstance(param.param_schema, Reference):
-            return SchemaProp(key=param.name, schema=param.param_schema, required=required)
-
-        return SchemaProp(key=param.name, schema=self._default_schema, required=required)
+        schema = _resolve_param_schema(openapi_spec, param.param_schema, self._default_schema)
+        return SchemaProp(key=param.name, schema=schema, required=required)
 
     def _parse_body(self, request_body: RequestBody) -> Sequence[SchemaProp]:
         """Return the Schema for application/json content, or None if absent or a Reference."""

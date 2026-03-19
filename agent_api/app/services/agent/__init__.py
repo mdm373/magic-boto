@@ -14,10 +14,15 @@ async def create_agent() -> Agent:
     )
     client = AsyncOpenAI(
         base_url=f"{_settings.openai_proxy_base_url}/v1",
-        api_key="lm-studio",
+        api_key=_settings.openai_proxy_api_key,
         timeout=_settings.openai_proxy_timeout,
     )
-    return Agent(tooling=tooling, open_api_client=client, max_tool_rounds=_settings.max_tool_rounds)
+    return Agent(
+        tooling=tooling,
+        open_api_client=client,
+        max_tool_rounds=_settings.max_tool_rounds,
+        model=_settings.openai_proxy_model,
+    )
 
 
 __all__ = [

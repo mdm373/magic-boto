@@ -23,14 +23,14 @@ We will use the **incremental** approach for card data: **our own schema** and a
 
 ## Phase 1: implementation now (initial load only)
 
-### 1. Add `db/` layout
+### 1. Add `tools_api/` DB tasks
 
-- **`db/README.md`** — State that card data comes from MTGJSON; we use an incremental design but for now only the initial load is implemented. How to run the initial load; how to run migrations (inventory, etc.).
-- **`db/scripts/`** (e.g. `load-mtgjson.ps1`) — **Initial-load script only:**
-  - Uses `POSTGRES_*` from env (or `.env`) to build connection info.
-  - Downloads AllPrintings (e.g. `AllPrintings.psql.gz` or `AllPrintings.json.gz`), decompresses if needed, and loads into the DB once (e.g. `psql -f` for .psql, or parse JSON and insert into our schema).
+- **`tools_api/tasks/populate.py`** — **Initial-load task only:**
+  - Uses `POSTGRES_*` (or existing `PG*`) from env to build connection info.
+  - Loads a local AllPrintings dump (`.psql`, `.psql.zip`, `.psql.gz`) into Postgres under schema `mtgjson` (one-time).
   - **Do not** implement refresh or incremental update in Phase 1.
-- **`db/migrations/`** — App schema (e.g. `inventory`). If Phase 1 uses the pre-built .psql, catalog tables come from the dump; we add our schema and incremental ingest in Phase 2.
+- **`tools_api/debug/schema.sql`** — Optional schema dump to inspect MTGJSON tables/views during development (regenerate via `uv run invoke populate.schema`).
+- **`tools_api/migrations/`** — App schema (e.g. `inventory`). If Phase 1 uses the pre-built .psql, catalog tables come from the dump; we add our schema and incremental ingest in Phase 2.
 
 ### 2. Initial-load options (Phase 1)
 
@@ -43,7 +43,7 @@ We will use the **incremental** approach for card data: **our own schema** and a
 
 ### 3. Document connection and run
 
-- In `db/README.md`: ensure Postgres is up (`docker compose up -d`), copy `.env.example` to `.env`, run the initial-load script once from `db/`. State that updates will be incremental later (not implemented yet).
+- Ensure Postgres is up (`docker compose up -d`), copy `.env.example` to `.env`, then run the initial-load task once from `tools_api/`: `uv run invoke populate.mtg_json`. State that updates will be incremental later (not implemented yet).
 
 ---
 
