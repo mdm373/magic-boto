@@ -10,7 +10,7 @@ Guidance for AI agents (e.g. Cursor) working in this repo.
 
 Apply these principles so new work fits the existing structure.
 
-- **Service boundaries.** The repo is multi-service (e.g. agent_api, tools_api). Each service is self-contained (own app, settings, tasks, pyproject, Dockerfile). Run tooling (Ruff, mypy, Invoke) from the service directory you are changing.
+- **Service boundaries.** Runtime stack is **Postgres** + **tools_api** (FastAPI HTTP + MCP in one image). The **tools_api** service is self-contained (app, settings, tasks, pyproject, Dockerfile). Run tooling (Ruff, mypy, Invoke) from **`tools_api/`** for Python changes there.
 
 - **Build at startup, inject into handlers.** App-wide resources are built once in lifespan and passed into the code that needs them (e.g. a router factory that closes over them). Do not store them in untyped app state or re-fetch per request. The server is not ready until startup has finished.
 
@@ -32,7 +32,7 @@ Apply these principles so new work fits the existing structure.
 
 - **No vague “helpers” dumping grounds.** Do not add generic top-level modules (e.g. `helpers.py`, `utils.py`, `openapi_helpers.py`). Put small utilities in the package that owns their use (e.g. schema/OpenAPI description text in `app/schema/descriptions.py`).
 
-## Python (tools_api/ and agent_api/)
+## Python (tools_api/)
 
 - **Sibling imports.** Within the same package (e.g. modules under `app/models/`), prefer relative imports (`from .base import Base`, `from .sibling import Foo`) instead of fully qualified `app....` paths. Use absolute `app....` imports when crossing package boundaries (e.g. `app/services` → `app/schema`).
 
@@ -61,6 +61,12 @@ Apply these principles so new work fits the existing structure.
 - **Never hand-edit `tools_api/debug/schema.sql`.** When you need it synced after DB/migration changes, regenerate it via `uv run invoke populate.schema` from `tools_api/`. This uses `pg_dump -s` to dump the current DB schema into `tools_api/debug/schema.sql`.
 
 - **DB access via app injection.** Routes that need the DB use the app’s dependency (session or connection); do not repeat the dependency in each route.
+
+- **tools_api HTTP vs MCP.** The FastAPI app lives under `tools_api/app/http/` (`uvicorn app.http.main:app`). Streamable MCP HTTP matches that pattern: `uvicorn app.mcp.asgi:app` (see `docker-compose.yml` **`tools_mcp`**). Shared wiring for FastMCP lives in `app/mcp/server.py`. **Stdio** MCP hosts (subprocess-only clients): `uv run python -m app.mcp.main`. Shared domain code stays at `tools_api/app/` (`services`, `schema`, `db`, `models`).
+
+- **MCP Inspector (Docker).** Root **`docker-compose.yml`** includes **`mcp_inspector`** (`ghcr.io/modelcontextprotocol/inspector:latest`), ports **`MCP_INSPECTOR_CLIENT_PORT` / `MCP_INSPECTOR_SERVER_PORT`** (defaults **6274** / **6277**). Open the UI on the host, then connect with **Streamable HTTP** URL **`http://tools_mcp:8765/mcp`** (use the Compose service name so the proxy reaches `tools_mcp`; `http://localhost:8765/mcp` is wrong from inside the inspector container). Check **`docker compose logs mcp_inspector`** for the proxy auth token if prompted.
+
+- **LLM / orchestration.** There is **no in-repo agent or chat UI**. Use an external MCP-capable client (Cursor, Claude Desktop, etc.) pointed at **`http://<host>:<port>/mcp`** (see **`TOOLS_MCP_PORT`**). Put **system prompts and task instructions in Markdown** under **`tasks/`** (or `docs/`) and reference them from your workflow or client rules (e.g. `tasks/deck-building/AGENTS.md`).
 
 ## Platform
 

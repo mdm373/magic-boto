@@ -12,7 +12,9 @@ from .card_rarity import CardRarity
 from .text_enum import text_enum
 
 if TYPE_CHECKING:
-    from .mtgjson_card_type import MtgjsonCardTypeModel
+    from .card_subtype import CardSubtypeModel
+    from .card_supertype import CardSupertypeModel
+    from .card_type import CardTypeModel
     from .mtgjson_edition import MtgjsonEditionModel
     from .mtgjson_identifiers import MtgjsonCardIdentifiersModel
 
@@ -46,9 +48,23 @@ class MtgjsonCardModel(Base):
         lazy="select",
         viewonly=True,
     )
-    card_types: Mapped[list[MtgjsonCardTypeModel]] = relationship(
-        "MtgjsonCardTypeModel",
+    card_types: Mapped[list[CardTypeModel]] = relationship(
+        "CardTypeModel",
         back_populates="card",
         lazy="selectin",
-        order_by="MtgjsonCardTypeModel.card_type",
+        order_by="CardTypeModel.card_type",
+    )
+
+    card_subtypes: Mapped[list[CardSubtypeModel]] = relationship(
+        "CardSubtypeModel",
+        back_populates="card",
+        lazy="selectin",
+        order_by="CardSubtypeModel.card_subtype",
+    )
+
+    card_supertypes: Mapped[list[CardSupertypeModel]] = relationship(
+        "CardSupertypeModel",
+        back_populates="card",
+        lazy="selectin",
+        order_by="CardSupertypeModel.card_supertype",
     )

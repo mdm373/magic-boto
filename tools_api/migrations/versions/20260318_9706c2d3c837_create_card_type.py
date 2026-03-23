@@ -47,7 +47,7 @@ def upgrade() -> None:
         sa.Column("card_uuid", sa.String(), nullable=False),
         sa.Column("card_type", sa.Text(), nullable=False),
         sa.PrimaryKeyConstraint("card_uuid", "card_type", name="pk_card_types"),
-        schema="mtgjson",
+        schema="public",
     )
     op.create_foreign_key(
         "fk_card_types_card_uuid",
@@ -55,12 +55,12 @@ def upgrade() -> None:
         "cards",
         ["card_uuid"],
         ["uuid"],
-        source_schema="mtgjson",
+        source_schema="public",
         referent_schema="mtgjson",
         ondelete="CASCADE",
     )
     create_allowed_values_check_constraint(
-        schema="mtgjson",
+        schema="public",
         table="card_types",
         column="card_type",
         values=_STANDARD_CARD_TYPES,
@@ -70,14 +70,14 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     drop_allowed_values_check_constraint(
-        schema="mtgjson",
+        schema="public",
         table="card_types",
         column="card_type",
     )
     op.drop_constraint(
         "fk_card_types_card_uuid",
         "card_types",
-        schema="mtgjson",
+        schema="public",
         type_="foreignkey",
     )
-    op.drop_table("card_types", schema="mtgjson")
+    op.drop_table("card_types", schema="public")

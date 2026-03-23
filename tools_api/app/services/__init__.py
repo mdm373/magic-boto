@@ -1,8 +1,9 @@
 """Services layer for tool endpoints."""
 
-from app.services.card_service import CardService
-from app.services.edition_service import EditionService
-from app.services.mapper import CardMapper, EditionMapper
+from .card_service import CardService
+from .edition_service import EditionService
+from .inventory_service import InventoryService
+from .mapper import CardMapper, EditionMapper
 
 
 def create_card_service() -> CardService:
@@ -15,4 +16,16 @@ def create_edition_service() -> EditionService:
     return EditionService(EditionMapper())
 
 
-__all__ = ["create_card_service", "create_edition_service", "CardService", "EditionService"]
+def create_inventory_service() -> InventoryService:
+    """Create the inventory service."""
+    return InventoryService()
+
+
+__all__ = [
+    "create_card_service",
+    "create_edition_service",
+    "create_inventory_service",
+    "CardService",
+    "EditionService",
+    "InventoryService",
+]

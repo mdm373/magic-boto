@@ -3,7 +3,6 @@
 from collections.abc import Sequence
 from typing import Any
 
-from loguru import logger
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,7 +32,6 @@ class EditionService:
         if query.name is not None:
             filters.append(MtgjsonEditionModel.name.ilike(f"%{query.name.strip()}%"))
         stmt = select(MtgjsonEditionModel).where(and_(*filters))
-        logger.debug("query_editions query: {}", query.model_dump())
         result = await session.execute(stmt)
         rows = result.scalars().all()
         return [self._mapper.to_response(ed) for ed in rows]
@@ -44,7 +42,6 @@ class EditionService:
         set_code: str,
     ) -> MtgjsonEdition | None:
         """Get one edition by set code. Returns None if not found."""
-        logger.debug("Edition lookup: get_edition(set_code={})", set_code)
         stmt = select(MtgjsonEditionModel).where(MtgjsonEditionModel.code == set_code.strip())
         result = await session.execute(stmt)
         edition = result.scalars().one_or_none()

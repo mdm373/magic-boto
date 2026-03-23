@@ -9,5 +9,9 @@ class InvalidRequestError(ValueError):
     """Raised when a request is invalid at the application layer (maps to 422)."""
 
 
+class NotFoundError(LookupError):
+    """Raised when a targeted resource does not exist (maps to 404)."""
+
+
 class InternalError(RuntimeError):
     """Raised when a data invariant is violated (maps to 500)."""

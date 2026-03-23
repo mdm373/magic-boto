@@ -1,6 +1,4 @@
 .env
-ui/.env
-api/.venv/
 
 # Python
 __pycache__/

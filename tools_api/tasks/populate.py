@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio.engine import AsyncConnection
 
 from .pg_env import pg_env
 
-# Must match mtgjson.card_types check constraint and app.models.card_type.CardType.
+# Must match card_types check constraint and app.models.card_type.CardType.
 _ALLOWED_CARD_TYPES: frozenset[str] = frozenset(
     {
         "artifact",
@@ -52,8 +52,55 @@ _MTGJSON_CARD_TYPES = Table(
     MetaData(),
     Column("card_uuid", String),
     Column("card_type", String),
-    schema="mtgjson",
+    schema="public",
 )
+
+_MTGJSON_CARD_SUBTYPES = Table(
+    "card_subtypes",
+    MetaData(),
+    Column("card_uuid", String),
+    Column("card_subtype", String),
+    schema="public",
+)
+
+_CANONICAL_CARD_SUPERTYPES_BY_LOWER: dict[str, str] = {
+    "basic": "Basic",
+    "host": "Host",
+    "legendary": "Legendary",
+    "ongoing": "Ongoing",
+    "snow": "Snow",
+    "world": "World",
+}
+_ALLOWED_CARD_SUPERTYPES_LOWER: frozenset[str] = frozenset(
+    _CANONICAL_CARD_SUPERTYPES_BY_LOWER.keys()
+)
+
+_MTGJSON_CARD_SUPERTYPES = Table(
+    "card_supertypes",
+    MetaData(),
+    Column("card_uuid", String),
+    Column("card_supertype", String),
+    schema="public",
+)
+
+
+def _split_mtgjson_csv_tokens(raw: str) -> list[str]:
+    """
+    Split MTGJSON list-ish fields stored as TEXT into normalized tokens.
+
+    Expected input examples:
+    - "Human, Wizard"
+    - "[\"Human\",\"Wizard\"]"
+    - "Human"
+    """
+    cleaned = re.sub(r'[\[\]"]', "", str(raw))
+    tokens: list[str] = []
+    for token_raw in cleaned.split(","):
+        token = token_raw.strip().lower()
+        if not token:
+            continue
+        tokens.append(token)
+    return tokens
 
 
 def _psql_tac(
@@ -84,7 +131,7 @@ def _db_url(env: dict[str, str]) -> str:
 
 
 async def _count_cards_missing_types(conn: AsyncConnection) -> int:
-    """Count cards with no rows in mtgjson.card_types."""
+    """Count cards with no rows in public.card_types."""
     total_res = await conn.execute(
         text(
             """
@@ -92,7 +139,7 @@ async def _count_cards_missing_types(conn: AsyncConnection) -> int:
             FROM mtgjson.cards c
             WHERE NOT EXISTS (
               SELECT 1
-              FROM mtgjson.card_types ct
+                FROM public.card_types ct
               WHERE ct.card_uuid = c.uuid
             )
             """
@@ -114,7 +161,7 @@ async def _select_cards_missing_types_batch(
             WHERE c.uuid > :last_uuid
               AND NOT EXISTS (
                 SELECT 1
-                FROM mtgjson.card_types ct
+                FROM public.card_types ct
                 WHERE ct.card_uuid = c.uuid
               )
             ORDER BY c.uuid
@@ -140,7 +187,7 @@ async def _backfill_card_types(*, env: dict[str, str], batch_size: int) -> None:
     try:
         async with engine.begin() as conn:
             total = await _count_cards_missing_types(conn)
-            print(f"Backfilling mtgjson.card_types for {total} cards (batch_size={batch_size})...")
+            print(f"Backfilling card_types for {total} cards (batch_size={batch_size})...")
             processed = 0
             batch_num = 0
             last_uuid = ""
@@ -189,6 +236,217 @@ async def _backfill_card_types(*, env: dict[str, str], batch_size: int) -> None:
                 "Info: card_types backfill summary: "
                 f"attempted_cards={processed}, inserted_rows={total_inserted}, "
                 f"skipped_invalid_tokens={total_skipped_invalid}"
+            )
+    finally:
+        await engine.dispose()
+
+
+async def _count_cards_missing_subtypes(conn: AsyncConnection) -> int:
+    """Count cards with no rows in public.card_subtypes."""
+    total_res = await conn.execute(
+        text(
+            """
+            SELECT COUNT(*)
+            FROM mtgjson.cards c
+            WHERE NOT EXISTS (
+              SELECT 1
+              FROM public.card_subtypes st
+              WHERE st.card_uuid = c.uuid
+            )
+            """
+        )
+    )
+    return int(total_res.scalar_one() or 0)
+
+
+async def _select_cards_missing_subtypes_batch(
+    conn: AsyncConnection,
+    last_uuid: str,
+    limit: int,
+) -> list[tuple[str, str | None]]:
+    rows_res = await conn.execute(
+        text(
+            """
+            SELECT c.uuid, c.subtypes
+            FROM mtgjson.cards c
+            WHERE c.uuid > :last_uuid
+              AND NOT EXISTS (
+                SELECT 1
+                FROM public.card_subtypes st
+                WHERE st.card_uuid = c.uuid
+              )
+            ORDER BY c.uuid
+            LIMIT :limit
+            """
+        ),
+        {"last_uuid": last_uuid, "limit": limit},
+    )
+    return [(str(uuid), subtypes) for uuid, subtypes in rows_res.all()]
+
+
+async def _insert_card_subtypes_batch(
+    conn: AsyncConnection,
+    rows: list[dict[str, str]],
+) -> int:
+    """Insert many (card_uuid, card_subtype) rows; skip duplicates (PK or existing)."""
+    if not rows:
+        return 0
+    stmt = pg_insert(_MTGJSON_CARD_SUBTYPES).values(rows).on_conflict_do_nothing()
+    result = await conn.execute(stmt)
+    return int(result.rowcount or 0)
+
+
+async def _backfill_card_subtypes(*, env: dict[str, str], batch_size: int) -> None:
+    engine = create_async_engine(_db_url(env), pool_pre_ping=True)
+    try:
+        async with engine.begin() as conn:
+            total = await _count_cards_missing_subtypes(conn)
+            print(f"Backfilling card_subtypes for {total} cards (batch_size={batch_size})...")
+            processed = 0
+            batch_num = 0
+            last_uuid = ""
+            total_inserted = 0
+            max_batches = (total + batch_size - 1) // batch_size
+            for _ in range(max_batches):
+                batch_num += 1
+                rows = await _select_cards_missing_subtypes_batch(conn, last_uuid, batch_size)
+                if not rows:
+                    continue
+
+                last_uuid = str(rows[-1][0])
+                to_insert: list[dict[str, str]] = []
+                seen_keys: set[tuple[str, str]] = set()
+
+                for card_uuid, subtypes_raw in rows:
+                    if not subtypes_raw:
+                        continue
+                    for token in _split_mtgjson_csv_tokens(str(subtypes_raw)):
+                        key = (card_uuid, token)
+                        if key in seen_keys:
+                            continue
+                        seen_keys.add(key)
+                        to_insert.append({"card_uuid": card_uuid, "card_subtype": token})
+
+                inserted = await _insert_card_subtypes_batch(conn, to_insert)
+                processed += len(rows)
+                total_inserted += inserted
+
+                pct = min(100.0, (processed / total) * 100.0)
+                print(
+                    f"Batch {batch_num}: processed={processed}/{total} ({pct:.1f}%), "
+                    f"inserted_rows={inserted}"
+                )
+
+            print(
+                "Info: card_subtypes backfill summary: "
+                f"attempted_cards={processed}, inserted_rows={total_inserted}"
+            )
+    finally:
+        await engine.dispose()
+
+
+async def _count_cards_missing_supertypes(conn: AsyncConnection) -> int:
+    """Count cards with no rows in public.card_supertypes."""
+    total_res = await conn.execute(
+        text(
+            """
+            SELECT COUNT(*)
+            FROM mtgjson.cards c
+            WHERE NOT EXISTS (
+              SELECT 1
+              FROM public.card_supertypes st
+              WHERE st.card_uuid = c.uuid
+            )
+            """
+        )
+    )
+    return int(total_res.scalar_one() or 0)
+
+
+async def _select_cards_missing_supertypes_batch(
+    conn: AsyncConnection,
+    last_uuid: str,
+    limit: int,
+) -> list[tuple[str, str | None]]:
+    rows_res = await conn.execute(
+        text(
+            """
+            SELECT c.uuid, c.supertypes
+            FROM mtgjson.cards c
+            WHERE c.uuid > :last_uuid
+              AND NOT EXISTS (
+                SELECT 1
+                FROM public.card_supertypes st
+                WHERE st.card_uuid = c.uuid
+              )
+            ORDER BY c.uuid
+            LIMIT :limit
+            """
+        ),
+        {"last_uuid": last_uuid, "limit": limit},
+    )
+    return [(str(uuid), supertypes) for uuid, supertypes in rows_res.all()]
+
+
+async def _insert_card_supertypes_batch(
+    conn: AsyncConnection,
+    rows: list[dict[str, str]],
+) -> int:
+    """Insert many (card_uuid, card_supertype) rows; skip duplicates (PK or existing)."""
+    if not rows:
+        return 0
+    stmt = pg_insert(_MTGJSON_CARD_SUPERTYPES).values(rows).on_conflict_do_nothing()
+    result = await conn.execute(stmt)
+    return int(result.rowcount or 0)
+
+
+async def _backfill_card_supertypes(*, env: dict[str, str], batch_size: int) -> None:
+    engine = create_async_engine(_db_url(env), pool_pre_ping=True)
+    try:
+        async with engine.begin() as conn:
+            total = await _count_cards_missing_supertypes(conn)
+            print(f"Backfilling card_supertypes for {total} cards (batch_size={batch_size})...")
+            processed = 0
+            batch_num = 0
+            last_uuid = ""
+            total_inserted = 0
+            max_batches = (total + batch_size - 1) // batch_size
+            for _ in range(max_batches):
+                batch_num += 1
+                rows = await _select_cards_missing_supertypes_batch(conn, last_uuid, batch_size)
+                if not rows:
+                    continue
+
+                last_uuid = str(rows[-1][0])
+                to_insert: list[dict[str, str]] = []
+                seen_keys: set[tuple[str, str]] = set()
+
+                for card_uuid, supertypes_raw in rows:
+                    if not supertypes_raw:
+                        continue
+                    for token in _split_mtgjson_csv_tokens(str(supertypes_raw)):
+                        if token not in _ALLOWED_CARD_SUPERTYPES_LOWER:
+                            continue
+                        key = (card_uuid, token)
+                        if key in seen_keys:
+                            continue
+                        seen_keys.add(key)
+                        canonical = _CANONICAL_CARD_SUPERTYPES_BY_LOWER[token]
+                        to_insert.append({"card_uuid": card_uuid, "card_supertype": canonical})
+
+                inserted = await _insert_card_supertypes_batch(conn, to_insert)
+                processed += len(rows)
+                total_inserted += inserted
+
+                pct = min(100.0, (processed / total) * 100.0 if total else 100.0)
+                print(
+                    f"Batch {batch_num}: processed={processed}/{total} ({pct:.1f}%), "
+                    f"inserted_rows={inserted}"
+                )
+
+            print(
+                "Info: card_supertypes backfill summary: "
+                f"attempted_cards={processed}, inserted_rows={total_inserted}"
             )
     finally:
         await engine.dispose()
@@ -286,9 +544,9 @@ def mtg_json(c: Context) -> None:
 
 @task
 def card_types(c: Context, batch_size: int = 500) -> None:
-    """Backfill mtgjson.card_types from mtgjson.cards.types (comma-separated).
+    """Backfill public.card_types from mtgjson.cards.types (comma-separated).
 
-    - Pages cards missing any row in mtgjson.card_types (keyset by uuid).
+    - Pages cards missing any row in public.card_types (keyset by uuid).
     - Inserts only standard rulebook types (see _ALLOWED_CARD_TYPES in this module).
     - One multi-row INSERT per page (``ON CONFLICT DO NOTHING``).
     - Counts tokens outside that set as skipped (summary at end).
@@ -302,6 +560,38 @@ def card_types(c: Context, batch_size: int = 500) -> None:
     print("Done: card_types backfill complete.")
 
 
+@task
+def card_subtypes(c: Context, batch_size: int = 500) -> None:
+    """Backfill public.card_subtypes from mtgjson.cards.subtypes.
+
+    - Pages cards missing any row in public.card_subtypes (keyset by uuid).
+    - Inserts distinct subtype tokens per card.
+    """
+    if batch_size < 1:
+        raise Exit("batch_size must be >= 1")
+
+    env = pg_env()
+    asyncio.run(_backfill_card_subtypes(env=env, batch_size=batch_size))
+    print("Done: card_subtypes backfill complete.")
+
+
+@task
+def card_supertypes(c: Context, batch_size: int = 500) -> None:
+    """Backfill public.card_supertypes from mtgjson.cards.supertypes.
+
+    - Pages cards missing any row in public.card_supertypes (keyset by uuid).
+    - Inserts only supported supertypes (Basic, Legendary, etc.).
+    """
+    if batch_size < 1:
+        raise Exit("batch_size must be >= 1")
+
+    env = pg_env()
+    asyncio.run(_backfill_card_supertypes(env=env, batch_size=batch_size))
+    print("Done: card_supertypes backfill complete.")
+
+
 ns = Collection("populate")
 ns.add_task(mtg_json, name="mtg_json")
 ns.add_task(card_types, name="card_types")
+ns.add_task(card_subtypes, name="card_subtypes")
+ns.add_task(card_supertypes, name="card_supertypes")
