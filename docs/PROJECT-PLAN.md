@@ -83,7 +83,7 @@ Root **`docker-compose.yml`** brings up **Postgres**, **tools_api**, **tools_mcp
 | `docs/` | Project plan and design notes. |
 | `tasks/` | Optional Markdown instructions / prompts for human or agent workflows (not loaded by the server automatically). |
 | `tools_api/` | HTTP app, MCP ASGI app, DB, migrations, Invoke tasks, Dockerfile. |
-| `scripts/` | e.g. `load-env.ps1` for PowerShell env loading. |
+| `scripts/` | Miscellaneous helper scripts (repo root). |
 
 ### IDE and Python env
 

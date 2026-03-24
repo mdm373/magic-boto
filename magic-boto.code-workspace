@@ -1,16 +1,23 @@
 {
   "folders": [
-    {"path": ".", "name": "magic-boto"},
-    {"path": "docs", "name": "docs"},
-    {"path": "tools_api", "name": "tools_api"},
-    {"path": "tasks", "name": "tasks"}
+    {
+      "name": "magic-boto",
+      "path": "."
+    },
+    {
+      "name": "docs",
+      "path": "docs"
+    },
+    {
+      "name": "tools_api",
+      "path": "tools_api"
+    },
+    {
+      "name": "tasks",
+      "path": "tasks"
+    }
   ],
   "settings": {
-    "files.exclude": {
-      "tools_api": true,
-      "docs": true,
-      "tasks": true
-    },
     "sqltools.connections": [
       {
         "ssh": "Disabled",

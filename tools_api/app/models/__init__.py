@@ -1,5 +1,7 @@
 """SQLAlchemy ORM models."""
 
+from .card_keyword import CardKeywordModel
+from .card_meta import CardMetaModel
 from .card_rarity import CardRarity
 from .card_subtype import CardSubtypeModel
 from .card_supertype import CardSupertype, CardSupertypeModel
@@ -18,6 +20,8 @@ __all__ = [
     "MtgjsonCardIdentifiersModel",
     "MtgjsonCardModel",
     "CardTypeModel",
+    "CardKeywordModel",
+    "CardMetaModel",
     "CardSubtypeModel",
     "CardSupertypeModel",
     "MtgjsonEditionModel",

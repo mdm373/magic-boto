@@ -11,43 +11,51 @@ from sqlalchemy.orm import selectinload
 
 from app.models import MtgjsonCardIdentifiersModel, MtgjsonCardModel
 from app.schema import MtgjsonCard
-from app.schema.card_query import CardQueryRequest
-from app.services.card_query_compile import SqlPredicate, compile_conditions
+from app.schema.card_search import CardSearchQuery
+from app.services.card_search_query_builder import CardSearchQueryBuilder
 from app.services.mapper import CardMapper
 
 
 class CardService:
     """Card lookup service.
 
-    Mapper is injected at construction time; DB session is provided per request.
+    Mapper and query builder are injected at construction time; DB session is per request.
     """
 
-    def __init__(self, mapper: CardMapper) -> None:
+    def __init__(self, mapper: CardMapper, query_builder: CardSearchQueryBuilder) -> None:
         self._mapper = mapper
+        self._query_builder = query_builder
 
     async def search_cards(
         self,
         session: AsyncSession,
-        body: CardQueryRequest,
-        params: Params,
+        query: CardSearchQuery,
     ) -> AbstractPage[MtgjsonCard]:
         """List cards"""
-        filters: list[SqlPredicate] = [*compile_conditions(body.conditions)]
+        filters = self._query_builder.build_predicates(query.filters)
+
         stmt = (
             select(MtgjsonCardModel)
             .options(
                 selectinload(MtgjsonCardModel.card_types),
                 selectinload(MtgjsonCardModel.card_subtypes),
+                selectinload(MtgjsonCardModel.card_keywords),
                 selectinload(MtgjsonCardModel.card_supertypes),
             )
-            .where(and_(*filters))
+            .order_by(MtgjsonCardModel.name.asc())
         )
+        if filters:
+            stmt = stmt.where(and_(*filters))
+
         return cast(
             AbstractPage[MtgjsonCard],
             await paginate(
                 session,
                 stmt,
-                params=params,
+                params=Params(
+                    page=query.pagination.page_number,
+                    size=query.pagination.page_size,
+                ),
                 transformer=lambda items: [self._mapper.to_response(card) for card in items],
             ),
         )
@@ -65,6 +73,7 @@ class CardService:
             .options(
                 selectinload(MtgjsonCardModel.card_types),
                 selectinload(MtgjsonCardModel.card_subtypes),
+                selectinload(MtgjsonCardModel.card_keywords),
                 selectinload(MtgjsonCardModel.card_supertypes),
             )
             .where(MtgjsonCardModel.identifiers.has(MtgjsonCardIdentifiersModel.card_id == card_id))

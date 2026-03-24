@@ -17,6 +17,7 @@ from starlette.types import ASGIApp
 
 from app.db import close_async_engine, close_pool, get_async_engine, get_pool
 
+from .error_middleware import AppMcp
 from .tools import register_tools
 
 _logging_configured = False
@@ -97,6 +98,7 @@ def create_mcp_server(*, streamable_http: bool) -> FastMCP[dict[str, Any]]:
         json_response=streamable_http,
         stateless_http=stateless_http,
     )
-    register_tools(mcp)
+    app_mcp = AppMcp(mcp)
+    register_tools(app_mcp)
     _register_health_route(mcp)
     return mcp

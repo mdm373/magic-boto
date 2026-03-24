@@ -28,16 +28,22 @@ class CardMapper:
         card_types_list = [CardType(ct.card_type) for ct in card.card_types]
         card_supertypes_list = [CardSupertype(ct.card_supertype) for ct in card.card_supertypes]
         card_subtypes_list = [ct.card_subtype for ct in card.card_subtypes]
+        card_keywords_list = [ck.card_keyword for ck in card.card_keywords]
         return MtgjsonCard(
             name=card.name or "",
             mana_cost=card.mana_cost,
             mana_value=_map_mana_value(card.mana_value),
             set_code=sc,
+            number=card.number,
             card_id=card_id,
             oracle_id=oracle_id,
             type=card.type,
+            power=card.power,
+            toughness=card.toughness,
+            text=card.oracle_text,
             card_types=card_types_list,
             card_supertypes=card_supertypes_list,
             card_subtypes=card_subtypes_list,
+            card_keywords=card_keywords_list,
             rarity=card.rarity,
         )

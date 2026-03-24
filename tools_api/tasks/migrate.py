@@ -12,7 +12,9 @@ def up(c: Context) -> None:
     c.run("uv run alembic upgrade head")
     c.run("uv run invoke populate.card-types")
     c.run("uv run invoke populate.card-subtypes")
+    c.run("uv run invoke populate.card-keywords")
     c.run("uv run invoke populate.card-supertypes")
+    c.run("uv run invoke populate.card-meta")
     c.run("uv run invoke generate.db-schema")
 
 

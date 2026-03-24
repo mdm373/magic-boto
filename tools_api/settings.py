@@ -1,4 +1,4 @@
-"""Settings from env. Populate env before run (e.g. scripts/load-env.ps1)."""
+"""Application settings from environment variables. Set env before starting the process."""
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 

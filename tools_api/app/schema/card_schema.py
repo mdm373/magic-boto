@@ -25,18 +25,26 @@ class MtgjsonCard(BaseModel):
     mana_cost: str | None = Field(None, description="Mana cost (e.g. {2}{U}{U})")
     mana_value: int = Field(..., description="Mana value (formerly CMC).")
     set_code: str = Field(..., min_length=1, description="Set/edition code (e.g. M21)")
+    number: str | None = Field(None, description="Collector number in the set (e.g. 100, 12p)")
     card_id: str = Field(..., min_length=1, description="Card Unique Printing Identifier")
     oracle_id: str = Field(
         ..., min_length=1, description="Card Definition (Cross Printing) Identifier"
     )
     type: str | None = Field(None, description="Card type line")
+    power: str | None = Field(None, description="Power text (e.g. 2, *, *+1).")
+    toughness: str | None = Field(None, description="Toughness text (e.g. 2, *).")
+    text: str | None = Field(None, description="Oracle / rules text (MTGJSON ``text`` column).")
     card_types: list[CardType] = Field(
         default_factory=list,
         description="Standard rulebook card types (e.g. Creature, Artifact).",
     )
     card_subtypes: list[str] = Field(
         default_factory=list,
-        description="Card subtypes (free text, e.g. Human, Wizard).",
+        description="Card subtypes (normalized lowercase, e.g. human, wizard).",
+    )
+    card_keywords: list[str] = Field(
+        default_factory=list,
+        description="Keyword abilities (normalized lowercase, e.g. flying, trample).",
     )
     card_supertypes: list[CardSupertype] = Field(
         default_factory=list,

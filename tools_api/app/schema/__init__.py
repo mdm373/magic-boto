@@ -1,12 +1,5 @@
 """Pydantic response/request schemas."""
 
-from .card_query import (
-    NUMERIC_QUERY_FIELDS,
-    CardQueryCondition,
-    CardQueryField,
-    CardQueryOp,
-    CardQueryRequest,
-)
 from .card_schema import (
     CardsListMetadata,
     CardsListResponse,
@@ -14,6 +7,7 @@ from .card_schema import (
     CardsPaginationParams,
     MtgjsonCard,
 )
+from .card_search import CardSearchFilters, CardSearchPagination, CardSearchQuery
 from .descriptions import allowed_values_description
 from .edition_schema import EditionsQuery, MtgjsonEdition
 from .inventory_schema import (
@@ -26,11 +20,9 @@ from .inventory_schema import (
 
 __all__ = [
     "allowed_values_description",
-    "NUMERIC_QUERY_FIELDS",
-    "CardQueryCondition",
-    "CardQueryOp",
-    "CardQueryField",
-    "CardQueryRequest",
+    "CardSearchFilters",
+    "CardSearchPagination",
+    "CardSearchQuery",
     "CardsListMetadata",
     "CardsListResponse",
     "CardsPage",
