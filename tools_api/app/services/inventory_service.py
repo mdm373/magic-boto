@@ -1,4 +1,4 @@
-"""Inventory CRUD: named collections linked to mtgjson.cards via Scryfall printing id."""
+"""Inventory CRUD: named collections linked to ``magic_boto.cards`` via Scryfall printing id."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import InventoryCardModel, InventoryModel
+from app.models import MagicBotoInventoryCardModel, MagicBotoInventoryModel
 from app.schema.inventory_schema import InventoryResponse
 from app.validators import ResolvedInventoryAddCards
 
@@ -22,14 +22,14 @@ class InventoryService:
         session: AsyncSession,
         name: str,
     ) -> InventoryResponse:
-        inv = InventoryModel(name=name.strip())
+        inv = MagicBotoInventoryModel(name=name.strip())
         session.add(inv)
         await session.commit()
         await session.refresh(inv)
         return InventoryResponse(id=inv.id, name=inv.name)
 
     async def delete_inventory(self, session: AsyncSession, inventory_id: uuid.UUID) -> bool:
-        stmt = delete(InventoryModel).where(InventoryModel.id == inventory_id)
+        stmt = delete(MagicBotoInventoryModel).where(MagicBotoInventoryModel.id == inventory_id)
         result = cast(CursorResult[Any], await session.execute(stmt))
         await session.commit()
         return (result.rowcount or 0) > 0
@@ -43,33 +43,33 @@ class InventoryService:
         """
         Persist inventory rows. `resolved` comes from route-level validation only.
         """
-        by_card_uuid: dict[str, int] = {}
+        by_card_id: dict[str, int] = {}
         for sid, qty in resolved.quantities.items():
-            card_uuid = resolved.scryfall_to_card_uuid[sid]
-            by_card_uuid[card_uuid] = by_card_uuid.get(card_uuid, 0) + qty
+            cid = resolved.scryfall_to_card_id[sid]
+            by_card_id[cid] = by_card_id.get(cid, 0) + qty
 
-        if not by_card_uuid:
+        if not by_card_id:
             return
 
-        card_uuids = list(by_card_uuid.keys())
-        stmt = select(InventoryCardModel).where(
-            InventoryCardModel.inventory_id == inventory_id,
-            InventoryCardModel.card_uuid.in_(card_uuids),
+        card_ids = list(by_card_id.keys())
+        stmt = select(MagicBotoInventoryCardModel).where(
+            MagicBotoInventoryCardModel.inventory_id == inventory_id,
+            MagicBotoInventoryCardModel.card_id.in_(card_ids),
         )
         result = await session.execute(stmt)
-        existing: dict[str, InventoryCardModel] = {
-            row.card_uuid: row for row in result.scalars().all()
+        existing: dict[str, MagicBotoInventoryCardModel] = {
+            row.card_id: row for row in result.scalars().all()
         }
 
-        for card_uuid, qty in by_card_uuid.items():
-            row = existing.get(card_uuid)
+        for card_id, qty in by_card_id.items():
+            row = existing.get(card_id)
             if row is not None:
                 row.count += qty
             else:
                 session.add(
-                    InventoryCardModel(
+                    MagicBotoInventoryCardModel(
                         inventory_id=inventory_id,
-                        card_uuid=card_uuid,
+                        card_id=card_id,
                         count=qty,
                     ),
                 )

@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.models.card_rarity import CardRarity
 from app.models.card_supertype import CardSupertype
 from app.models.card_type import CardType
+from app.models.color_identity import ColorIdentity
 
 
 class CardsPaginationParams(Params):
@@ -48,7 +49,11 @@ class MtgjsonCard(BaseModel):
     )
     card_supertypes: list[CardSupertype] = Field(
         default_factory=list,
-        description="Card supertypes (e.g. Basic, Legendary).",
+        description="Card supertypes (lowercase, e.g. basic, legendary).",
+    )
+    color_identity: list[ColorIdentity] = Field(
+        default_factory=list,
+        description="Commander color identity pips (WUBRG), WUBRG order.",
     )
     rarity: CardRarity = Field(..., description="Printing rarity")
 

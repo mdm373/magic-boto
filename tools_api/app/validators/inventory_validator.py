@@ -9,16 +9,16 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import InvalidRequestError, NotFoundError
-from app.models import InventoryModel, MtgjsonCardIdentifiersModel
+from app.models import MagicBotoCardModel, MagicBotoInventoryModel
 from app.schema import AddInventoryCardsRequest
 
 
 @dataclass(frozen=True, slots=True)
 class ResolvedInventoryAddCards:
-    """Validated add-cards payload: quantities per Scryfall id + resolved mtgjson card UUIDs."""
+    """Validated add-cards payload: quantities per Scryfall id + resolved MTGJSON card ids."""
 
     quantities: Mapping[str, int]
-    scryfall_to_card_uuid: Mapping[str, str]
+    scryfall_to_card_id: Mapping[str, str]
 
 
 class InventoryCardsValidator:
@@ -30,7 +30,7 @@ class InventoryCardsValidator:
         cards: AddInventoryCardsRequest,
     ) -> ResolvedInventoryAddCards:
         """
-        Normalize ids, ensure inventory exists, resolve Scryfall ids to card UUIDs.
+        Normalize ids, ensure inventory exists, resolve Scryfall ids to printing rows.
 
         Raises InvalidRequestError if any Scryfall id is unknown in our DB.
         """
@@ -38,24 +38,25 @@ class InventoryCardsValidator:
         quantities = self._quantities(normalized)
 
         inv_exists = await session.scalar(
-            select(InventoryModel.id).where(InventoryModel.id == cards.inventory_id),
+            select(MagicBotoInventoryModel.id).where(
+                MagicBotoInventoryModel.id == cards.inventory_id
+            ),
         )
         if inv_exists is None:
             raise NotFoundError("Inventory not found")
 
         distinct_ids = list(quantities.keys())
-        idents = MtgjsonCardIdentifiersModel
-        stmt = select(idents.uuid, idents.card_id).where(
-            idents.card_id.in_(distinct_ids),
-            idents.card_id.is_not(None),
+        stmt = select(MagicBotoCardModel.scryfall_id, MagicBotoCardModel.card_id).where(
+            MagicBotoCardModel.scryfall_id.in_(distinct_ids),
+            MagicBotoCardModel.scryfall_id.is_not(None),
         )
         rows = (await session.execute(stmt)).all()
-        scryfall_to_uuid: dict[str, str] = {}
+        scryfall_to_card_id: dict[str, str] = {}
         for row in rows:
-            assert row.card_id is not None and row.uuid is not None
-            scryfall_to_uuid[row.card_id] = row.uuid
+            assert row.scryfall_id is not None and row.card_id is not None
+            scryfall_to_card_id[row.scryfall_id] = row.card_id
 
-        missing = [cid for cid in distinct_ids if cid not in scryfall_to_uuid]
+        missing = [cid for cid in distinct_ids if cid not in scryfall_to_card_id]
         if missing:
             preview = missing[:10]
             suffix = f" (+{len(missing) - 10} more)" if len(missing) > 10 else ""
@@ -63,7 +64,7 @@ class InventoryCardsValidator:
 
         return ResolvedInventoryAddCards(
             quantities=quantities,
-            scryfall_to_card_uuid=scryfall_to_uuid,
+            scryfall_to_card_id=scryfall_to_card_id,
         )
 
     @staticmethod

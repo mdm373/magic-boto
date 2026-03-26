@@ -4,7 +4,6 @@
     "tools_api": true,
     "docs": true,
   },
-  "python.defaultInterpreterPath": "${workspaceFolder}/api/.venv/Scripts/python.exe",
   "sqltools.connections": [
     {
       "ssh": "Disabled",

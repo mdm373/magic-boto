@@ -1,43 +1,42 @@
 """Card mapper: convert ORM card models to API response schema."""
 
 from app.errors import InternalError
-from app.models import CardSupertype, CardType, MtgjsonCardModel
+from app.models import CardRarity, CardSupertype, CardType, MagicBotoCardModel
+from app.models.color_identity import color_identity_string_to_list
 from app.schema import MtgjsonCard
 
 
-def _map_mana_value(mana_value: float) -> int:
-    if not float(mana_value).is_integer():
+def _map_mana_value(meta_mana: int | None) -> int:
+    if meta_mana is None:
         return 0
-    return int(mana_value)
+    return int(meta_mana)
 
 
 class CardMapper:
     """Map ORM card model to API response schema."""
 
-    def to_response(self, card: MtgjsonCardModel) -> MtgjsonCard:
-        idents = card.identifiers
-        if idents is None:
-            raise InternalError(f"card uuid={card.uuid!r} has no cardIdentifiers row")
-        card_id = (idents.card_id or "").strip()
-        oracle_id = (idents.oracle_id or "").strip()
-        if not card_id or not oracle_id:
-            raise InternalError(f"card uuid={card.uuid!r} missing scryfallId or scryfallOracleId")
+    def to_response(self, card: MagicBotoCardModel) -> MtgjsonCard:
+        card_id = (card.card_id or "").strip()
+        oracle_id = (card.oracle_id or "").strip()
         sc = (card.set_code or "").strip()
-        if not sc:
-            raise InternalError(f"card uuid={card.uuid!r} missing setCode (set FK)")
         card_types_list = [CardType(ct.card_type) for ct in card.card_types]
-        card_supertypes_list = [CardSupertype(ct.card_supertype) for ct in card.card_supertypes]
-        card_subtypes_list = [ct.card_subtype for ct in card.card_subtypes]
-        card_keywords_list = [ck.card_keyword for ck in card.card_keywords]
+        card_supertypes_list = [CardSupertype(ct.card_supertype) for ct in card.supertypes]
+        card_subtypes_list = [ct.card_subtype for ct in card.subtypes]
+        card_keywords_list = [ck.card_keyword for ck in card.keywords]
+        mv = _map_mana_value(card.meta.mana_value if card.meta is not None else None)
+        try:
+            rarity = CardRarity(card.rarity)
+        except ValueError as err:
+            raise InternalError(f"card card_id={card.card_id!r} has invalid rarity") from err
         return MtgjsonCard(
             name=card.name or "",
             mana_cost=card.mana_cost,
-            mana_value=_map_mana_value(card.mana_value),
+            mana_value=mv,
             set_code=sc,
-            number=card.number,
+            number=card.collector_number,
             card_id=card_id,
             oracle_id=oracle_id,
-            type=card.type,
+            type=card.type_line,
             power=card.power,
             toughness=card.toughness,
             text=card.oracle_text,
@@ -45,5 +44,6 @@ class CardMapper:
             card_supertypes=card_supertypes_list,
             card_subtypes=card_subtypes_list,
             card_keywords=card_keywords_list,
-            rarity=card.rarity,
+            color_identity=color_identity_string_to_list(card.color_identity),
+            rarity=rarity,
         )

@@ -5,11 +5,11 @@ from typing import cast
 from fastapi_pagination import Params
 from fastapi_pagination.bases import AbstractPage
 from fastapi_pagination.ext.sqlalchemy import paginate
-from sqlalchemy import and_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import MtgjsonCardIdentifiersModel, MtgjsonCardModel
+from app.models import MagicBotoCardModel
 from app.schema import MtgjsonCard
 from app.schema.card_search import CardSearchQuery
 from app.services.card_search_query_builder import CardSearchQueryBuilder
@@ -35,14 +35,15 @@ class CardService:
         filters = self._query_builder.build_predicates(query.filters)
 
         stmt = (
-            select(MtgjsonCardModel)
+            select(MagicBotoCardModel)
             .options(
-                selectinload(MtgjsonCardModel.card_types),
-                selectinload(MtgjsonCardModel.card_subtypes),
-                selectinload(MtgjsonCardModel.card_keywords),
-                selectinload(MtgjsonCardModel.card_supertypes),
+                selectinload(MagicBotoCardModel.card_types),
+                selectinload(MagicBotoCardModel.subtypes),
+                selectinload(MagicBotoCardModel.keywords),
+                selectinload(MagicBotoCardModel.supertypes),
+                selectinload(MagicBotoCardModel.meta),
             )
-            .order_by(MtgjsonCardModel.name.asc())
+            .order_by(MagicBotoCardModel.name.asc())
         )
         if filters:
             stmt = stmt.where(and_(*filters))
@@ -66,17 +67,24 @@ class CardService:
         card_id: str,
     ) -> MtgjsonCard | None:
         """
-        Look up a single card by card_id (printing-specific). Returns None if not found.
+        Look up a single card by MTGJSON printing id or Scryfall printing id.
+        Returns None if not found.
         """
         stmt = (
-            select(MtgjsonCardModel)
+            select(MagicBotoCardModel)
             .options(
-                selectinload(MtgjsonCardModel.card_types),
-                selectinload(MtgjsonCardModel.card_subtypes),
-                selectinload(MtgjsonCardModel.card_keywords),
-                selectinload(MtgjsonCardModel.card_supertypes),
+                selectinload(MagicBotoCardModel.card_types),
+                selectinload(MagicBotoCardModel.subtypes),
+                selectinload(MagicBotoCardModel.keywords),
+                selectinload(MagicBotoCardModel.supertypes),
+                selectinload(MagicBotoCardModel.meta),
             )
-            .where(MtgjsonCardModel.identifiers.has(MtgjsonCardIdentifiersModel.card_id == card_id))
+            .where(
+                or_(
+                    MagicBotoCardModel.card_id == card_id,
+                    MagicBotoCardModel.scryfall_id == card_id,
+                )
+            )
         )
         result = await session.execute(stmt)
         card = result.scalars().one_or_none()

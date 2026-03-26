@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import MtgjsonEditionModel
+from app.models import MagicBotoEditionModel
 from app.schema import EditionsQuery, MtgjsonEdition
 from app.services.mapper import EditionMapper
 
@@ -28,10 +28,10 @@ class EditionService:
         """
         filters: list[Any] = []
         if query.set_code is not None:
-            filters.append(MtgjsonEditionModel.code == query.set_code.strip())
+            filters.append(MagicBotoEditionModel.set_code == query.set_code.strip())
         if query.name is not None:
-            filters.append(MtgjsonEditionModel.name.ilike(f"%{query.name.strip()}%"))
-        stmt = select(MtgjsonEditionModel).where(and_(*filters))
+            filters.append(MagicBotoEditionModel.name.ilike(f"%{query.name.strip()}%"))
+        stmt = select(MagicBotoEditionModel).where(and_(*filters))
         result = await session.execute(stmt)
         rows = result.scalars().all()
         return [self._mapper.to_response(ed) for ed in rows]
@@ -42,7 +42,9 @@ class EditionService:
         set_code: str,
     ) -> MtgjsonEdition | None:
         """Get one edition by set code. Returns None if not found."""
-        stmt = select(MtgjsonEditionModel).where(MtgjsonEditionModel.code == set_code.strip())
+        stmt = select(MagicBotoEditionModel).where(
+            MagicBotoEditionModel.set_code == set_code.strip()
+        )
         result = await session.execute(stmt)
         edition = result.scalars().one_or_none()
         if edition is None:

@@ -26,7 +26,6 @@ Apply these principles so new work fits the existing structure.
 
 - **Raise, don’t return errors.** Use one exception type and one app-level handler that turns it into a response. Routes raise; they do not build error responses by hand.
 
-
 - **Type boundaries explicitly.** Use library/SDK types at API boundaries. Validate request bodies (e.g. Pydantic `TypeAdapter`); avoid untyped `dict` at edges. Prefer immutable data everywhere: expose `Mapping` and `Sequence` (read-only) instead of `dict` and `list` in signatures and returns. Prefer a functional style—no side effects, data in and data out—so interfaces are easy to reason about and test.
 - **One concern per module.** Each file has one clear responsibility. Split large routers or monolithic logic by concern.
 
@@ -34,9 +33,16 @@ Apply these principles so new work fits the existing structure.
 
 ## Python (tools_api/)
 
-- **Sibling imports.** Within the same package (e.g. modules under `app/models/`), prefer relative imports (`from .base import Base`, `from .sibling import Foo`) instead of fully qualified `app....` paths. Use absolute `app....` imports when crossing package boundaries (e.g. `app/services` → `app/schema`).
+- **Sibling imports.** Within the same package (e.g. modules under `app/models/`), prefer relative imports (`from .base import Base`, `from .sibling import Foo`) instead of fully qualified `app....` paths. Use absolute `app....` imports when crossing package boundaries (e.g. `app/services` → `app/schema`). Do not import through the `app.models` package barrel from inside `app.models` (e.g. avoid `from app.models import FooModel` in a sibling module); that re-enters `__init__` and causes cycles. Import the defining module instead (`from .foo_model import FooModel`).
+
+- **SQLAlchemy 2 bidirectional relationships and import cycles.** Parent/child ORM modules must not both import each other at **runtime**. Use this pattern going forward:
+  - **Prefer one-way runtime import when safe:** if module **A** only needs type hints for module **B**’s mapped class under `if TYPE_CHECKING:` (no runtime `from .b import BModel` in **A**), then **B** may use a **runtime** sibling import `from .a import AModel` and an unquoted `Mapped[AModel]` on its `relationship`. That avoids `TYPE_CHECKING` on **B** and keeps mypy happy (e.g. junction tables and `mtgjson_identifiers` → `mtgjson_card`). If **A** ever gains a runtime import of **B**, revert **B** to `TYPE_CHECKING` + string forward refs (or restructure) so you do not create a cycle.
+  - **“Many” side on the parent when cycles are unavoidable:** add `if TYPE_CHECKING:` imports of related mapped classes for **mypy** only. On `relationship` fields, keep **string forward references** inside `Mapped[...]` (e.g. `Mapped["list[ChildModel]"]`, `Mapped["ParentModel | None"]`) so **SQLAlchemy** can resolve targets at mapper configuration time without those names existing at runtime. Use **`list[...]`** for one-to-many collections (not `collections.abc.Sequence`); SQLAlchemy requires a concrete collection type.
+  - **Ruff** is configured in `tools_api/pyproject.toml` (`per-file-ignores` under `app/models/**/*.py` for **UP037** / **F821**) so quoted `Mapped` forward refs are not stripped and forward-ref names are not flagged as undefined. Do not remove those ignores to “fix” model-only lint noise; fix cycles by adjusting imports and annotations instead.
 
 - **Immutability and read-only contracts.** Prefer immutable/read-only types in signatures and returns: `Mapping` instead of `dict`, `Sequence` instead of `list` where mutation is not needed.
+
+- **Structured immutable bundles.** When returning a small fixed set of related values (e.g. several parallel collections from one parse step), prefer a **`@dataclass(frozen=True, slots=True)`** over hand-rolled classes with `__slots__` and a manual `__init__`. Prefer **immutable container types** on those fields (`tuple`, or a read-only `Sequence` contract) so the bundle stays immutable in practice; a `frozen` dataclass with mutable `list` fields still allows mutating list contents.
 
 - **Type stubs for dependencies.** When a dependency lacks types, add a stub package if one exists so the codebase stays strictly typed.
 
@@ -52,13 +58,13 @@ Apply these principles so new work fits the existing structure.
 
 - **Prefer SQL portability.** When adding schema/migrations, prefer broadly compatible SQL constructs. Avoid PostgreSQL-specific features like native `ENUM` types when a portable alternative exists. For “enum-like” columns, use a `TEXT` column plus a CHECK constraint via `tools_api/migrations/check_constraints.py` (`create_allowed_values_check_constraint` / `drop_allowed_values_check_constraint`).
 
-- **Seed MTGJSON before tools_api migrations.** Before applying Alembic migrations in `tools_api/migrations/`, run the MTGJSON load task from `tools_api/`: `uv run invoke populate.mtg_json`, since the migrations expect `mtgjson` tables to already exist.
-
 - **Apply tools_api migrations from the tools README.** For migration commands/flow, follow `tools_api/migrations/README.md` (DRY: this is where “Apply all” is documented).
 
-- **Consult `tools_api/debug/schema.sql` for DB questions.** Especially for tables/views that are not fully generated from migrations (e.g. MTGJSON), check `tools_api/debug/schema.sql` to confirm types/constraints.
+- **Catalog data** lives in the **`magic_boto`** schema. After migrations, load MTGJSON into it via `app.fetch` (e.g. `uv run invoke fetch` from `tools_api/`).
 
-- **Never hand-edit `tools_api/debug/schema.sql`.** When you need it synced after DB/migration changes, regenerate it via `uv run invoke populate.schema` from `tools_api/`. This uses `pg_dump -s` to dump the current DB schema into `tools_api/debug/schema.sql`.
+- **Consult `tools_api/debug/schema.sql` for DB questions.** Regenerate it from a live database when needed; it reflects whatever is installed (including **`magic_boto`** after migrations).
+
+- **Never hand-edit `tools_api/debug/schema.sql`.** Regenerate it via `uv run invoke generate.db-schema` from `tools_api/` (`pg_dump -s` into `tools_api/debug/schema.sql`).
 
 - **DB access via app injection.** Routes that need the DB use the app’s dependency (session or connection); do not repeat the dependency in each route.
 

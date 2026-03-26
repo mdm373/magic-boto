@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.models import CardRarity, CardSupertype
+from app.models import CardRarity, CardSupertype, CardType, ColorIdentity
 
 
 def _normalize_optional_search_token(value: str | None) -> str | None:
@@ -230,6 +231,39 @@ class CardSearchFilters(BaseModel):
         title="Collector Number (Like)",
         description="Case-insensitive substring match on raw ``mtgjson.cards.number`` text.",
     )
+    color_identity: ColorIdentity | None = Field(
+        default=None,
+        title="Color Identity",
+        description="Card's color identity contains this pip (single-pip presence filter).",
+    )
+    color_identity_one_of: list[ColorIdentity] | None = Field(
+        default=None,
+        title="Color Identity (One Of)",
+        description=(
+            "Card's color identity includes at least one of these pips (OR). "
+            "Stored as WUBRG-ordered string; matched by pip presence."
+        ),
+    )
+    color_identity_all_of: list[ColorIdentity] | None = Field(
+        default=None,
+        title="Color Identity (All Of)",
+        description="Card's color identity includes every listed pip (AND).",
+    )
+    card_type: CardType | None = Field(
+        default=None,
+        title="Card Type",
+        description="Printing has this rulebook card type (single-type presence filter).",
+    )
+    card_type_one_of: list[CardType] | None = Field(
+        default=None,
+        title="Card Type (One Of)",
+        description="Printing has at least one of these rulebook card types (OR).",
+    )
+    card_type_all_of: list[CardType] | None = Field(
+        default=None,
+        title="Card Type (All Of)",
+        description="Printing has all of these card types (AND).",
+    )
 
     @field_validator("subtype", "keyword", mode="after")
     @classmethod
@@ -261,6 +295,19 @@ class CardSearchFilters(BaseModel):
     @classmethod
     def _normalize_optional_like_fields(cls, value: str | None) -> str | None:
         return _normalize_optional_like(value)
+
+    @field_validator(
+        "color_identity_one_of",
+        "color_identity_all_of",
+        "card_type_one_of",
+        "card_type_all_of",
+        mode="after",
+    )
+    @classmethod
+    def _empty_list_means_no_filter(cls, value: list[Any] | None) -> list[Any] | None:
+        if value is None or len(value) == 0:
+            return None
+        return value
 
 
 class CardSearchPagination(BaseModel):

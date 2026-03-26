@@ -17,7 +17,10 @@ def local(c: Context) -> None:
 
 @task
 def mcp(c: Context) -> None:
-    """Run MCP streamable HTTP via Uvicorn (same pattern as HTTP). Stdio: ``uv run python -m app.mcp.main``."""
+    """Run MCP streamable HTTP via Uvicorn (same pattern as HTTP).
+
+    Stdio: ``uv run python -m app.mcp.main``.
+    """
     c.run(f"{_COMPOSE} up -d postgres")
     port = os.environ.get("TOOLS_MCP_PORT", "8765")
     c.run(f"uv run uvicorn app.mcp.asgi:app --reload --host 0.0.0.0 --port {port}")

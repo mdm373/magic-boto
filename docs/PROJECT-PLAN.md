@@ -10,9 +10,9 @@ This document is the **single source of truth** for the magic-boto project: visi
 
 **Goal:** A **data and tools backend** for Magic: The Gathering — card lookup, inventory, and related operations — with a **streamable HTTP MCP** surface so external LLM clients can call tools. **Orchestration and system prompts** live outside this repo (Cursor rules, desktop MCP hosts, Markdown under **`tasks/`**, etc.).
 
-- **Data:** A Postgres backend populated with:
-  - **Card definitions** — primary source: **MTG JSON** (e.g. AllPrintings or API v5 at `https://mtgjson.com/api/v5/`).
-  - **Your own MTG inventory** — cards you own, in separate schema/tables.
+- **Data:** A Postgres backend with:
+  - **Card definitions** — loaded into the **`magic_boto`** schema from **MTGJSON** (API v5 / per-set files; see `app.fetch` and `docs/DB-POPULATE-PLAN.md`).
+  - **Your own MTG inventory** — cards you own, in `magic_boto` inventory tables.
 - **APIs:** **`tools_api`**
   - **HTTP:** OpenAPI-described REST endpoints (e.g. MTGJSON card search, editions, inventory).
   - **MCP:** Same domain logic exposed as MCP tools over **streamable HTTP** (`/mcp` by default).
