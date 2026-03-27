@@ -46,6 +46,8 @@ Apply these principles so new work fits the existing structure.
 
 - **Type stubs for dependencies.** When a dependency lacks types, add a stub package if one exists so the codebase stays strictly typed.
 
+- **Logging in `app/` (CLIs and runtime code).** Use **loguru** (`from loguru import logger`) for status, progress, and diagnostics—**do not use `print()`** for that purpose. Configure stderr once at the CLI entrypoint (`logger.remove()` / `logger.add(...)`, `LOG_LEVEL` from the environment; follow **`app/fetch/main.py`**). **`tools_api/tasks/`** may use **`print()`** / **`input()`** only for Invoke-driven prompts to the operator; code under **`app/`** should log through **loguru**.
+
 - **Lint and format from the service directory.** After any Python change under that service, run from its directory: `uv run ruff check .` (use `--fix` when appropriate), then `uv run ruff format .`. Fix any reported issues.
 
 - **Type-check from the service directory.** Run `uv run mypy app tasks` (and `migrations` if present). In lint/CI, use `--no-incremental --cache-dir=nul` (Windows) or `--cache-dir=/dev/null` (Unix) to avoid stale cache.
@@ -53,6 +55,12 @@ Apply these principles so new work fits the existing structure.
 - **Env is populated before run.** The app does not load `.env`. Populate the environment first (e.g. script or Docker); then start the server or run tasks.
 
 - **Use the service’s own tasks.** Invoke tasks (serve, lint, migrate, etc.) are defined per service; run them from that service’s directory.
+
+- **Invoke task modules (`tools_api/tasks/`) must never import from `app`.** Task files are **only** for wiring Invoke (`@task`, `Collection`, `Context.run`). They must remain **self-contained to the `tasks` package**—no `from app...`, no `import app`, no reaching into `tools_api/app/` at import time. If a task needs application constants, services, or prompts, put that logic in a **`python -m app....`** CLI (or other entrypoint under `app/`) and **invoke it via `c.run(...)`** from the task. Breaking this rule couples the task loader to the app and breaks the intended split.
+
+- **Invoke tasks prompt; `python -m app....` mains take argv only.** Interactive flows (asking the user for paths, names, confirmations) belong in **`tools_api/tasks/`** using **`input()`** / **`print()`** (or similar). Entrypoints under **`app/`** (e.g. `python -m app.inventory.import.main`) stay **non-interactive**: parse **`sys.argv`**, validate, then run. Do not add prompts or interactive branches to `main` modules; the task collects answers and confirmations and passes the final values as CLI arguments.
+
+- **Invoke task naming.** From `tools_api/`, run `uv run invoke <namespace>.<task>`. Each path is **namespace** (group) **.** **task** (action). Name task functions **`verb_noun`** in snake_case—a **verb.noun** style (imperative verb + object); Invoke’s `-l` output uses hyphens for underscores (e.g. `all_sets` → `all-sets`). Some tasks use short verbs (`up`, `down`, `all`) where that matches siblings. Examples: `serve.local`, `import.inventory`, `migrate.up`, `fetch.all-sets`, `generate.db-schema`, `lint.all`. New tasks should follow this pattern.
 
 - **Confirm before running migrations.** Create or edit migration files as requested; do not run migrations unless the user confirms.
 

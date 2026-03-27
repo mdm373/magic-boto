@@ -14,6 +14,8 @@ from app.models import (
     MagicBotoCardSubtypeModel,
     MagicBotoCardSupertypeModel,
     MagicBotoCardTypeModel,
+    MagicBotoInventoryCardModel,
+    MagicBotoInventoryModel,
 )
 from app.schema.card_search import CardSearchFilters
 
@@ -27,6 +29,7 @@ class CardSearchQueryBuilder:
             *_build_name_filters(filters),
             *_build_text_like_filters(filters),
             *_build_identifier_filters(filters),
+            *_build_inventory_filters(filters),
             *_build_rarity_filters(filters),
             *_build_subtype_filters(filters),
             *_build_keyword_filters(filters),
@@ -112,6 +115,25 @@ def _build_identifier_filters(filters: CardSearchFilters) -> Sequence[ColumnElem
     if filters.oracle_id is not None:
         out.append(MagicBotoCardModel.oracle_id == str(filters.oracle_id))
     return out
+
+
+def _build_inventory_filters(filters: CardSearchFilters) -> Sequence[ColumnElement[bool]]:
+    if filters.inventory_name is None:
+        return ()
+    return (
+        exists(
+            select(1)
+            .select_from(MagicBotoInventoryCardModel)
+            .join(
+                MagicBotoInventoryModel,
+                MagicBotoInventoryCardModel.inventory_id == MagicBotoInventoryModel.id,
+            )
+            .where(
+                MagicBotoInventoryCardModel.card_id == MagicBotoCardModel.card_id,
+                MagicBotoInventoryModel.name == filters.inventory_name,
+            )
+        ),
+    )
 
 
 def _build_rarity_filters(filters: CardSearchFilters) -> Sequence[ColumnElement[bool]]:

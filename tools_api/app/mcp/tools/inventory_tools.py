@@ -2,63 +2,162 @@
 
 from __future__ import annotations
 
-import uuid
-from typing import Any
+from typing import Annotated, Literal
+
+from mcp.types import ToolAnnotations
+from pydantic import Field
 
 from app.db import get_async_session_factory
-from app.errors import NotFoundError
+from app.errors import InvalidRequestError, NotFoundError
+from app.inventory.names import DEFAULT_INVENTORY_NAME, canonical_inventory_name
 from app.mcp.error_middleware import AppMcp
-from app.schema import (
-    AddInventoryCardsBody,
-    CreateInventoryRequest,
-    build_add_inventory_cards_request,
-)
 from app.services import create_inventory_service
-from app.validators import InventoryCardsValidator
 
 _inventory_service = create_inventory_service()
-_inventory_cards_validator = InventoryCardsValidator()
+
+
+def _inventory_name_or_error(raw: str) -> str:
+    cn = canonical_inventory_name(raw)
+    if not cn:
+        raise InvalidRequestError("Inventory name is required.")
+    if cn == DEFAULT_INVENTORY_NAME:
+        raise InvalidRequestError(
+            "Cannot modify the reserved inventory _default via MCP; use import for that collection."
+        )
+    return cn
 
 
 def register_inventory_tools(app_mcp: AppMcp) -> None:
     """Register inventory MCP tools."""
 
     @app_mcp.tool(
-        name="create_inventory",
-        description="Create a named inventory (collection).",
+        name="list_inventory_names",
+        description=(
+            "List names of card inventories (collections) in the database. "
+            "Use with card search ``inventory_name`` (canonical lowercase names)."
+        ),
+        annotations=ToolAnnotations(
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
     )
-    async def create_inventory(body: CreateInventoryRequest) -> dict[str, Any]:
+    async def list_inventory_names() -> list[str]:
         factory = get_async_session_factory()
         async with factory() as session:
-            inv = await _inventory_service.create_inventory(session, body.name)
-            return inv.model_dump(mode="json")
+            return await _inventory_service.list_inventory_names(session)
 
     @app_mcp.tool(
-        name="delete_inventory",
-        description="Delete an inventory and all linked cards. Errors if the id is unknown.",
+        name="create_inventory",
+        description=(
+            "Create a named inventory collection if it does not exist, or return the existing one. "
+            "Use this to persist deck lists and other constructed lists: "
+            "pick a stable name per deck "
+            "so ``inventory_name`` in card search can filter to that collection. "
+            "Names are stored trimmed and lowercased. "
+            "The reserved name _default cannot be created here."
+        ),
+        annotations=ToolAnnotations(
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
     )
-    async def delete_inventory(inventory_id: uuid.UUID) -> dict[str, bool]:
+    async def create_inventory(
+        name: Annotated[
+            str,
+            Field(
+                description=(
+                    "Collection name (e.g. deck title). Persist decks under distinct names "
+                    "so searches can target them."
+                ),
+            ),
+        ],
+    ) -> str:
+        cn = canonical_inventory_name(name)
+        if not cn:
+            raise InvalidRequestError("Inventory name is required.")
+        if cn == DEFAULT_INVENTORY_NAME:
+            raise InvalidRequestError(
+                "Cannot create the reserved inventory name via MCP; use import for _default."
+            )
         factory = get_async_session_factory()
         async with factory() as session:
-            deleted = await _inventory_service.delete_inventory(session, inventory_id)
-            if not deleted:
-                raise NotFoundError("Inventory not found")
-            return {"ok": True}
+            inv = await _inventory_service.get_or_create_inventory(session, name)
+            await session.commit()
+            return inv.name
 
     @app_mcp.tool(
         name="add_inventory_cards",
-        description="Add printings to an inventory by Scryfall printing ids (UUID strings).",
+        description=(
+            "Add catalog printings to an inventory by Scryfall printing id "
+            "(each list entry adds one copy; duplicates increase quantity). "
+            "Returns only ok. The reserved name _default is not allowed."
+        ),
+        annotations=ToolAnnotations(
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
     )
     async def add_inventory_cards(
-        inventory_id: uuid.UUID,
-        body: AddInventoryCardsBody,
-    ) -> dict[str, bool]:
+        inventory_name: Annotated[
+            str,
+            Field(description="Target inventory (canonical name)."),
+        ],
+        scryfall_ids: Annotated[
+            list[str],
+            Field(
+                description="Scryfall printing ids (UUID per printing); one copy per element.",
+            ),
+        ],
+    ) -> Literal["ok"]:
+        _inventory_name_or_error(inventory_name)
         factory = get_async_session_factory()
         async with factory() as session:
-            merged = build_add_inventory_cards_request(inventory_id, body)
-            resolved = await _inventory_cards_validator.validate_add_inventory_cards(
-                session,
-                merged,
-            )
-            await _inventory_service.add_cards_by_card_id(session, merged.inventory_id, resolved)
-            return {"ok": True}
+            inv = await _inventory_service.get_inventory_by_name(session, inventory_name)
+            if inv is None:
+                raise NotFoundError("Inventory not found")
+            await _inventory_service.add_cards_by_scryfall_ids(session, inv.id, scryfall_ids)
+            await session.commit()
+        return "ok"
+
+    @app_mcp.tool(
+        name="remove_inventory_cards",
+        description=(
+            "Remove catalog printings from an inventory by Scryfall printing id "
+            "(each list entry removes one copy; duplicates remove more). "
+            "Counts cannot go below zero. Returns only ok. "
+            "The reserved name _default is not allowed."
+        ),
+        annotations=ToolAnnotations(
+            readOnlyHint=False,
+            destructiveHint=True,
+            idempotentHint=False,
+            openWorldHint=False,
+        ),
+    )
+    async def remove_inventory_cards(
+        inventory_name: Annotated[
+            str,
+            Field(description="Target inventory (canonical name)."),
+        ],
+        scryfall_ids: Annotated[
+            list[str],
+            Field(
+                description="Scryfall printing ids; one copy removed per element.",
+            ),
+        ],
+    ) -> Literal["ok"]:
+        _inventory_name_or_error(inventory_name)
+        factory = get_async_session_factory()
+        async with factory() as session:
+            inv = await _inventory_service.get_inventory_by_name(session, inventory_name)
+            if inv is None:
+                raise NotFoundError("Inventory not found")
+            await _inventory_service.remove_cards_by_scryfall_ids(session, inv.id, scryfall_ids)
+            await session.commit()
+        return "ok"

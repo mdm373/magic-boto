@@ -24,6 +24,15 @@ class Settings(BaseSettings):
     mtgjson_fetch_sleep_seconds: float = Field(default=1.0)
     mtgjson_insert_batch_size: int = Field(default=500)
 
+    inventory_import_max_unknown_scryfall_ids: int = Field(
+        default=100,
+        ge=0,
+        description=(
+            "CSV inventory import: abort (after rollback) if more than this many distinct "
+            "Scryfall ids are missing from the catalog. Missing ids are always logged first."
+        ),
+    )
+
     @field_validator("mtgjson_base_url")
     @classmethod
     def _strip_mtgjson_base_url(cls, v: str) -> str:

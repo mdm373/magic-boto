@@ -11,7 +11,7 @@ from .base import Base
 
 
 class MagicBotoInventoryModel(Base):
-    """Named card inventory (e.g. personal collection)."""
+    """Named card inventory; ``name`` is stored trimmed and lowercased."""
 
     __tablename__ = "inventories"
     __table_args__ = {"schema": "magic_boto"}

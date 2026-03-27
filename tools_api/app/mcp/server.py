@@ -91,7 +91,7 @@ def create_mcp_server(*, streamable_http: bool) -> FastMCP[dict[str, Any]]:
     stateless_http = streamable_http and _env_flag("TOOLS_MCP_STATELESS_HTTP")
     mcp = FastMCP(
         "Magic Boto Tools",
-        instructions=("MTG card and edition lookup, plus inventory collections"),
+        instructions=("MTG card, edition, and inventory name lookup"),
         lifespan=mcp_lifespan,
         host=host,
         port=port,

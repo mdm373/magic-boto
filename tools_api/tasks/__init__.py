@@ -1,11 +1,14 @@
-"""Invoke task collection. Run from tools_api/: uv run invoke serve.local, migrate, etc."""
+"""Invoke task collection. Run from tools_api/.
+
+Examples: ``uv run invoke serve.local``, ``uv run invoke import.inventory``.
+"""
 
 from types import ModuleType
 from typing import cast
 
 from invoke import Collection
 
-from tasks import build, fetch, generate, lint, migrate, serve
+from tasks import _delete, _export, _import, build, fetch, generate, lint, migrate, serve
 
 
 def _from_module(module: ModuleType) -> Collection:
@@ -19,3 +22,6 @@ ns.add_collection(_from_module(serve), name="serve", default=True)
 ns.add_collection(_from_module(migrate), name="migrate")
 ns.add_collection(_from_module(lint), name="lint")
 ns.add_collection(_from_module(fetch), name="fetch")
+ns.add_collection(_from_module(_export), name="export")
+ns.add_collection(_from_module(_import), name="import")
+ns.add_collection(_from_module(_delete), name="delete")

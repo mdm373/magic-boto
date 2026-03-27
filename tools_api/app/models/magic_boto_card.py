@@ -48,7 +48,6 @@ class MagicBotoCardModel(Base):
         back_populates="cards",
         lazy="selectin",
     )
-    # Unquoted ``Mapped[list[...]]`` so SQLAlchemy sets ``uselist``.
     card_types: Mapped[list[MagicBotoCardTypeModel]] = relationship(
         "MagicBotoCardTypeModel",
         back_populates="card",

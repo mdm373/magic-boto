@@ -10,13 +10,6 @@ from .card_schema import (
 from .card_search import CardSearchFilters, CardSearchPagination, CardSearchQuery
 from .descriptions import allowed_values_description
 from .edition_schema import EditionsQuery, MtgjsonEdition
-from .inventory_schema import (
-    AddInventoryCardsBody,
-    AddInventoryCardsRequest,
-    CreateInventoryRequest,
-    InventoryResponse,
-    build_add_inventory_cards_request,
-)
 
 __all__ = [
     "allowed_values_description",
@@ -30,9 +23,4 @@ __all__ = [
     "EditionsQuery",
     "MtgjsonCard",
     "MtgjsonEdition",
-    "AddInventoryCardsBody",
-    "AddInventoryCardsRequest",
-    "CreateInventoryRequest",
-    "InventoryResponse",
-    "build_add_inventory_cards_request",
 ]

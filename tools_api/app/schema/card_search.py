@@ -7,6 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.inventory.names import canonical_inventory_name
 from app.models import CardRarity, CardSupertype, CardType, ColorIdentity
 
 
@@ -58,6 +59,14 @@ def _normalize_optional_like(value: str | None) -> str | None:
     return t if t else None
 
 
+def _normalize_inventory_name(value: str | None) -> str | None:
+    """Same canonical form as stored ``inventories.name``; empty becomes ``None``."""
+    if value is None:
+        return None
+    t = canonical_inventory_name(value)
+    return t if t else None
+
+
 class CardSearchFilters(BaseModel):
     """Optional filters for card search. Populated fields are ANDed together."""
 
@@ -95,6 +104,13 @@ class CardSearchFilters(BaseModel):
         default=None,
         title="Oracle Id",
         description="Cross-printing Scryfall oracle id.",
+    )
+    inventory_name: str | None = Field(
+        default=None,
+        title="Inventory Name",
+        description=(
+            "Limit results to cards in the inventory with this name (trimmed, lowercase)."
+        ),
     )
     rarity: CardRarity | None = Field(
         default=None,
@@ -295,6 +311,11 @@ class CardSearchFilters(BaseModel):
     @classmethod
     def _normalize_optional_like_fields(cls, value: str | None) -> str | None:
         return _normalize_optional_like(value)
+
+    @field_validator("inventory_name", mode="after")
+    @classmethod
+    def _normalize_inventory_name_field(cls, value: str | None) -> str | None:
+        return _normalize_inventory_name(value)
 
     @field_validator(
         "color_identity_one_of",
