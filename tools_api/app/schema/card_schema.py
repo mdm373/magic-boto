@@ -27,7 +27,11 @@ class MtgjsonCard(BaseModel):
     mana_value: int = Field(..., description="Mana value (formerly CMC).")
     set_code: str = Field(..., min_length=1, description="Set/edition code (e.g. M21)")
     number: str | None = Field(None, description="Collector number in the set (e.g. 100, 12p)")
-    card_id: str = Field(..., min_length=1, description="Card Unique Printing Identifier")
+    scryfall_id: str = Field(
+        ...,
+        min_length=1,
+        description="Scryfall printing id (UUID) for this face / printing.",
+    )
     oracle_id: str = Field(
         ..., min_length=1, description="Card Definition (Cross Printing) Identifier"
     )

@@ -80,7 +80,7 @@ Apply these principles so new work fits the existing structure.
 
 - **MCP Inspector (Docker).** Root **`docker-compose.yml`** includes **`mcp_inspector`** (`ghcr.io/modelcontextprotocol/inspector:latest`), ports **`MCP_INSPECTOR_CLIENT_PORT` / `MCP_INSPECTOR_SERVER_PORT`** (defaults **6274** / **6277**). Open the UI on the host, then connect with **Streamable HTTP** URL **`http://tools_mcp:8765/mcp`** (use the Compose service name so the proxy reaches `tools_mcp`; `http://localhost:8765/mcp` is wrong from inside the inspector container). Check **`docker compose logs mcp_inspector`** for the proxy auth token if prompted.
 
-- **LLM / orchestration.** There is **no in-repo agent or chat UI**. Use an external MCP-capable client (Cursor, Claude Desktop, etc.) pointed at **`http://<host>:<port>/mcp`** (see **`TOOLS_MCP_PORT`**). Put **system prompts and task instructions in Markdown** under **`tasks/`** (or `docs/`) and reference them from your workflow or client rules (e.g. `tasks/deck-building/AGENTS.md`).
+- **LLM / orchestration.** There is **no in-repo agent or chat UI**. Use an external MCP-capable client (Cursor, Claude Desktop, etc.) pointed at **`http://<host>:<port>/mcp`** (see **`TOOLS_MCP_PORT`**). Put **system prompts and task instructions in Markdown** under **`tasks/`** (or `docs/`) and reference them from your workflow or client rules (e.g. `tasks/deck-building/AGENTS.md`). For **deck building and inventory/deck edits**, follow **`tasks/deck-building/AGENTS.md`**: **MCP-only** for those flows—**do not** answer by running ad-hoc Python or SQL against Postgres instead of MCP tools.
 
 ## Platform
 

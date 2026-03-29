@@ -49,7 +49,7 @@ def register_cards_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="get_card",
-        description="Get one card by printing-specific card_id (MTGJSON identifier).",
+        description="Get one card by Scryfall printing id (UUID).",
         annotations=ToolAnnotations(
             readOnlyHint=True,
             destructiveHint=False,
@@ -57,10 +57,10 @@ def register_cards_tools(app_mcp: AppMcp) -> None:
             openWorldHint=False,
         ),
     )
-    async def get_card(card_id: str) -> MtgjsonCard:
+    async def get_card(scryfall_id: str) -> MtgjsonCard:
         factory = get_async_session_factory()
         async with factory() as session:
-            card = await _card_service.query_card(session, card_id)
+            card = await _card_service.query_card(session, scryfall_id)
             if card is None:
                 raise NotFoundError("Card not found")
             return card

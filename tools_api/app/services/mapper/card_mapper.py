@@ -16,7 +16,9 @@ class CardMapper:
     """Map ORM card model to API response schema."""
 
     def to_response(self, card: MagicBotoCardModel) -> MtgjsonCard:
-        card_id = (card.card_id or "").strip()
+        scryfall_id = (card.scryfall_id or "").strip()
+        if not scryfall_id:
+            raise InternalError("catalog printing has no Scryfall id; cannot map to API response")
         oracle_id = (card.oracle_id or "").strip()
         sc = (card.set_code or "").strip()
         card_types_list = [CardType(ct.card_type) for ct in card.card_types]
@@ -27,14 +29,14 @@ class CardMapper:
         try:
             rarity = CardRarity(card.rarity)
         except ValueError as err:
-            raise InternalError(f"card card_id={card.card_id!r} has invalid rarity") from err
+            raise InternalError(f"card scryfall_id={scryfall_id!r} has invalid rarity") from err
         return MtgjsonCard(
             name=card.name or "",
             mana_cost=card.mana_cost,
             mana_value=mv,
             set_code=sc,
             number=card.collector_number,
-            card_id=card_id,
+            scryfall_id=scryfall_id,
             oracle_id=oracle_id,
             type=card.type_line,
             power=card.power,

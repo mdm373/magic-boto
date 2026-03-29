@@ -95,10 +95,10 @@ class CardSearchFilters(BaseModel):
         title="Name (Like)",
         description="Case-insensitive partial name match.",
     )
-    card_id: uuid.UUID | None = Field(
+    scryfall_id: uuid.UUID | None = Field(
         default=None,
-        title="Card Id",
-        description="Printing-specific Scryfall card id.",
+        title="Scryfall Id",
+        description="Exact match on Scryfall printing id (same UUID as in card responses).",
     )
     oracle_id: uuid.UUID | None = Field(
         default=None,

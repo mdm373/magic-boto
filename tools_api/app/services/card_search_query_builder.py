@@ -104,14 +104,8 @@ def _build_text_like_filters(filters: CardSearchFilters) -> Sequence[ColumnEleme
 
 def _build_identifier_filters(filters: CardSearchFilters) -> Sequence[ColumnElement[bool]]:
     out: list[ColumnElement[bool]] = []
-    if filters.card_id is not None:
-        cid = str(filters.card_id)
-        out.append(
-            or_(
-                MagicBotoCardModel.card_id == cid,
-                MagicBotoCardModel.scryfall_id == cid,
-            )
-        )
+    if filters.scryfall_id is not None:
+        out.append(MagicBotoCardModel.scryfall_id == str(filters.scryfall_id))
     if filters.oracle_id is not None:
         out.append(MagicBotoCardModel.oracle_id == str(filters.oracle_id))
     return out

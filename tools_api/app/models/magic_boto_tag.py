@@ -1,0 +1,25 @@
+"""ORM: ``magic_boto`` tags table."""
+
+from __future__ import annotations
+
+import uuid
+
+from sqlalchemy import Text, Uuid
+from sqlalchemy.orm import Mapped, mapped_column
+
+from .base import Base
+
+
+class MagicBotoTagModel(Base):
+    """User-defined tag; ``name`` is stored trimmed and lowercased."""
+
+    __tablename__ = "tags"
+    __table_args__ = {"schema": "magic_boto"}
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    description: Mapped[str] = mapped_column(Text, nullable=False)

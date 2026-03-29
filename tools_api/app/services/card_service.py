@@ -5,7 +5,7 @@ from typing import cast
 from fastapi_pagination import Params
 from fastapi_pagination.bases import AbstractPage
 from fastapi_pagination.ext.sqlalchemy import paginate
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -32,7 +32,10 @@ class CardService:
         query: CardSearchQuery,
     ) -> AbstractPage[MtgjsonCard]:
         """List cards"""
-        filters = self._query_builder.build_predicates(query.filters)
+        filters = [
+            MagicBotoCardModel.scryfall_id.isnot(None),
+            *self._query_builder.build_predicates(query.filters),
+        ]
 
         stmt = (
             select(MagicBotoCardModel)
@@ -43,10 +46,9 @@ class CardService:
                 selectinload(MagicBotoCardModel.supertypes),
                 selectinload(MagicBotoCardModel.meta),
             )
+            .where(and_(*filters))
             .order_by(MagicBotoCardModel.name.asc())
         )
-        if filters:
-            stmt = stmt.where(and_(*filters))
 
         return cast(
             AbstractPage[MtgjsonCard],
@@ -64,10 +66,10 @@ class CardService:
     async def query_card(
         self,
         session: AsyncSession,
-        card_id: str,
+        scryfall_id: str,
     ) -> MtgjsonCard | None:
         """
-        Look up a single card by MTGJSON printing id or Scryfall printing id.
+        Look up a single card by Scryfall printing id.
         Returns None if not found.
         """
         stmt = (
@@ -79,12 +81,7 @@ class CardService:
                 selectinload(MagicBotoCardModel.supertypes),
                 selectinload(MagicBotoCardModel.meta),
             )
-            .where(
-                or_(
-                    MagicBotoCardModel.card_id == card_id,
-                    MagicBotoCardModel.scryfall_id == card_id,
-                )
-            )
+            .where(MagicBotoCardModel.scryfall_id == scryfall_id)
         )
         result = await session.execute(stmt)
         card = result.scalars().one_or_none()

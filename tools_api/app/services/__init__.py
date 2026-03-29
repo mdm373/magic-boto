@@ -5,6 +5,7 @@ from .card_service import CardService
 from .edition_service import EditionService
 from .inventory_service import InventoryService
 from .mapper import CardMapper, EditionMapper
+from .tag_service import TagService
 
 
 def create_card_service() -> CardService:
@@ -22,12 +23,19 @@ def create_inventory_service() -> InventoryService:
     return InventoryService()
 
 
+def create_tag_service() -> TagService:
+    """Create the tag service."""
+    return TagService()
+
+
 __all__ = [
     "create_card_service",
     "create_edition_service",
     "create_inventory_service",
+    "create_tag_service",
     "CardSearchQueryBuilder",
     "CardService",
     "EditionService",
     "InventoryService",
+    "TagService",
 ]
