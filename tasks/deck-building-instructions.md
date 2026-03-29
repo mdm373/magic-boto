@@ -61,3 +61,24 @@ If you are blocked because a filter or field is missing:
 - Say what capability is missing in concrete terms.
 - Suggest the smallest change (schema field, filter, or endpoint) that would unblock the workflow.
 - Prefer an MCP-only workaround when possible (e.g. broader `search_cards` with client-side filtering on returned fields).
+
+## Errors
+
+**Read every error response.** Do not silently retry or skip over a failed tool call. The error detail almost always tells you exactly what went wrong.
+
+When an MCP tool returns an error:
+
+1. **Read the error message** — it will usually name the problem (unknown field, not found, validation failure, etc.).
+2. **Fix and retry once** if the cause is clearly a bad argument you can correct (e.g. wrong casing, missing required field, invalid value).
+3. **Stop and tell the user** if:
+   - You are unsure what caused the error.
+   - The fix isn't obvious from the error text.
+   - A retry also fails.
+   - The error looks like a server fault (5xx, unexpected exception message).
+
+When stopping, tell the user:
+- What you were trying to do.
+- The exact error you got (quote it).
+- What you think it might mean, if you have a reasonable guess.
+
+**Never continue building or mutating state after an unresolved error.** If a card add fails halfway through a deck build, stop — do not proceed with the remaining cards as if nothing happened.

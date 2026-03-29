@@ -281,6 +281,20 @@ class CardSearchFilters(BaseModel):
         description="Printing has all of these card types (AND).",
     )
 
+    @field_validator("card_type", "super_type", mode="before")
+    @classmethod
+    def _lowercase_enum_field(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return value.strip().lower()
+        return value
+
+    @field_validator("card_type_one_of", "card_type_all_of", mode="before")
+    @classmethod
+    def _lowercase_enum_list_field(cls, value: Any) -> Any:
+        if isinstance(value, list):
+            return [v.strip().lower() if isinstance(v, str) else v for v in value]
+        return value
+
     @field_validator("subtype", "keyword", mode="after")
     @classmethod
     def _normalize_optional_tokens(cls, value: str | None) -> str | None:
