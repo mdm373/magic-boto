@@ -1,14 +1,18 @@
-"""Tag CRUD: create/read/delete user-defined tags."""
+"""Tag CRUD: create/read/delete user-defined tags; apply/remove tags from cards."""
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from sqlalchemy import delete, select
-from sqlalchemy.engine import CursorResult
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.engine import CursorResult  # used by delete_tag
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import MagicBotoTagModel
+from app.errors import InvalidRequestError
+from app.models import MagicBotoCardTagModel, MagicBotoTagModel
+from app.models.magic_boto_card import MagicBotoCardModel
 from app.schema.tag_schema import Tag
 
 
@@ -17,7 +21,7 @@ def _canonical_tag_name(name: str) -> str:
 
 
 class TagService:
-    """Create, read, and delete tags."""
+    """Create, read, and delete tags; apply and remove tags from cards."""
 
     async def list_tags(self, session: AsyncSession) -> list[Tag]:
         """Return all tags sorted by name."""
@@ -48,3 +52,81 @@ class TagService:
         stmt = delete(MagicBotoTagModel).where(MagicBotoTagModel.name == canonical)
         result: CursorResult[Any] = await session.execute(stmt)  # type: ignore[assignment]
         return (result.rowcount or 0) > 0
+
+    async def add_card_tags(
+        self,
+        session: AsyncSession,
+        tag_name: str,
+        scryfall_ids: Sequence[str],
+    ) -> bool:
+        """Apply a tag to cards identified by scryfall_id.
+
+        Returns False if the tag does not exist.
+        Raises ValueError for unknown scryfall_ids.
+        Does not commit; caller owns the transaction.
+        """
+        canonical = _canonical_tag_name(tag_name)
+        tag_row = await session.scalar(
+            select(MagicBotoTagModel).where(MagicBotoTagModel.name == canonical)
+        )
+        if tag_row is None:
+            return False
+
+        card_rows = (
+            await session.execute(
+                select(MagicBotoCardModel.card_id, MagicBotoCardModel.scryfall_id).where(
+                    MagicBotoCardModel.scryfall_id.in_(list(scryfall_ids))
+                )
+            )
+        ).all()
+        found = {row.scryfall_id: row.card_id for row in card_rows}
+        not_found = [sid for sid in scryfall_ids if sid not in found]
+        if not_found:
+            raise InvalidRequestError(f"Scryfall IDs not found: {', '.join(not_found)}")
+
+        stmt = (
+            pg_insert(MagicBotoCardTagModel)
+            .values([{"tag_id": tag_row.id, "card_id": cid} for cid in found.values()])
+            .on_conflict_do_nothing(index_elements=["tag_id", "card_id"])
+        )
+        await session.execute(stmt)
+        return True
+
+    async def remove_card_tags(
+        self,
+        session: AsyncSession,
+        tag_name: str,
+        scryfall_ids: Sequence[str],
+    ) -> bool:
+        """Remove a tag from cards identified by scryfall_id.
+
+        Returns False if the tag does not exist.
+        Raises ValueError for unknown scryfall_ids.
+        Does not commit; caller owns the transaction.
+        """
+        canonical = _canonical_tag_name(tag_name)
+        tag_row = await session.scalar(
+            select(MagicBotoTagModel).where(MagicBotoTagModel.name == canonical)
+        )
+        if tag_row is None:
+            return False
+
+        card_rows = (
+            await session.execute(
+                select(MagicBotoCardModel.card_id, MagicBotoCardModel.scryfall_id).where(
+                    MagicBotoCardModel.scryfall_id.in_(list(scryfall_ids))
+                )
+            )
+        ).all()
+        found = {row.scryfall_id: row.card_id for row in card_rows}
+        not_found = [sid for sid in scryfall_ids if sid not in found]
+        if not_found:
+            raise InvalidRequestError(f"Scryfall IDs not found: {', '.join(not_found)}")
+
+        await session.execute(
+            delete(MagicBotoCardTagModel).where(
+                MagicBotoCardTagModel.tag_id == tag_row.id,
+                MagicBotoCardTagModel.card_id.in_(list(found.values())),
+            )
+        )
+        return True

@@ -96,22 +96,51 @@ def register_tags_tools(app_mcp: AppMcp) -> None:
         return tag
 
     @app_mcp.tool(
-        name="delete_tag",
-        description="Delete a tag by name. Returns ok if deleted, raises an error if not found.",
+        name="tag_cards",
+        description="Apply a tag to one or more cards identified by their Scryfall ID.",
         annotations=ToolAnnotations(
             readOnlyHint=False,
-            destructiveHint=True,
-            idempotentHint=False,
+            destructiveHint=False,
+            idempotentHint=True,
             openWorldHint=False,
         ),
     )
-    async def delete_tag(
-        name: Annotated[str, Field(description="Tag name to delete (case-insensitive).")],
+    async def tag_cards(
+        tag_name: Annotated[str, Field(description="Tag name to apply (case-insensitive).")],
+        scryfall_ids: Annotated[
+            list[str],
+            Field(description="List of Scryfall IDs of the cards to tag."),
+        ],
     ) -> Literal["ok"]:
         factory = get_async_session_factory()
         async with factory() as session:
-            deleted = await _tag_service.delete_tag(session, name)
-            if not deleted:
-                raise NotFoundError(f"Tag '{name}' not found.")
+            ok = await _tag_service.add_card_tags(session, tag_name, scryfall_ids)
+            if not ok:
+                raise NotFoundError(f"Tag '{tag_name}' not found.")
+            await session.commit()
+        return "ok"
+
+    @app_mcp.tool(
+        name="untag_cards",
+        description="Remove a tag from one or more cards identified by their Scryfall ID.",
+        annotations=ToolAnnotations(
+            readOnlyHint=False,
+            destructiveHint=True,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
+    async def untag_cards(
+        tag_name: Annotated[str, Field(description="Tag name to remove (case-insensitive).")],
+        scryfall_ids: Annotated[
+            list[str],
+            Field(description="List of Scryfall IDs of the cards to untag."),
+        ],
+    ) -> Literal["ok"]:
+        factory = get_async_session_factory()
+        async with factory() as session:
+            ok = await _tag_service.remove_card_tags(session, tag_name, scryfall_ids)
+            if not ok:
+                raise NotFoundError(f"Tag '{tag_name}' not found.")
             await session.commit()
         return "ok"
