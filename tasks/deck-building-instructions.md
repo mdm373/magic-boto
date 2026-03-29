@@ -10,11 +10,6 @@ For **MTG card facts** (rules text, mana cost, types, set, legality fields, Orac
 
 Treat the **Magic Boto MCP** as the **only** supported interface for **catalog lookup**, **inventory/deck questions**, and **mutating named inventories** (deck lists).
 
-- **Do not** run one-off **`python`**, **`psql`**, or **ad-hoc SQL** against Postgres (including `magic_boto.*`) to answer “what do I own?”, resolve IDs, or simulate **`add_inventory_cards`** / **`remove_inventory_cards`**. That bypasses the same contract the user’s MCP client uses and is **out of scope** for deck-building assistance in this repo.
-- **Do** use **`search_cards`**, **`get_card`**, **`list_inventory_names`**, **`create_inventory`**, **`add_inventory_cards`**, **`remove_inventory_cards`**, and edition tools **only**, as exposed by the server.
-- **`search_cards`**, **`get_card`**, **`add_inventory_cards`**, and **`remove_inventory_cards`** all use the **same Scryfall printing UUID** per card face / printing: the **`scryfall_id`** field on card results matches **`scryfall_ids`** list elements for inventory edits.
-- If you **cannot** complete a flow with MCP alone (e.g. you need **per-printing copy counts** and the tools do not return them): **stop**, explain the **concrete** gap, and suggest the **smallest** product change (often: expose **counts** or add a server-side copy tool). **Do not** substitute database access for a missing MCP field.
-
 Typical tools:
 
 - **`search_cards`** – filter and paginate catalog cards; this is the main way to discover and narrow candidates.
@@ -22,6 +17,25 @@ Typical tools:
 - **Edition tools** – set/edition lookup as exposed by the server.
 
 Card search supports an **`inventory_name`** filter (trimmed, lowercased). Use it whenever the question is about **quantities tied to a named collection** in this project.
+
+## Tags
+
+Cards can be tagged with user-defined labels (e.g. `ramp`, `removal`, `draw`, `finisher`). Tags are a first-class way to group cards by **role or intent** across inventories and decks.
+
+### Tag tools
+
+- **`list_tags`** – see all defined tags and their descriptions.
+- **`get_tag`** – retrieve one tag by name.
+- **`create_tag`** – define a new tag with a name and description.
+- **`tag_cards`** – apply a tag to one or more cards by Scryfall printing id.
+- **`untag_cards`** – remove a tag from one or more cards by Scryfall printing id.
+
+### When to use tags
+
+- When the user asks to mark, label, or categorise cards by role, use `tag_cards`.
+- When the user wants to find cards with a particular role, search with a tag filter if supported, or look up the tag and cross-reference with `search_cards`.
+- Before tagging, check `list_tags` to reuse an existing tag rather than creating a duplicate.
+- Tags are shared across all decks and inventories—they describe the **card itself**, not its membership in a specific list.
 
 ## “Their cards” and inventory
 

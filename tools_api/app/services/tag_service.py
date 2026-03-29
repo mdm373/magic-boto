@@ -59,10 +59,11 @@ class TagService:
         tag_name: str,
         scryfall_ids: Sequence[str],
     ) -> bool:
-        """Apply a tag to cards identified by scryfall_id.
+        """Apply a tag to the oracle identities resolved from the given Scryfall IDs.
 
+        Tagging is oracle-scoped: all printings of the same card share the tag.
         Returns False if the tag does not exist.
-        Raises ValueError for unknown scryfall_ids.
+        Raises InvalidRequestError for unknown scryfall_ids.
         Does not commit; caller owns the transaction.
         """
         canonical = _canonical_tag_name(tag_name)
@@ -74,20 +75,22 @@ class TagService:
 
         card_rows = (
             await session.execute(
-                select(MagicBotoCardModel.card_id, MagicBotoCardModel.scryfall_id).where(
+                select(MagicBotoCardModel.oracle_id, MagicBotoCardModel.scryfall_id).where(
                     MagicBotoCardModel.scryfall_id.in_(list(scryfall_ids))
                 )
             )
         ).all()
-        found = {row.scryfall_id: row.card_id for row in card_rows}
+        found = {row.scryfall_id: row.oracle_id for row in card_rows}
         not_found = [sid for sid in scryfall_ids if sid not in found]
         if not_found:
             raise InvalidRequestError(f"Scryfall IDs not found: {', '.join(not_found)}")
 
+        # Deduplicate: multiple scryfall_ids may share an oracle_id
+        unique_oracle_ids = set(found.values())
         stmt = (
             pg_insert(MagicBotoCardTagModel)
-            .values([{"tag_id": tag_row.id, "card_id": cid} for cid in found.values()])
-            .on_conflict_do_nothing(index_elements=["tag_id", "card_id"])
+            .values([{"tag_id": tag_row.id, "oracle_id": oid} for oid in unique_oracle_ids])
+            .on_conflict_do_nothing(index_elements=["tag_id", "oracle_id"])
         )
         await session.execute(stmt)
         return True
@@ -98,10 +101,10 @@ class TagService:
         tag_name: str,
         scryfall_ids: Sequence[str],
     ) -> bool:
-        """Remove a tag from cards identified by scryfall_id.
+        """Remove a tag from the oracle identities resolved from the given Scryfall IDs.
 
         Returns False if the tag does not exist.
-        Raises ValueError for unknown scryfall_ids.
+        Raises InvalidRequestError for unknown scryfall_ids.
         Does not commit; caller owns the transaction.
         """
         canonical = _canonical_tag_name(tag_name)
@@ -113,20 +116,21 @@ class TagService:
 
         card_rows = (
             await session.execute(
-                select(MagicBotoCardModel.card_id, MagicBotoCardModel.scryfall_id).where(
+                select(MagicBotoCardModel.oracle_id, MagicBotoCardModel.scryfall_id).where(
                     MagicBotoCardModel.scryfall_id.in_(list(scryfall_ids))
                 )
             )
         ).all()
-        found = {row.scryfall_id: row.card_id for row in card_rows}
+        found = {row.scryfall_id: row.oracle_id for row in card_rows}
         not_found = [sid for sid in scryfall_ids if sid not in found]
         if not_found:
             raise InvalidRequestError(f"Scryfall IDs not found: {', '.join(not_found)}")
 
+        unique_oracle_ids = set(found.values())
         await session.execute(
             delete(MagicBotoCardTagModel).where(
                 MagicBotoCardTagModel.tag_id == tag_row.id,
-                MagicBotoCardTagModel.card_id.in_(list(found.values())),
+                MagicBotoCardTagModel.oracle_id.in_(list(unique_oracle_ids)),
             )
         )
         return True

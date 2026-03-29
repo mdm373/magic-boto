@@ -60,6 +60,13 @@ class MtgjsonCard(BaseModel):
         description="Commander color identity pips (WUBRG), WUBRG order.",
     )
     rarity: CardRarity = Field(..., description="Printing rarity")
+    tags: list[str] = Field(
+        default_factory=list,
+        description=(
+            "User-defined tags applied to this card's oracle identity "
+            "(shared across all printings)."
+        ),
+    )
 
 
 class CardsListMetadata(BaseModel):

@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from .magic_boto_card_meta import MagicBotoCardMetaModel
     from .magic_boto_card_subtype import MagicBotoCardSubtypeModel
     from .magic_boto_card_supertype import MagicBotoCardSupertypeModel
+    from .magic_boto_card_tag import MagicBotoCardTagModel
     from .magic_boto_card_type import MagicBotoCardTypeModel
 
 
@@ -78,4 +79,10 @@ class MagicBotoCardModel(Base):
         back_populates="card",
         lazy="selectin",
         cascade="all, delete-orphan",
+    )
+    card_tags: Mapped["list[MagicBotoCardTagModel]"] = relationship(
+        "MagicBotoCardTagModel",
+        primaryjoin="MagicBotoCardModel.oracle_id == foreign(MagicBotoCardTagModel.oracle_id)",
+        viewonly=True,
+        lazy="selectin",
     )

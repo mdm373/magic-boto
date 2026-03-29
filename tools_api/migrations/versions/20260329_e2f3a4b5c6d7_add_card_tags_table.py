@@ -22,25 +22,20 @@ def upgrade() -> None:
     op.create_table(
         "card_tags",
         sa.Column("tag_id", sa.Uuid(), nullable=False),
-        sa.Column("card_id", sa.String(), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["card_id"],
-            ["magic_boto.cards.card_id"],
-            ondelete="CASCADE",
-        ),
+        sa.Column("oracle_id", sa.String(), nullable=False),
         sa.ForeignKeyConstraint(
             ["tag_id"],
             ["magic_boto.tags.id"],
             ondelete="CASCADE",
         ),
-        sa.PrimaryKeyConstraint("tag_id", "card_id"),
+        sa.PrimaryKeyConstraint("tag_id", "oracle_id"),
         schema=_SCHEMA,
     )
-    op.create_index("ix_card_tags_card_id", "card_tags", ["card_id"], schema=_SCHEMA)
+    op.create_index("ix_card_tags_oracle_id", "card_tags", ["oracle_id"], schema=_SCHEMA)
     op.create_index("ix_card_tags_tag_id", "card_tags", ["tag_id"], schema=_SCHEMA)
 
 
 def downgrade() -> None:
     op.drop_index("ix_card_tags_tag_id", table_name="card_tags", schema=_SCHEMA)
-    op.drop_index("ix_card_tags_card_id", table_name="card_tags", schema=_SCHEMA)
+    op.drop_index("ix_card_tags_oracle_id", table_name="card_tags", schema=_SCHEMA)
     op.drop_table("card_tags", schema=_SCHEMA)

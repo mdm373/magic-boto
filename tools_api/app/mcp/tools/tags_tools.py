@@ -97,7 +97,11 @@ def register_tags_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="tag_cards",
-        description="Apply a tag to one or more cards identified by their Scryfall ID.",
+        description=(
+            "Apply a tag to one or more cards by Scryfall printing ID. "
+            "The tag is stored against the oracle identity, so it covers "
+            "all printings of the same card."
+        ),
         annotations=ToolAnnotations(
             readOnlyHint=False,
             destructiveHint=False,
@@ -122,7 +126,11 @@ def register_tags_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="untag_cards",
-        description="Remove a tag from one or more cards identified by their Scryfall ID.",
+        description=(
+            "Remove a tag from one or more cards by Scryfall printing ID. "
+            "Removal is oracle-scoped: the tag is lifted from the card identity, "
+            "affecting all printings."
+        ),
         annotations=ToolAnnotations(
             readOnlyHint=False,
             destructiveHint=True,

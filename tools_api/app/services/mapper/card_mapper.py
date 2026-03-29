@@ -30,6 +30,7 @@ class CardMapper:
             rarity = CardRarity(card.rarity)
         except ValueError as err:
             raise InternalError(f"card scryfall_id={scryfall_id!r} has invalid rarity") from err
+        tags = sorted({ct.tag.name for ct in card.card_tags})
         return MtgjsonCard(
             name=card.name or "",
             mana_cost=card.mana_cost,
@@ -48,4 +49,5 @@ class CardMapper:
             card_keywords=card_keywords_list,
             color_identity=color_identity_string_to_list(card.color_identity),
             rarity=rarity,
+            tags=tags,
         )
