@@ -6,7 +6,6 @@ from .card_schema import (
     CardsPage,
     CardsPaginationParams,
     MtgjsonCard,
-    TagSweepPage,
 )
 from .card_search import CardSearchFilters, CardSearchPagination, CardSearchQuery
 from .descriptions import allowed_values_description
@@ -24,5 +23,4 @@ __all__ = [
     "EditionsQuery",
     "MtgjsonCard",
     "MtgjsonEdition",
-    "TagSweepPage",
 ]

@@ -4,6 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Architecture, conventions, and guidelines live in [AGENTS.md](AGENTS.md) — read it before making changes.
 
+## Environment
+
+Copy `.env.example` to `.env` at the project root and fill in values. Load it into your shell once before running any invoke tasks:
+
+```powershell
+. .\load-env.ps1   # dot-source from the project root
+```
+
+The dot (`. `) is required — it loads vars into your current shell. Running `.\load-env.ps1` directly won't work (vars are lost when the subprocess exits).
+
+`ANTHROPIC_API_KEY` is only required for `generate.tags`. All other tasks only need the Postgres vars.
+
 ## Commands
 
 All commands run from `tools_api/`.
@@ -44,8 +56,9 @@ uv run pytest tests/path/to/test_file.py::test_name
 ### Other
 
 ```powershell
-uv run invoke fetch                 # fetch & ingest MTGJSON catalog
-uv run invoke generate.db-schema    # regenerate tools_api/debug/schema.sql
+uv run invoke fetch                          # fetch & ingest MTGJSON catalog
+uv run invoke generate.db-schema             # regenerate tools_api/debug/schema.sql
+uv run invoke generate.tags --tag <name>     # run unattended Claude tag sweep (requires ANTHROPIC_API_KEY)
 ```
 
 ## Quick orientation

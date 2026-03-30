@@ -21,15 +21,15 @@ _SCHEMA = "magic_boto"
 def upgrade() -> None:
     op.create_table(
         "oracle_tag_sweeps",
-        sa.Column("tag_name", sa.String(), nullable=False),
+        sa.Column("tag_id", sa.Uuid(), nullable=False),
         sa.Column("last_swept_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("cursor", sa.String(), nullable=True),
         sa.ForeignKeyConstraint(
-            ["tag_name"],
-            ["magic_boto.tags.name"],
+            ["tag_id"],
+            ["magic_boto.tags.id"],
             ondelete="CASCADE",
         ),
-        sa.PrimaryKeyConstraint("tag_name"),
+        sa.PrimaryKeyConstraint("tag_id"),
         schema=_SCHEMA,
     )
 

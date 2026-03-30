@@ -1,0 +1,35 @@
+"""CLI entrypoint: delete a tag by name."""
+
+from __future__ import annotations
+
+import asyncio
+import sys
+
+from loguru import logger
+
+from app.db import get_async_session_factory
+from app.errors import NotFoundError
+from app.services import create_tag_service
+
+_tag_service = create_tag_service()
+
+
+async def _run(tag_name: str) -> None:
+    session_factory = get_async_session_factory()
+    async with session_factory() as session:
+        deleted = await _tag_service.delete_tag(session, tag_name)
+        if not deleted:
+            raise NotFoundError(f"Tag '{tag_name}' not found.")
+        await session.commit()
+    logger.info("Deleted tag '{}'.", tag_name)
+
+
+def main() -> None:
+    if len(sys.argv) != 2:
+        logger.error("Usage: python -m app.tag.delete_main <tag_name>")
+        sys.exit(1)
+    asyncio.run(_run(sys.argv[1]))
+
+
+if __name__ == "__main__":
+    main()

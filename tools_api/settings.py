@@ -24,6 +24,31 @@ class Settings(BaseSettings):
     mtgjson_fetch_sleep_seconds: float = Field(default=1.0)
     mtgjson_insert_batch_size: int = Field(default=500)
 
+    anthropic_api_key: str | None = Field(
+        default=None,
+        description="Anthropic API key — required for the generate.tags sweep task only.",
+    )
+
+    tag_sweep_model: str = Field(
+        default="claude-haiku-4-5-20251001",
+        description="Anthropic model ID used by the tag sweep task.",
+    )
+    tag_sweep_limit: int = Field(
+        default=50,
+        ge=1,
+        le=200,
+        description="Cards per page for the tag sweep task.",
+    )
+    tag_sweep_max_tokens: int = Field(
+        default=2048,
+        ge=256,
+        description="Max tokens for each Claude call in the tag sweep task.",
+    )
+    debug_output_dir: str = Field(
+        default="debug",
+        description="Directory for debug output files (Claude logs, unsure-card logs, etc.).",
+    )
+
     inventory_import_max_unknown_scryfall_ids: int = Field(
         default=100,
         ge=0,

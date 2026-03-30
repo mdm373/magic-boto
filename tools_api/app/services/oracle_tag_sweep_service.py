@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -11,9 +12,10 @@ from sqlalchemy import func, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.errors import InvalidRequestError, NotFoundError
+from app.errors import NotFoundError
 from app.models.magic_boto_card import MagicBotoCardModel
 from app.models.magic_boto_oracle_tag_sweep import MagicBotoOracleTagSweepModel
+from app.models.magic_boto_tag import MagicBotoTagModel
 
 
 def _canonical_tag_name(name: str) -> str:
@@ -27,10 +29,22 @@ class SweepPage:
     cards: Sequence[MagicBotoCardModel]
     next_cursor: str | None
     is_complete: bool
+    total_pending: int
+    already_processed: int
 
 
 class OracleTagSweepService:
     """Manage per-tag sweep state for incremental oracle-id tagging."""
+
+    async def _resolve_tag_id(self, session: AsyncSession, tag_name: str) -> uuid.UUID:
+        """Return the UUID for a tag name, raising NotFoundError if absent."""
+        canonical = _canonical_tag_name(tag_name)
+        tag_id: uuid.UUID | None = await session.scalar(
+            select(MagicBotoTagModel.id).where(MagicBotoTagModel.name == canonical)
+        )
+        if tag_id is None:
+            raise NotFoundError(f"Tag '{canonical}' not found.")
+        return tag_id
 
     async def _fetch_page(
         self,
@@ -45,25 +59,40 @@ class OracleTagSweepService:
         has MIN(created_at) from before last_swept_at and is excluded. A new oracle_id
         has MIN(created_at) after last_swept_at and is included.
         """
-        oracle_id_stmt = (
-            select(MagicBotoCardModel.oracle_id)
-            .group_by(MagicBotoCardModel.oracle_id)
-            .order_by(MagicBotoCardModel.oracle_id)
-            .limit(limit)
-        )
-        if cursor is not None:
-            oracle_id_stmt = oracle_id_stmt.where(MagicBotoCardModel.oracle_id > cursor)
+        base_stmt = select(MagicBotoCardModel.oracle_id).group_by(MagicBotoCardModel.oracle_id)
         if last_swept_at is not None:
-            oracle_id_stmt = oracle_id_stmt.having(
-                func.min(MagicBotoCardModel.created_at) > last_swept_at
-            )
+            base_stmt = base_stmt.having(func.min(MagicBotoCardModel.created_at) > last_swept_at)
 
-        pending_oracle_ids: list[str] = list(
-            (await session.execute(oracle_id_stmt)).scalars().all()
-        )
+        # Total pending (all oracle_ids not yet swept, regardless of cursor position).
+        total_pending: int = (
+            await session.scalar(select(func.count()).select_from(base_stmt.subquery()))
+        ) or 0
+
+        # Cards already processed in prior runs (oracle_ids up to and including cursor).
+        already_processed: int = 0
+        if cursor is not None:
+            already_processed = (
+                await session.scalar(
+                    select(func.count()).select_from(
+                        base_stmt.where(MagicBotoCardModel.oracle_id <= cursor).subquery()
+                    )
+                )
+            ) or 0
+
+        page_stmt = base_stmt.order_by(MagicBotoCardModel.oracle_id).limit(limit)
+        if cursor is not None:
+            page_stmt = page_stmt.where(MagicBotoCardModel.oracle_id > cursor)
+
+        pending_oracle_ids: list[str] = list((await session.execute(page_stmt)).scalars().all())
 
         if not pending_oracle_ids:
-            return SweepPage(cards=(), next_cursor=None, is_complete=True)
+            return SweepPage(
+                cards=(),
+                next_cursor=None,
+                is_complete=True,
+                total_pending=0,
+                already_processed=total_pending,
+            )
 
         # Load one card per oracle_id; selectin relationships populate all needed data.
         cards_stmt = (
@@ -83,28 +112,9 @@ class OracleTagSweepService:
             cards=page,
             next_cursor=pending_oracle_ids[-1],
             is_complete=False,
+            total_pending=total_pending,
+            already_processed=already_processed,
         )
-
-    async def start_sweep(
-        self,
-        session: AsyncSession,
-        tag_name: str,
-        limit: int = 50,
-    ) -> SweepPage:
-        """Create a new sweep row and return the first page of pending cards.
-
-        Raises InvalidRequestError if a sweep already exists for this tag.
-        Does not commit; caller owns the transaction.
-        """
-        canonical = _canonical_tag_name(tag_name)
-        existing = await session.get(MagicBotoOracleTagSweepModel, canonical)
-        if existing is not None:
-            raise InvalidRequestError(
-                f"A sweep already exists for tag '{canonical}'. Use resume_tagging to continue."
-            )
-        session.add(MagicBotoOracleTagSweepModel(tag_name=canonical))
-        await session.flush()
-        return await self._fetch_page(session, None, None, limit)
 
     async def resume_sweep(
         self,
@@ -112,17 +122,17 @@ class OracleTagSweepService:
         tag_name: str,
         limit: int = 50,
     ) -> SweepPage:
-        """Load an existing sweep and return the next page from the stored cursor.
+        """Load or create a sweep record and return the next page from the stored cursor.
 
-        Raises NotFoundError if no sweep exists for this tag.
+        Creates the sweep record if none exists (upsert).
         Does not commit; caller owns the transaction.
         """
-        canonical = _canonical_tag_name(tag_name)
-        sweep = await session.get(MagicBotoOracleTagSweepModel, canonical)
+        tag_id = await self._resolve_tag_id(session, tag_name)
+        sweep = await session.get(MagicBotoOracleTagSweepModel, tag_id)
         if sweep is None:
-            raise NotFoundError(
-                f"No sweep found for tag '{canonical}'. Use start_tagging to begin."
-            )
+            sweep = MagicBotoOracleTagSweepModel(tag_id=tag_id)
+            session.add(sweep)
+            await session.flush()
         return await self._fetch_page(session, sweep.last_swept_at, sweep.cursor, limit)
 
     async def advance_and_fetch(
@@ -141,15 +151,15 @@ class OracleTagSweepService:
         Raises NotFoundError if no sweep exists for this tag.
         Does not commit; caller owns the transaction.
         """
-        canonical = _canonical_tag_name(tag_name)
-        sweep = await session.get(MagicBotoOracleTagSweepModel, canonical)
+        tag_id = await self._resolve_tag_id(session, tag_name)
+        sweep = await session.get(MagicBotoOracleTagSweepModel, tag_id)
         if sweep is None:
-            raise NotFoundError(f"No sweep found for tag '{canonical}'.")
+            raise NotFoundError(f"No sweep found for tag '{_canonical_tag_name(tag_name)}'.")
 
         # Persist the cursor before fetching so a dropped bot resumes from here.
         await session.execute(
             update(MagicBotoOracleTagSweepModel)
-            .where(MagicBotoOracleTagSweepModel.tag_name == canonical)
+            .where(MagicBotoOracleTagSweepModel.tag_id == tag_id)
             .values(cursor=cursor)
         )
 
@@ -158,7 +168,7 @@ class OracleTagSweepService:
         if page.is_complete:
             await session.execute(
                 update(MagicBotoOracleTagSweepModel)
-                .where(MagicBotoOracleTagSweepModel.tag_name == canonical)
+                .where(MagicBotoOracleTagSweepModel.tag_id == tag_id)
                 .values(last_swept_at=datetime.now(UTC), cursor=None)
             )
 
@@ -170,11 +180,11 @@ class OracleTagSweepService:
         Raises NotFoundError if no sweep exists for this tag.
         Does not commit; caller owns the transaction.
         """
-        canonical = _canonical_tag_name(tag_name)
+        tag_id = await self._resolve_tag_id(session, tag_name)
         result: CursorResult[Any] = await session.execute(  # type: ignore[assignment]
             update(MagicBotoOracleTagSweepModel)
-            .where(MagicBotoOracleTagSweepModel.tag_name == canonical)
+            .where(MagicBotoOracleTagSweepModel.tag_id == tag_id)
             .values(last_swept_at=None, cursor=None)
         )
         if (result.rowcount or 0) == 0:
-            raise NotFoundError(f"No sweep found for tag '{canonical}'.")
+            raise NotFoundError(f"No sweep found for tag '{_canonical_tag_name(tag_name)}'.")
