@@ -13,9 +13,11 @@ from app.models import (
     MagicBotoCardModel,
     MagicBotoCardSubtypeModel,
     MagicBotoCardSupertypeModel,
+    MagicBotoCardTagModel,
     MagicBotoCardTypeModel,
     MagicBotoInventoryCardModel,
     MagicBotoInventoryModel,
+    MagicBotoTagModel,
 )
 from app.schema.card_search import CardSearchFilters
 
@@ -40,6 +42,7 @@ class CardSearchQueryBuilder:
             *_build_number_filters(filters),
             *_build_color_identity_filters(filters),
             *_build_card_type_filters(filters),
+            *_build_tag_filters(filters),
         ]
 
 
@@ -376,4 +379,28 @@ def _build_card_type_filters(
             out.append(
                 MagicBotoCardModel.card_types.any(MagicBotoCardTypeModel.card_type == ct.value)
             )
+    return out
+
+
+def _tag_subquery(tag_name: str) -> ColumnElement[bool]:
+    """True when the card's oracle_id has the named tag."""
+    return exists(
+        select(1)
+        .select_from(MagicBotoCardTagModel)
+        .join(MagicBotoTagModel, MagicBotoCardTagModel.tag_id == MagicBotoTagModel.id)
+        .where(
+            MagicBotoCardTagModel.oracle_id == MagicBotoCardModel.oracle_id,
+            MagicBotoTagModel.name == tag_name,
+        )
+    )
+
+
+def _build_tag_filters(filters: CardSearchFilters) -> Sequence[ColumnElement[bool]]:
+    out: list[ColumnElement[bool]] = []
+    if filters.tag is not None:
+        out.append(_tag_subquery(filters.tag))
+    if filters.tag_one_of:
+        out.append(or_(*[_tag_subquery(t) for t in filters.tag_one_of]))
+    if filters.tag_all_of:
+        out.extend(_tag_subquery(t) for t in filters.tag_all_of)
     return out

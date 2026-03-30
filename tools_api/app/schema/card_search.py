@@ -70,6 +70,15 @@ def _normalize_inventory_name(value: str | None) -> str | None:
 class CardSearchFilters(BaseModel):
     """Optional filters for card search. Populated fields are ANDed together."""
 
+    distinct_oracle: bool = Field(
+        default=False,
+        title="Distinct Oracle",
+        description=(
+            "When true, return at most one printing per oracle identity. "
+            "Results are ordered by oracle_id then name for stable pagination. "
+            "Useful for iterating over the full card catalog without printing duplicates."
+        ),
+    )
     mana_value_eq: int | None = Field(
         default=None,
         title="Mana Value (Equal)",
@@ -147,10 +156,25 @@ class CardSearchFilters(BaseModel):
         title="Keyword (All Of)",
         description="Require all listed keywords (AND; each trimmed, lowercased).",
     )
+    tag: str | None = Field(
+        default=None,
+        title="Tag",
+        description="Require a single tag on the card's oracle identity (trimmed, lowercased).",
+    )
+    tag_one_of: list[str] | None = Field(
+        default=None,
+        title="Tag (One Of)",
+        description="Require at least one of these tags (OR; each trimmed, lowercased).",
+    )
+    tag_all_of: list[str] | None = Field(
+        default=None,
+        title="Tag (All Of)",
+        description="Require all of these tags (AND; each trimmed, lowercased).",
+    )
     super_type: CardSupertype | None = Field(
         default=None,
         title="Super Type",
-        description="Require a single supertype.",
+        description="Require a single supertype (case-insensitive, e.g. 'Legendary', 'Basic').",
     )
     set_code: str | None = Field(
         default=None,
@@ -268,17 +292,17 @@ class CardSearchFilters(BaseModel):
     card_type: CardType | None = Field(
         default=None,
         title="Card Type",
-        description="Printing has this rulebook card type (single-type presence filter).",
+        description="Printing has this rulebook card type (case-insensitive, e.g. 'Creature').",
     )
     card_type_one_of: list[CardType] | None = Field(
         default=None,
         title="Card Type (One Of)",
-        description="Printing has at least one of these rulebook card types (OR).",
+        description="Printing has at least one of these card types (OR; case-insensitive).",
     )
     card_type_all_of: list[CardType] | None = Field(
         default=None,
         title="Card Type (All Of)",
-        description="Printing has all of these card types (AND).",
+        description="Printing has all of these card types (AND; case-insensitive).",
     )
 
     @field_validator("card_type", "super_type", mode="before")
@@ -295,7 +319,7 @@ class CardSearchFilters(BaseModel):
             return [v.strip().lower() if isinstance(v, str) else v for v in value]
         return value
 
-    @field_validator("subtype", "keyword", mode="after")
+    @field_validator("subtype", "keyword", "tag", mode="after")
     @classmethod
     def _normalize_optional_tokens(cls, value: str | None) -> str | None:
         return _normalize_optional_search_token(value)
@@ -310,6 +334,8 @@ class CardSearchFilters(BaseModel):
         "subtype_all_of",
         "keyword_one_of",
         "keyword_all_of",
+        "tag_one_of",
+        "tag_all_of",
         mode="after",
     )
     @classmethod

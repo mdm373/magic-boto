@@ -9,10 +9,11 @@ from .magic_boto_card_keyword import MagicBotoCardKeywordModel
 from .magic_boto_card_meta import MagicBotoCardMetaModel
 from .magic_boto_card_subtype import MagicBotoCardSubtypeModel
 from .magic_boto_card_supertype import MagicBotoCardSupertypeModel
+from .magic_boto_card_tag import MagicBotoCardTagModel
 from .magic_boto_card_type import MagicBotoCardTypeModel
 from .magic_boto_edition import MagicBotoEditionModel
 from .magic_boto_inventory import MagicBotoInventoryCardModel, MagicBotoInventoryModel
-from .magic_boto_card_tag import MagicBotoCardTagModel
+from .magic_boto_oracle_tag_sweep import MagicBotoOracleTagSweepModel
 from .magic_boto_tag import MagicBotoTagModel
 
 __all__ = [
@@ -31,4 +32,5 @@ __all__ = [
     "MagicBotoCardTagModel",
     "MagicBotoInventoryModel",
     "MagicBotoTagModel",
+    "MagicBotoOracleTagSweepModel",
 ]

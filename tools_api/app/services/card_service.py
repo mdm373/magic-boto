@@ -1,6 +1,6 @@
 """Card lookup service for MTGJSON cards API."""
 
-from typing import cast
+from typing import Any, cast
 
 from fastapi_pagination import Params
 from fastapi_pagination.bases import AbstractPage
@@ -8,12 +8,22 @@ from fastapi_pagination.ext.sqlalchemy import paginate
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy.sql import Select
 
 from app.models import MagicBotoCardModel
 from app.schema import MtgjsonCard
 from app.schema.card_search import CardSearchQuery
 from app.services.card_search_query_builder import CardSearchQueryBuilder
 from app.services.mapper import CardMapper
+
+
+def _apply_ordering(stmt: Select[Any], *, distinct_oracle: bool) -> Select[Any]:
+    if distinct_oracle:
+        return stmt.distinct(MagicBotoCardModel.oracle_id).order_by(
+            MagicBotoCardModel.oracle_id.asc(),
+            MagicBotoCardModel.name.asc(),
+        )
+    return stmt.order_by(MagicBotoCardModel.name.asc())
 
 
 class CardService:
@@ -37,7 +47,7 @@ class CardService:
             *self._query_builder.build_predicates(query.filters),
         ]
 
-        stmt = (
+        base = (
             select(MagicBotoCardModel)
             .options(
                 selectinload(MagicBotoCardModel.card_types),
@@ -47,8 +57,8 @@ class CardService:
                 selectinload(MagicBotoCardModel.meta),
             )
             .where(and_(*filters))
-            .order_by(MagicBotoCardModel.name.asc())
         )
+        stmt = _apply_ordering(base, distinct_oracle=query.filters.distinct_oracle)
 
         return cast(
             AbstractPage[MtgjsonCard],
@@ -66,12 +76,9 @@ class CardService:
     async def query_card(
         self,
         session: AsyncSession,
-        scryfall_id: str,
+        card_id: str,
     ) -> MtgjsonCard | None:
-        """
-        Look up a single card by Scryfall printing id.
-        Returns None if not found.
-        """
+        """Look up a single card by internal catalog id (primary key). Returns None if not found."""
         stmt = (
             select(MagicBotoCardModel)
             .options(
@@ -81,7 +88,7 @@ class CardService:
                 selectinload(MagicBotoCardModel.supertypes),
                 selectinload(MagicBotoCardModel.meta),
             )
-            .where(MagicBotoCardModel.scryfall_id == scryfall_id)
+            .where(MagicBotoCardModel.card_id == card_id)
         )
         result = await session.execute(stmt)
         card = result.scalars().one_or_none()

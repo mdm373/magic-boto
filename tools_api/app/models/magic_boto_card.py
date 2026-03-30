@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import DateTime, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
@@ -43,6 +44,9 @@ class MagicBotoCardModel(Base):
     scryfall_id: Mapped[str | None] = mapped_column(String)
     # Canonical WUBRG-ordered string (e.g. "BG", "R", ""); CHECK in DB.
     color_identity: Mapped[str] = mapped_column(String, nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
 
     edition: Mapped[MagicBotoEditionModel] = relationship(
         "MagicBotoEditionModel",
@@ -80,7 +84,7 @@ class MagicBotoCardModel(Base):
         lazy="selectin",
         cascade="all, delete-orphan",
     )
-    card_tags: Mapped["list[MagicBotoCardTagModel]"] = relationship(
+    card_tags: Mapped[list["MagicBotoCardTagModel"]] = relationship(
         "MagicBotoCardTagModel",
         primaryjoin="MagicBotoCardModel.oracle_id == foreign(MagicBotoCardTagModel.oracle_id)",
         viewonly=True,

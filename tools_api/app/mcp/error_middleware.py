@@ -6,11 +6,12 @@ from collections.abc import Awaitable, Callable, Coroutine
 from functools import wraps
 from typing import Any, ParamSpec, TypeAlias, TypeVar
 
-from mcp.server.fastmcp import FastMCP
-from mcp.types import INTERNAL_ERROR, INVALID_PARAMS, ErrorData, Icon, ToolAnnotations
+from loguru import logger
 
 from app.errors import InternalError, InvalidRequestError, NotFoundError
 from mcp import McpError
+from mcp.server.fastmcp import FastMCP
+from mcp.types import INTERNAL_ERROR, INVALID_PARAMS, ErrorData, Icon, ToolAnnotations
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -100,12 +101,20 @@ def map_app_errors(
         try:
             return await func(*args, **kwargs)
         except InvalidRequestError as exc:
+            logger.warning("MCP invalid params: {}", exc)
             raise McpError(
                 ErrorData(code=INVALID_PARAMS, message=f"Invalid params: {exc!s}")
             ) from exc
         except NotFoundError as exc:
+            logger.warning("MCP not found: {}", exc)
             raise McpError(ErrorData(code=MCP_NOT_FOUND, message=f"Not found: {exc!s}")) from exc
         except InternalError as exc:
+            logger.exception("MCP internal error")
             raise McpError(ErrorData(code=INTERNAL_ERROR, message="Internal error")) from exc
+        except Exception as exc:
+            logger.exception("MCP unhandled exception in tool handler")
+            raise McpError(
+                ErrorData(code=INTERNAL_ERROR, message=f"Unexpected error: {type(exc).__name__}")
+            ) from exc
 
     return wrapped

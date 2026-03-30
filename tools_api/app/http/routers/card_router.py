@@ -39,18 +39,19 @@ def create_card_router() -> APIRouter:
         return await service.search_cards(session, body)
 
     @router.get(
-        "/{scryfall_id}",
+        "/{card_id}",
         response_model=MtgjsonCard,
         operation_id="get_card",
-        summary="Get one card by Scryfall printing id.",
+        summary="Get one card by internal catalog id.",
     )
-    async def get_card_by_scryfall_id(scryfall_id: str, request: Request) -> MtgjsonCard:
+    async def get_card_by_id(card_id: str, request: Request) -> MtgjsonCard:
         """
-        Get one card by Scryfall printing id (UUID). For other printings of the same
-        oracle, use **POST** search with a condition on ``oracle_id`` (not this path).
+        Get one card by internal catalog id (primary key, unique per printing).
+        Use ``card_id`` from search results. For all printings of the same oracle,
+        search with an ``oracle_id`` filter instead.
         """
         session = get_request_session(request)
-        card = await service.query_card(session, scryfall_id)
+        card = await service.query_card(session, card_id)
         if card is None:
             raise HTTPException(status_code=404, detail="Card not found")
         return card

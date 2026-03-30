@@ -1,5 +1,6 @@
 """FastAPI app: healthcheck and MTGJSON v1 tool endpoints (OpenAPI-described)."""
 
+import logging
 import os
 import sys
 from collections.abc import AsyncGenerator
@@ -15,12 +16,27 @@ from app.errors import InternalError, InvalidRequestError, NotFoundError
 
 from .routers import v1_router
 
+
+class _NoHealthFilter(logging.Filter):
+    """Drop uvicorn access log records for the /health liveness endpoint."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "GET /health" not in record.getMessage()
+
+
 logger.remove()
 _log_fmt = (
     "<green>{time:HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | "
     "{name}:{function}:{line} - <level>{message}</level>"
 )
-logger.add(sys.stderr, level=os.environ.get("LOG_LEVEL", "INFO").upper(), format=_log_fmt)
+logger.add(
+    sys.stderr,
+    level=os.environ.get("LOG_LEVEL", "INFO").upper(),
+    format=_log_fmt,
+    backtrace=True,
+    diagnose=True,
+)
+logging.getLogger("uvicorn.access").addFilter(_NoHealthFilter())
 
 
 @asynccontextmanager

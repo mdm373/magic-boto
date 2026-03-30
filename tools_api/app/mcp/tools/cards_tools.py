@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import cast
 
-from mcp.types import ToolAnnotations
-
 from app.db import get_async_session_factory
 from app.errors import NotFoundError
 from app.mcp.error_middleware import AppMcp
@@ -17,6 +15,7 @@ from app.schema import (
     MtgjsonCard,
 )
 from app.services import create_card_service
+from mcp.types import ToolAnnotations
 
 _card_service = create_card_service()
 
@@ -49,7 +48,10 @@ def register_cards_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="get_card",
-        description="Get one card by Scryfall printing id (UUID).",
+        description=(
+            "Get one card by internal catalog id (``card_id`` from search results). "
+            "Unique per printing and avoids the ambiguity of Scryfall id on flip/split cards."
+        ),
         annotations=ToolAnnotations(
             readOnlyHint=True,
             destructiveHint=False,
@@ -57,10 +59,10 @@ def register_cards_tools(app_mcp: AppMcp) -> None:
             openWorldHint=False,
         ),
     )
-    async def get_card(scryfall_id: str) -> MtgjsonCard:
+    async def get_card(card_id: str) -> MtgjsonCard:
         factory = get_async_session_factory()
         async with factory() as session:
-            card = await _card_service.query_card(session, scryfall_id)
+            card = await _card_service.query_card(session, card_id)
             if card is None:
                 raise NotFoundError("Card not found")
             return card

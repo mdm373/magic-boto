@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 
 from invoke import Collection, Context, Exit, task
 
 from .constants import DEFAULT_INVENTORY_NAME
+from .pg_env import pg_env
 
 
 @task(default=True)
@@ -36,5 +38,18 @@ def export_inventory(c: Context) -> None:
         subprocess.run(argv, check=True)
 
 
+@task()
+def db_schema(c: Context) -> None:
+    """Update tools_api/debug/schema.sql from the live DB (pg_dump -s)."""
+    out_dir = Path("debug")
+    out_dir.mkdir(exist_ok=True)
+    out_path = out_dir / "schema.sql"
+
+    env = pg_env()
+    print(f"Dumping schema to: {out_path}")
+    c.run(f'pg_dump -s -f "{out_path}"', env=env)
+
+
 ns = Collection("export")
-ns.add_task(export_inventory, name="inventory")
+ns.add_task(export_inventory, name="inventory", default=True)
+ns.add_task(db_schema, name="db-schema")

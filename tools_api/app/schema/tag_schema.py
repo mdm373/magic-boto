@@ -18,10 +18,6 @@ class CreateTagRequest(BaseModel):
 
 
 class CardTagRequest(BaseModel):
-    scryfall_ids: list[str] = Field(
-        description=(
-            "Scryfall printing IDs of the cards to tag or untag. "
-            "The tag is applied to the oracle identity of each printing, "
-            "so all printings of the same card are covered by a single tag."
-        )
+    oracle_ids: list[str] = Field(
+        description="Oracle IDs of the cards to tag or untag."
     )

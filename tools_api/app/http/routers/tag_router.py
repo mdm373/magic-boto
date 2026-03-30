@@ -78,11 +78,11 @@ def create_tag_router() -> APIRouter:
         "/{name}/cards",
         status_code=204,
         operation_id="tag_cards",
-        summary="Apply a tag to cards by Scryfall ID",
+        summary="Apply a tag to cards by oracle ID",
     )
     async def tag_cards(name: str, body: CardTagRequest, request: Request) -> None:
         session = get_request_session(request)
-        ok = await service.add_card_tags(session, name, body.scryfall_ids)
+        ok = await service.add_card_tags(session, name, body.oracle_ids)
         if not ok:
             raise NotFoundError(f"Tag '{name}' not found.")
         await session.commit()
@@ -91,11 +91,11 @@ def create_tag_router() -> APIRouter:
         "/{name}/cards",
         status_code=204,
         operation_id="untag_cards",
-        summary="Remove a tag from cards by Scryfall ID",
+        summary="Remove a tag from cards by oracle ID",
     )
     async def untag_cards(name: str, body: CardTagRequest, request: Request) -> None:
         session = get_request_session(request)
-        ok = await service.remove_card_tags(session, name, body.scryfall_ids)
+        ok = await service.remove_card_tags(session, name, body.oracle_ids)
         if not ok:
             raise NotFoundError(f"Tag '{name}' not found.")
         await session.commit()

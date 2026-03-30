@@ -22,6 +22,9 @@ class MtgjsonCard(BaseModel):
 
     model_config = ConfigDict(title="MtgjsonCard")
 
+    card_id: str = Field(
+        ..., description="Internal catalog id (primary key; unique per printing and face)."
+    )
     name: str = Field(..., description="Card name")
     mana_cost: str | None = Field(None, description="Mana cost (e.g. {2}{U}{U})")
     mana_value: int = Field(..., description="Mana value (formerly CMC).")
@@ -83,3 +86,27 @@ class CardsListResponse(BaseModel):
 
 
 CardsPage = CustomizedPage[Page[MtgjsonCard], UseParams(CardsPaginationParams)]
+
+
+class TagSweepPage(BaseModel):
+    """One page of cards returned during a tag sweep."""
+
+    is_resume: bool = Field(
+        False,
+        description="True when this call resumed a previously in-progress sweep.",
+    )
+    cards: list[MtgjsonCard] = Field(
+        default_factory=list,
+        description="Cards pending review for this tag.",
+    )
+    next_cursor: str | None = Field(
+        None,
+        description=(
+            "Pass this value as next_cursor in push_tags to advance the sweep. "
+            "None when is_complete is True."
+        ),
+    )
+    is_complete: bool = Field(
+        False,
+        description="True when the sweep has processed all pending oracle_ids.",
+    )

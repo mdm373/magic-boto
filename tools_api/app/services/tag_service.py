@@ -57,13 +57,13 @@ class TagService:
         self,
         session: AsyncSession,
         tag_name: str,
-        scryfall_ids: Sequence[str],
+        oracle_ids: Sequence[str],
     ) -> bool:
-        """Apply a tag to the oracle identities resolved from the given Scryfall IDs.
+        """Apply a tag to the given oracle IDs.
 
         Tagging is oracle-scoped: all printings of the same card share the tag.
         Returns False if the tag does not exist.
-        Raises InvalidRequestError for unknown scryfall_ids.
+        Raises InvalidRequestError for unknown oracle_ids.
         Does not commit; caller owns the transaction.
         """
         canonical = _canonical_tag_name(tag_name)
@@ -73,23 +73,22 @@ class TagService:
         if tag_row is None:
             return False
 
-        card_rows = (
-            await session.execute(
-                select(MagicBotoCardModel.oracle_id, MagicBotoCardModel.scryfall_id).where(
-                    MagicBotoCardModel.scryfall_id.in_(list(scryfall_ids))
+        found_ids = set(
+            (
+                await session.execute(
+                    select(MagicBotoCardModel.oracle_id).where(
+                        MagicBotoCardModel.oracle_id.in_(list(oracle_ids))
+                    )
                 )
-            )
-        ).all()
-        found = {row.scryfall_id: row.oracle_id for row in card_rows}
-        not_found = [sid for sid in scryfall_ids if sid not in found]
+            ).scalars().all()
+        )
+        not_found = [oid for oid in oracle_ids if oid not in found_ids]
         if not_found:
-            raise InvalidRequestError(f"Scryfall IDs not found: {', '.join(not_found)}")
+            raise InvalidRequestError(f"Oracle IDs not found: {', '.join(not_found)}")
 
-        # Deduplicate: multiple scryfall_ids may share an oracle_id
-        unique_oracle_ids = set(found.values())
         stmt = (
             pg_insert(MagicBotoCardTagModel)
-            .values([{"tag_id": tag_row.id, "oracle_id": oid} for oid in unique_oracle_ids])
+            .values([{"tag_id": tag_row.id, "oracle_id": oid} for oid in found_ids])
             .on_conflict_do_nothing(index_elements=["tag_id", "oracle_id"])
         )
         await session.execute(stmt)
@@ -99,12 +98,12 @@ class TagService:
         self,
         session: AsyncSession,
         tag_name: str,
-        scryfall_ids: Sequence[str],
+        oracle_ids: Sequence[str],
     ) -> bool:
-        """Remove a tag from the oracle identities resolved from the given Scryfall IDs.
+        """Remove a tag from the given oracle IDs.
 
         Returns False if the tag does not exist.
-        Raises InvalidRequestError for unknown scryfall_ids.
+        Raises InvalidRequestError for unknown oracle_ids.
         Does not commit; caller owns the transaction.
         """
         canonical = _canonical_tag_name(tag_name)
@@ -114,23 +113,23 @@ class TagService:
         if tag_row is None:
             return False
 
-        card_rows = (
-            await session.execute(
-                select(MagicBotoCardModel.oracle_id, MagicBotoCardModel.scryfall_id).where(
-                    MagicBotoCardModel.scryfall_id.in_(list(scryfall_ids))
+        found_ids = set(
+            (
+                await session.execute(
+                    select(MagicBotoCardModel.oracle_id).where(
+                        MagicBotoCardModel.oracle_id.in_(list(oracle_ids))
+                    )
                 )
-            )
-        ).all()
-        found = {row.scryfall_id: row.oracle_id for row in card_rows}
-        not_found = [sid for sid in scryfall_ids if sid not in found]
+            ).scalars().all()
+        )
+        not_found = [oid for oid in oracle_ids if oid not in found_ids]
         if not_found:
-            raise InvalidRequestError(f"Scryfall IDs not found: {', '.join(not_found)}")
+            raise InvalidRequestError(f"Oracle IDs not found: {', '.join(not_found)}")
 
-        unique_oracle_ids = set(found.values())
         await session.execute(
             delete(MagicBotoCardTagModel).where(
                 MagicBotoCardTagModel.tag_id == tag_row.id,
-                MagicBotoCardTagModel.oracle_id.in_(list(unique_oracle_ids)),
+                MagicBotoCardTagModel.oracle_id.in_(list(found_ids)),
             )
         )
         return True

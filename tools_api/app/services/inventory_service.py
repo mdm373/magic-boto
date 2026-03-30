@@ -8,7 +8,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, cast
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -189,20 +189,24 @@ class InventoryService:
             cid = resolved_map[raw_id]
             by_card[cid] = by_card.get(cid, 0) + qty
         for card_id, qty in by_card.items():
+            # Delete rows that would hit zero or below (avoids violating count >= 1 constraint).
+            await session.execute(
+                delete(MagicBotoInventoryCardModel).where(
+                    MagicBotoInventoryCardModel.inventory_id == inventory_id,
+                    MagicBotoInventoryCardModel.card_id == card_id,
+                    MagicBotoInventoryCardModel.count <= qty,
+                )
+            )
+            # Decrement rows that still have count remaining.
             await session.execute(
                 update(MagicBotoInventoryCardModel)
                 .where(
                     MagicBotoInventoryCardModel.inventory_id == inventory_id,
                     MagicBotoInventoryCardModel.card_id == card_id,
+                    MagicBotoInventoryCardModel.count > qty,
                 )
-                .values(count=func.greatest(0, MagicBotoInventoryCardModel.count - qty))
+                .values(count=MagicBotoInventoryCardModel.count - qty)
             )
-        await session.execute(
-            delete(MagicBotoInventoryCardModel).where(
-                MagicBotoInventoryCardModel.inventory_id == inventory_id,
-                MagicBotoInventoryCardModel.count == 0,
-            )
-        )
 
     async def _ensure_inventory_exists(
         self,
