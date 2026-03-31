@@ -7,6 +7,7 @@ from app.db import get_request_session, inject_session_into_request
 from app.errors import InvalidRequestError, NotFoundError
 from app.schema.tag_schema import CardTagRequest, CreateTagRequest, Tag
 from app.services import create_tag_service
+from app.services.tag_service import CardTagEntry
 
 
 def create_tag_router() -> APIRouter:
@@ -82,7 +83,9 @@ def create_tag_router() -> APIRouter:
     )
     async def tag_cards(name: str, body: CardTagRequest, request: Request) -> None:
         session = get_request_session(request)
-        ok = await service.add_card_tags(session, name, body.oracle_ids)
+        ok = await service.add_card_tags(
+            session, name, [CardTagEntry(oracle_id=oid) for oid in body.oracle_ids]
+        )
         if not ok:
             raise NotFoundError(f"Tag '{name}' not found.")
         await session.commit()

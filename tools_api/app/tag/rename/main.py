@@ -1,0 +1,42 @@
+"""CLI entrypoint: rename a tag (and its _unsure / _excluded side tags)."""
+
+from __future__ import annotations
+
+import asyncio
+import sys
+
+from loguru import logger
+
+from app.db import get_async_session_factory
+from app.log import configure_cli_logging
+from app.services import create_tag_service
+
+_tag_service = create_tag_service()
+
+
+async def _run(old_name: str, new_name: str) -> None:
+    session_factory = get_async_session_factory()
+    async with session_factory() as session:
+        renamed = await _tag_service.rename_tag(session, old_name, new_name)
+        if not renamed:
+            logger.error("Tag '{}' not found.", old_name)
+            sys.exit(1)
+        for suffix in ("_unsure", "_excluded"):
+            old_side = f"{old_name}{suffix}"
+            new_side = f"{new_name}{suffix}"
+            if await _tag_service.rename_tag(session, old_side, new_side):
+                logger.info("Renamed side tag '{}' → '{}'.", old_side, new_side)
+        await session.commit()
+    logger.info("Renamed tag '{}' → '{}'.", old_name, new_name)
+
+
+def main() -> None:
+    configure_cli_logging()
+    if len(sys.argv) != 3:
+        logger.error("Usage: python -m app.tag.rename.main <old_name> <new_name>")
+        sys.exit(1)
+    asyncio.run(_run(sys.argv[1], sys.argv[2]))
+
+
+if __name__ == "__main__":
+    main()

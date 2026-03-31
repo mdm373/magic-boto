@@ -20,13 +20,16 @@ async def _run(tag_name: str) -> None:
         deleted = await _tag_service.delete_tag(session, tag_name)
         if not deleted:
             raise NotFoundError(f"Tag '{tag_name}' not found.")
+        for side_tag in (f"{tag_name}_unsure", f"{tag_name}_excluded"):
+            if await _tag_service.delete_tag(session, side_tag):
+                logger.info("Deleted side tag '{}'.", side_tag)
         await session.commit()
     logger.info("Deleted tag '{}'.", tag_name)
 
 
 def main() -> None:
     if len(sys.argv) != 2:
-        logger.error("Usage: python -m app.tag.delete_main <tag_name>")
+        logger.error("Usage: python -m app.tag.delete.main <tag_name>")
         sys.exit(1)
     asyncio.run(_run(sys.argv[1]))
 

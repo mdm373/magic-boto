@@ -51,7 +51,7 @@ def delete_tag(c: Context) -> None:
     if reply.strip().lower() != "yes":
         raise Exit("Aborted.")
 
-    argv = ["uv", "run", "python", "-m", "app.tag.delete_main", tag_name]
+    argv = ["uv", "run", "python", "-m", "app.tag.delete.main", tag_name]
     if c.cwd:
         subprocess.run(argv, check=True, cwd=c.cwd)
     else:

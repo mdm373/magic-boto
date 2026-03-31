@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import CursorResult  # used by delete_tag
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +15,14 @@ from app.errors import InvalidRequestError
 from app.models import MagicBotoCardTagModel, MagicBotoTagModel
 from app.models.magic_boto_card import MagicBotoCardModel
 from app.schema.tag_schema import Tag
+
+
+@dataclass(frozen=True, slots=True)
+class CardTagEntry:
+    """A single card-tagging request: the oracle_id to tag and the model's classification reason."""
+
+    oracle_id: str
+    reason: str | None = None
 
 
 def _canonical_tag_name(name: str) -> str:
@@ -46,6 +55,28 @@ class TagService:
         await session.refresh(tag)
         return Tag(name=tag.name, description=tag.description)
 
+    async def rename_tag(self, session: AsyncSession, old_name: str, new_name: str) -> bool:
+        """Rename a tag.
+
+        Returns False if old_name not found; raises InvalidRequestError if new_name already exists.
+        Does not commit; caller owns the transaction.
+        """
+        old_canonical = _canonical_tag_name(old_name)
+        new_canonical = _canonical_tag_name(new_name)
+        row = await session.scalar(
+            select(MagicBotoTagModel).where(MagicBotoTagModel.name == old_canonical)
+        )
+        if row is None:
+            return False
+        existing = await session.scalar(
+            select(MagicBotoTagModel).where(MagicBotoTagModel.name == new_canonical)
+        )
+        if existing is not None:
+            raise InvalidRequestError(f"Tag '{new_canonical}' already exists.")
+        row.name = new_canonical
+        await session.flush()
+        return True
+
     async def delete_tag(self, session: AsyncSession, name: str) -> bool:
         """Delete a tag by canonical name. Returns True if deleted, False if not found."""
         canonical = _canonical_tag_name(name)
@@ -57,11 +88,13 @@ class TagService:
         self,
         session: AsyncSession,
         tag_name: str,
-        oracle_ids: Sequence[str],
+        entries: Sequence[CardTagEntry],
     ) -> bool:
-        """Apply a tag to the given oracle IDs.
+        """Apply a tag to the given card entries.
 
         Tagging is oracle-scoped: all printings of the same card share the tag.
+        Each ``CardTagEntry`` carries the oracle_id and an optional classification reason.
+        When any entry has a reason, conflicts are updated to refresh the stored reason.
         Returns False if the tag does not exist.
         Raises InvalidRequestError for unknown oracle_ids.
         Does not commit; caller owns the transaction.
@@ -73,26 +106,89 @@ class TagService:
         if tag_row is None:
             return False
 
+        entries_by_id = {e.oracle_id: e for e in entries}
         found_ids = set(
             (
                 await session.execute(
                     select(MagicBotoCardModel.oracle_id).where(
-                        MagicBotoCardModel.oracle_id.in_(list(oracle_ids))
+                        MagicBotoCardModel.oracle_id.in_(list(entries_by_id))
                     )
                 )
-            ).scalars().all()
+            )
+            .scalars()
+            .all()
         )
-        not_found = [oid for oid in oracle_ids if oid not in found_ids]
+        not_found = [oid for oid in entries_by_id if oid not in found_ids]
         if not_found:
             raise InvalidRequestError(f"Oracle IDs not found: {', '.join(not_found)}")
 
-        stmt = (
-            pg_insert(MagicBotoCardTagModel)
-            .values([{"tag_id": tag_row.id, "oracle_id": oid} for oid in found_ids])
-            .on_conflict_do_nothing(index_elements=["tag_id", "oracle_id"])
+        has_reasons = any(entries_by_id[oid].reason for oid in found_ids)
+        insert_stmt = pg_insert(MagicBotoCardTagModel).values(
+            [
+                {"tag_id": tag_row.id, "oracle_id": oid, "reason": entries_by_id[oid].reason}
+                for oid in found_ids
+            ]
         )
+        if has_reasons:
+            stmt = insert_stmt.on_conflict_do_update(
+                index_elements=["tag_id", "oracle_id"],
+                set_={"reason": insert_stmt.excluded.reason},
+            )
+        else:
+            stmt = insert_stmt.on_conflict_do_nothing(index_elements=["tag_id", "oracle_id"])
         await session.execute(stmt)
         return True
+
+    async def sample_cards_for_tag(
+        self,
+        session: AsyncSession,
+        tag_name: str,
+        limit: int,
+    ) -> list[tuple[MagicBotoCardModel, str | None]]:
+        """Return up to `limit` randomly sampled (card, reason) pairs for the given tag.
+
+        Returns an empty list if the tag does not exist or has no cards.
+        One card per oracle_id; preserves the random ordering.
+        ``reason`` is the classification rationale stored by the sweep, or None.
+        """
+        canonical = _canonical_tag_name(tag_name)
+        tag_row = await session.scalar(
+            select(MagicBotoTagModel).where(MagicBotoTagModel.name == canonical)
+        )
+        if tag_row is None:
+            return []
+
+        rows = (
+            await session.execute(
+                select(MagicBotoCardTagModel.oracle_id, MagicBotoCardTagModel.reason)
+                .where(MagicBotoCardTagModel.tag_id == tag_row.id)
+                .order_by(func.random())
+                .limit(limit)
+            )
+        ).all()
+        if not rows:
+            return []
+
+        oracle_ids = [row.oracle_id for row in rows]
+        reasons_map: dict[str, str | None] = {row.oracle_id: row.reason for row in rows}
+
+        all_cards = (
+            (
+                await session.execute(
+                    select(MagicBotoCardModel)
+                    .where(MagicBotoCardModel.oracle_id.in_(oracle_ids))
+                    .order_by(MagicBotoCardModel.oracle_id, MagicBotoCardModel.card_id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        seen: dict[str, MagicBotoCardModel] = {}
+        for card in all_cards:
+            if card.oracle_id not in seen:
+                seen[card.oracle_id] = card
+        return [(seen[oid], reasons_map.get(oid)) for oid in oracle_ids if oid in seen]
 
     async def remove_card_tags(
         self,
@@ -120,7 +216,9 @@ class TagService:
                         MagicBotoCardModel.oracle_id.in_(list(oracle_ids))
                     )
                 )
-            ).scalars().all()
+            )
+            .scalars()
+            .all()
         )
         not_found = [oid for oid in oracle_ids if oid not in found_ids]
         if not_found:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
+from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from app.db import get_async_session_factory
@@ -11,7 +12,7 @@ from app.errors import InvalidRequestError, NotFoundError
 from app.mcp.error_middleware import AppMcp
 from app.schema.tag_schema import Tag
 from app.services import create_tag_service
-from mcp.types import ToolAnnotations
+from app.services.tag_service import CardTagEntry
 
 _tag_service = create_tag_service()
 
@@ -117,7 +118,9 @@ def register_tags_tools(app_mcp: AppMcp) -> None:
     ) -> Literal["ok"]:
         factory = get_async_session_factory()
         async with factory() as session:
-            ok = await _tag_service.add_card_tags(session, tag_name, oracle_ids)
+            ok = await _tag_service.add_card_tags(
+                session, tag_name, [CardTagEntry(oracle_id=oid) for oid in oracle_ids]
+            )
             if not ok:
                 raise NotFoundError(f"Tag '{tag_name}' not found.")
             await session.commit()

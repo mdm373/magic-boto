@@ -10,6 +10,7 @@ from pathlib import Path
 from loguru import logger
 
 from app.db import get_async_session_factory
+from app.log import configure_cli_logging
 from app.services import create_inventory_service
 from settings import get_settings
 
@@ -23,15 +24,6 @@ def _parse_args() -> tuple[Path, str]:
         raise ValueError("Usage: python -m app.inventory.import.main <csv_path> <inventory_name>")
     return Path(args[0]), args[1]
 
-
-def _configure_import_logging() -> None:
-    """stderr + plain messages: matches fetch CLI; respects ``LOG_LEVEL``."""
-    logger.remove()
-    logger.add(
-        sys.stderr,
-        level=os.environ.get("LOG_LEVEL", "INFO").upper(),
-        format="{message}",
-    )
 
 
 parser = CsvParser()
@@ -90,7 +82,7 @@ async def _run(csv_path: Path, inventory_name: str) -> None:
 
 
 def main() -> None:
-    _configure_import_logging()
+    configure_cli_logging()
     csv_path, inventory_name = _parse_args()
     asyncio.run(_run(csv_path, inventory_name))
 

@@ -50,6 +50,19 @@ def db_schema(c: Context) -> None:
     c.run(f'pg_dump -s -f "{out_path}"', env=env)
 
 
+@task
+def get_tag(c: Context, name: str = "") -> None:
+    """Show a tag by name, or list all tags if no name is given."""
+    argv = ["uv", "run", "python", "-m", "app.tag.get.main"]
+    if name.strip():
+        argv.append(name.strip())
+    if c.cwd:
+        subprocess.run(argv, check=True, cwd=c.cwd)
+    else:
+        subprocess.run(argv, check=True)
+
+
 ns = Collection("export")
 ns.add_task(export_inventory, name="inventory", default=True)
 ns.add_task(db_schema, name="db-schema")
+ns.add_task(get_tag, name="tag")

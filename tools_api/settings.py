@@ -29,12 +29,13 @@ class Settings(BaseSettings):
         description="Anthropic API key — required for the generate.tags sweep task only.",
     )
 
+    # Low-effort sweep: fast/cheap model processes every card in bulk.
     tag_sweep_model: str = Field(
         default="claude-haiku-4-5-20251001",
-        description="Anthropic model ID used by the tag sweep task.",
+        description="Fast, low-cost model used by the bulk tag sweep task.",
     )
     tag_sweep_limit: int = Field(
-        default=50,
+        default=20,
         ge=1,
         le=200,
         description="Cards per page for the tag sweep task.",
@@ -42,7 +43,23 @@ class Settings(BaseSettings):
     tag_sweep_max_tokens: int = Field(
         default=2048,
         ge=256,
-        description="Max tokens for each Claude call in the tag sweep task.",
+        description="Max tokens per Claude call in the tag sweep task.",
+    )
+    tag_sweep_max_hallucination_retries: int = Field(
+        default=2,
+        ge=0,
+        description="How many times to retry a Claude call that returns hallucinated oracle IDs.",
+    )
+
+    # High-effort audit: powerful model reviews a sample for quality feedback.
+    tag_audit_model: str = Field(
+        default="claude-opus-4-6",
+        description="Powerful, high-effort model used by the tag audit task.",
+    )
+    tag_audit_max_tokens: int = Field(
+        default=4096,
+        ge=256,
+        description="Max tokens for the Claude call in the tag audit task.",
     )
     debug_output_dir: str = Field(
         default="debug",
