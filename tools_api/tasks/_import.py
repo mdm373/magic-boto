@@ -92,10 +92,10 @@ def create_tag(c: Context) -> None:
         raise Exit("Tag name is required.")
 
     types_raw = input(
-        "Sweep include types (comma-separated, e.g. creature,artifact — blank for all): "
+        "Sweep include types (comma-separated, e.g. creature,artifact or -land — blank for all): "
     ).strip()
     supertypes_raw = input(
-        "Sweep include supertypes (comma-separated, e.g. legendary — blank for all): "
+        "Sweep include supertypes (comma-separated, e.g. legendary or -basic — blank for all): "
     ).strip()
 
     description = _read_multiline("Tag description (two blank lines to finish):")
@@ -104,9 +104,9 @@ def create_tag(c: Context) -> None:
 
     argv = ["uv", "run", "python", "-m", "app.tag.create.main", name, description]
     if types_raw:
-        argv += ["--types", types_raw]
+        argv += [f"--types={types_raw}"]
     if supertypes_raw:
-        argv += ["--supertypes", supertypes_raw]
+        argv += [f"--supertypes={supertypes_raw}"]
 
     if c.cwd:
         subprocess.run(argv, check=True, cwd=c.cwd)

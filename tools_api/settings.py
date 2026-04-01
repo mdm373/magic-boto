@@ -29,6 +29,14 @@ class Settings(BaseSettings):
         description="Anthropic API key — required for the generate.tags sweep task only.",
     )
 
+    # Anthropic Messages Batch API.
+    batch_api_max_requests: int = Field(
+        default=10_000,
+        ge=1,
+        le=10_000,
+        description="Maximum number of requests per Anthropic Messages Batch submission.",
+    )
+
     # Low-effort sweep: fast/cheap model processes every card in bulk.
     tag_sweep_model: str = Field(
         default="claude-haiku-4-5-20251001",

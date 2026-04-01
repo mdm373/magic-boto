@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -56,6 +57,67 @@ class TagService:
         result = await session.execute(stmt)
         row = result.scalar_one_or_none()
         return _tag_from_model(row) if row else None
+
+    async def get_tag_model(
+        self,
+        session: AsyncSession,
+        name: str,
+        load_relationships: bool = False,
+    ) -> MagicBotoTagModel | None:
+        """Return the ORM tag model by canonical name, or None if not found."""
+        canonical = _canonical_tag_name(name)
+        tag = cast(
+            MagicBotoTagModel | None,
+            await session.scalar(
+                select(MagicBotoTagModel).where(MagicBotoTagModel.name == canonical)
+            ),
+        )
+        if tag is not None and load_relationships:
+            _ = tag.tag_types
+            _ = tag.supertypes
+        return tag
+
+    async def require_tag_model(
+        self,
+        session: AsyncSession,
+        name: str,
+        load_relationships: bool = False,
+    ) -> MagicBotoTagModel:
+        """Return the ORM tag model by canonical name. Raises ValueError if not found."""
+        tag = await self.get_tag_model(session, name, load_relationships=load_relationships)
+        if tag is None:
+            raise ValueError(f"Tag '{name}' not found.")
+        return tag
+
+    async def get_tag_model_by_id(
+        self,
+        session: AsyncSession,
+        tag_id: uuid.UUID,
+        load_relationships: bool = False,
+    ) -> MagicBotoTagModel | None:
+        """Return the ORM tag model by ID, or None if not found."""
+        tag = cast(
+            MagicBotoTagModel | None,
+            await session.scalar(select(MagicBotoTagModel).where(MagicBotoTagModel.id == tag_id)),
+        )
+        if tag is not None and load_relationships:
+            _ = tag.tag_types
+            _ = tag.supertypes
+        return tag
+
+    async def require_tag_model_by_id(
+        self,
+        session: AsyncSession,
+        tag_id: uuid.UUID,
+        load_relationships: bool = False,
+    ) -> MagicBotoTagModel:
+        """Return the ORM tag model by ID. Raises ValueError if not found."""
+        tag = await self.get_tag_model_by_id(
+            session, tag_id, load_relationships=load_relationships
+        )
+        if tag is None:
+            raise ValueError(f"Tag ID {tag_id} not found.")
+        return tag
 
     async def create_tag(
         self,

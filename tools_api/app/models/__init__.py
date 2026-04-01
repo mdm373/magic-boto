@@ -13,10 +13,11 @@ from .magic_boto_card_tag import MagicBotoCardTagModel
 from .magic_boto_card_type import MagicBotoCardTypeModel
 from .magic_boto_edition import MagicBotoEditionModel
 from .magic_boto_inventory import MagicBotoInventoryCardModel, MagicBotoInventoryModel
-from .magic_boto_oracle_tag_sweep import MagicBotoOracleTagSweepModel
 from .magic_boto_tag import MagicBotoTagModel
 from .magic_boto_tag_supertype import MagicBotoTagSupertypeModel
 from .magic_boto_tag_type import MagicBotoTagTypeModel
+from .sweep_run import SweepRunModel
+from .sweep_run_batch import SweepRunBatchModel
 
 __all__ = [
     "CardRarity",
@@ -34,7 +35,8 @@ __all__ = [
     "MagicBotoCardTagModel",
     "MagicBotoInventoryModel",
     "MagicBotoTagModel",
-    "MagicBotoOracleTagSweepModel",
     "MagicBotoTagSupertypeModel",
     "MagicBotoTagTypeModel",
+    "SweepRunModel",
+    "SweepRunBatchModel",
 ]

@@ -8,7 +8,7 @@ from typing import cast
 
 from invoke import Collection
 
-from tasks import _delete, _export, _import, build, fetch, generate, lint, migrate, serve
+from tasks import _delete, _export, _import, build, fetch, generate, lint, migrate, serve, sweep
 
 
 def _from_module(module: ModuleType) -> Collection:
@@ -25,3 +25,4 @@ ns.add_collection(_from_module(_export), name="export")
 ns.add_collection(_from_module(_import), name="import")
 ns.add_collection(_from_module(_delete), name="delete")
 ns.add_collection(_from_module(generate), name="generate")
+ns.add_collection(_from_module(sweep), name="sweep")

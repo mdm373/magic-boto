@@ -84,7 +84,6 @@ def register_tags_tools(app_mcp: AppMcp) -> None:
         sweep_include_types: Annotated[
             list[str],
             Field(
-                default_factory=list,
                 description=(
                     "Card types the sweep should be restricted to "
                     "(e.g. ['creature', 'artifact']). Omit or pass empty to sweep all types."
@@ -94,7 +93,6 @@ def register_tags_tools(app_mcp: AppMcp) -> None:
         sweep_include_supertypes: Annotated[
             list[str],
             Field(
-                default_factory=list,
                 description=(
                     "Card supertypes the sweep should be restricted to "
                     "(e.g. ['legendary']). Omit or pass empty to sweep all supertypes."

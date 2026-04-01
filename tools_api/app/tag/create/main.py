@@ -9,6 +9,8 @@ from loguru import logger
 
 from app.db import get_async_session_factory
 from app.log import configure_cli_logging
+from app.models.card_supertype import CardSupertype
+from app.models.card_type import CardType
 from app.services import create_tag_service
 
 _tag_service = create_tag_service()
@@ -41,9 +43,25 @@ async def _run(
         logger.info("  Supertypes filter: {}", ", ".join(tag.sweep_include_supertypes))
 
 
-def _parse_csv(value: str) -> list[str]:
-    """Parse a comma-separated string into a stripped, lowercased list, ignoring blanks."""
-    return [v.strip().lower() for v in value.split(",") if v.strip()]
+def _parse_csv(value: str, all_values: frozenset[str]) -> list[str]:
+    """Parse a comma-separated filter string, supporting '-' prefix for exclusion.
+
+    Plain values (e.g. 'creature,artifact') are returned as-is.
+    Negated values (e.g. '-land,-instant') expand to all_values minus the excluded set.
+    """
+    tokens = [v.strip().lower() for v in value.split(",") if v.strip()]
+    if not tokens:
+        return []
+    negated = [t.startswith("-") for t in tokens]
+    if any(negated) and not all(negated):
+        mixed = ", ".join(tokens)
+        raise ValueError(
+            f"Mix of negated and plain values is not allowed: {mixed!r}. "
+            "Either prefix all values with '-' to exclude, or provide plain values to include."
+        )
+    if any(negated):
+        return sorted(all_values - {t.lstrip("-") for t in tokens})
+    return tokens
 
 
 def main() -> None:
@@ -69,8 +87,8 @@ def main() -> None:
         _run(
             args.name,
             args.description,
-            _parse_csv(args.types),
-            _parse_csv(args.supertypes),
+            _parse_csv(args.types, frozenset(CardType)),
+            _parse_csv(args.supertypes, frozenset(CardSupertype)),
         )
     )
 

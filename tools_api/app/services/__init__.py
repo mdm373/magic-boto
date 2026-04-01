@@ -5,7 +5,7 @@ from .card_service import CardService
 from .edition_service import EditionService
 from .inventory_service import InventoryService
 from .mapper import CardMapper, EditionMapper
-from .oracle_tag_sweep_service import OracleTagSweepService
+from .sweep_run_service import SweepRunService
 from .tag_service import TagService
 
 
@@ -29,9 +29,9 @@ def create_tag_service() -> TagService:
     return TagService()
 
 
-def create_oracle_tag_sweep_service() -> OracleTagSweepService:
-    """Create the oracle tag sweep service."""
-    return OracleTagSweepService()
+def create_sweep_run_service() -> SweepRunService:
+    """Create the sweep run service."""
+    return SweepRunService()
 
 
 __all__ = [
@@ -39,11 +39,11 @@ __all__ = [
     "create_edition_service",
     "create_inventory_service",
     "create_tag_service",
-    "create_oracle_tag_sweep_service",
+    "create_sweep_run_service",
     "CardSearchQueryBuilder",
     "CardService",
     "EditionService",
     "InventoryService",
     "TagService",
-    "OracleTagSweepService",
+    "SweepRunService",
 ]
