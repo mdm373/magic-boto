@@ -16,13 +16,15 @@ from app.tag.card_payload import card_to_dict
 from settings import get_settings
 
 _PROMPTS_DIR = Path(__file__).parent
-SYSTEM_PROMPT = (_PROMPTS_DIR / "system_prompt.md").read_text().strip()
-_USER_PROMPT_TEMPLATE = (_PROMPTS_DIR / "user_prompt.md").read_text()
+_SYSTEM_PROMPT_TEMPLATE = (_PROMPTS_DIR / "system_prompt.md").read_text().strip()
 
 
-def _build_user_message(tag_description: str, cards: list[Mapping[str, object]]) -> str:
-    cards_json = json.dumps(cards, indent=2)
-    return _USER_PROMPT_TEMPLATE.format(tag_description=tag_description, cards_json=cards_json)
+def _build_system_prompt(tag_description: str) -> str:
+    return _SYSTEM_PROMPT_TEMPLATE.format(tag_description=tag_description)
+
+
+def _build_user_message(cards: list[Mapping[str, object]]) -> str:
+    return json.dumps(cards, separators=(",", ":"))
 
 
 def _extract_entries(raw_entries: list[object]) -> list[CardTagEntry]:
@@ -75,29 +77,36 @@ class SweepClaudeClient:
         max_tokens: int,
         max_hallucination_retries: int,
         log_path: Path,
+        tag_description: str,
     ) -> None:
         self._client = client
         self._model = model
         self._max_tokens = max_tokens
         self._max_hallucination_retries = max_hallucination_retries
         self._log_path = log_path
+        self._system_prompt = _build_system_prompt(tag_description)
 
     def call(
         self,
-        tag_description: str,
         cards: Sequence[MagicBotoCardModel],
     ) -> tuple[list[CardTagEntry], list[CardTagEntry]]:
         """Return (tag_entries, unsure_entries), retrying on hallucinated oracle IDs."""
         card_dicts = [card_to_dict(c) for c in cards]
         input_ids = {str(c.oracle_id) for c in cards}
-        user_message = _build_user_message(tag_description, card_dicts)
+        user_message = _build_user_message(card_dicts)
         messages: list[MessageParam] = [{"role": "user", "content": user_message}]
 
         for attempt in range(1 + self._max_hallucination_retries):
             response = self._client.messages.create(
                 model=self._model,
                 max_tokens=self._max_tokens,
-                system=SYSTEM_PROMPT,
+                system=[
+                    {
+                        "type": "text",
+                        "text": self._system_prompt,
+                        "cache_control": {"type": "ephemeral"},
+                    }
+                ],
                 messages=messages,
             )
             text_blocks = [b for b in response.content if b.type == "text"]
@@ -190,7 +199,7 @@ class SweepClaudeClient:
 _settings = get_settings()
 
 
-def create_sweep_claude_client() -> SweepClaudeClient:
+def create_sweep_claude_client(tag_description: str) -> SweepClaudeClient:
     api_key = _settings.anthropic_api_key
     if not api_key:
         raise ValueError("ANTHROPIC_API_KEY is not set — required for the tag sweep client.")
@@ -203,4 +212,5 @@ def create_sweep_claude_client() -> SweepClaudeClient:
         _settings.tag_sweep_max_tokens,
         _settings.tag_sweep_max_hallucination_retries,
         claude_log_path,
+        tag_description,
     )

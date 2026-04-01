@@ -13,7 +13,7 @@ from app.log import configure_cli_logging
 from app.services import create_oracle_tag_sweep_service, create_tag_service
 from app.services.oracle_tag_sweep_service import SweepPage
 from app.services.tag_service import CardTagEntry
-from app.tag.sweep.claude_client import SweepClaudeClient, create_sweep_claude_client
+from app.tag.sweep.claude_client import create_sweep_claude_client
 from settings import get_settings
 
 _sweep_service = create_oracle_tag_sweep_service()
@@ -41,7 +41,6 @@ def _parse_args() -> argparse.Namespace:
 
 async def _run(
     tag_name: str,
-    client: SweepClaudeClient,
     include_unsure: bool,
     include_excluded: bool,
 ) -> None:
@@ -71,6 +70,10 @@ async def _run(
             logger.info("Created tag '{}'.", excluded_tag_name)
         await session.commit()
 
+    # Build the client after tag description is known; description is baked into
+    # the cached system prompt so it must be available at construction time.
+    client = create_sweep_claude_client(tag.description)
+
     page_num = 0
     total_tagged = 0
     total_unsure = 0
@@ -89,7 +92,7 @@ async def _run(
         page_num += 1
         current_cards = page.cards
         total_pending = page.total_pending
-        tag_entries, unsure_entries = client.call(tag.description, current_cards)
+        tag_entries, unsure_entries = client.call(current_cards)
 
         classified = {e.oracle_id for e in tag_entries} | {e.oracle_id for e in unsure_entries}
         excluded_entries = [
@@ -140,8 +143,7 @@ async def _run(
 def main() -> None:
     configure_cli_logging()
     args = _parse_args()
-    client = create_sweep_claude_client()
-    asyncio.run(_run(args.tag, client, args.include_unsure, args.include_excluded))
+    asyncio.run(_run(args.tag, args.include_unsure, args.include_excluded))
 
 
 if __name__ == "__main__":

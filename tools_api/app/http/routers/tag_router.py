@@ -58,7 +58,13 @@ def create_tag_router() -> APIRouter:
         existing = await service.get_tag(session, canonical)
         if existing is not None:
             raise InvalidRequestError(f"Tag '{canonical}' already exists.")
-        tag = await service.create_tag(session, canonical, body.description)
+        tag = await service.create_tag(
+            session,
+            canonical,
+            body.description,
+            sweep_include_types=body.sweep_include_types,
+            sweep_include_supertypes=body.sweep_include_supertypes,
+        )
         await session.commit()
         return tag
 

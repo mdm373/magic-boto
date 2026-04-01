@@ -10,13 +10,13 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from loguru import logger
+from mcp.server.fastmcp import FastMCP
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp
 
 from app.db import close_async_engine, close_pool, get_async_engine, get_pool
-from mcp.server.fastmcp import FastMCP
 
 from .error_middleware import AppMcp
 from .tools import register_tools

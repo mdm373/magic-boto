@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import sys
 
-from loguru import logger
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.db import get_async_sqlalchemy_url

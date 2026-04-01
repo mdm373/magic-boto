@@ -7,11 +7,11 @@ from functools import wraps
 from typing import Any, ParamSpec, TypeAlias, TypeVar
 
 from loguru import logger
+from mcp.server.fastmcp import FastMCP
+from mcp.types import INTERNAL_ERROR, INVALID_PARAMS, ErrorData, Icon, ToolAnnotations
 
 from app.errors import InternalError, InvalidRequestError, NotFoundError
 from mcp import McpError
-from mcp.server.fastmcp import FastMCP
-from mcp.types import INTERNAL_ERROR, INVALID_PARAMS, ErrorData, Icon, ToolAnnotations
 
 P = ParamSpec("P")
 R = TypeVar("R")

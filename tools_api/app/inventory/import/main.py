@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 from pathlib import Path
 
@@ -23,7 +22,6 @@ def _parse_args() -> tuple[Path, str]:
     if len(args) != 2:
         raise ValueError("Usage: python -m app.inventory.import.main <csv_path> <inventory_name>")
     return Path(args[0]), args[1]
-
 
 
 parser = CsvParser()

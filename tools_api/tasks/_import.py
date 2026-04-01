@@ -86,16 +86,28 @@ def import_csv(c: Context) -> None:
 
 @task
 def create_tag(c: Context) -> None:
-    """Prompt for tag name and description, then create the tag."""
+    """Prompt for tag name, description, and optional sweep filters, then create the tag."""
     name = input("Tag name: ").strip()
     if not name:
         raise Exit("Tag name is required.")
+
+    types_raw = input(
+        "Sweep include types (comma-separated, e.g. creature,artifact — blank for all): "
+    ).strip()
+    supertypes_raw = input(
+        "Sweep include supertypes (comma-separated, e.g. legendary — blank for all): "
+    ).strip()
 
     description = _read_multiline("Tag description (two blank lines to finish):")
     if not description:
         raise Exit("Tag description is required.")
 
     argv = ["uv", "run", "python", "-m", "app.tag.create.main", name, description]
+    if types_raw:
+        argv += ["--types", types_raw]
+    if supertypes_raw:
+        argv += ["--supertypes", supertypes_raw]
+
     if c.cwd:
         subprocess.run(argv, check=True, cwd=c.cwd)
     else:

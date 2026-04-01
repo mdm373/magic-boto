@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import cast
 
+from mcp.types import ToolAnnotations
+
 from app.db import get_async_session_factory
 from app.errors import NotFoundError
 from app.mcp.error_middleware import AppMcp
@@ -15,7 +17,6 @@ from app.schema import (
     MtgjsonCard,
 )
 from app.services import create_card_service
-from mcp.types import ToolAnnotations
 
 _card_service = create_card_service()
 

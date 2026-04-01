@@ -16,3 +16,8 @@ Each value is an array of objects with two keys: "id" (the oracle_id string) and
 
 Example:
 {"tag": [{"id": "abc-123", "reason": "Taps for mana via activated ability; no exclusion applies"}], "unsure": [{"id": "def-456", "reason": "Produces mana but restriction is ambiguous"}]}
+
+---
+
+Tag instructions:
+{tag_description}

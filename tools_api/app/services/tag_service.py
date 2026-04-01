@@ -14,6 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.errors import InvalidRequestError
 from app.models import MagicBotoCardTagModel, MagicBotoTagModel
 from app.models.magic_boto_card import MagicBotoCardModel
+from app.models.magic_boto_tag_supertype import MagicBotoTagSupertypeModel
+from app.models.magic_boto_tag_type import MagicBotoTagTypeModel
 from app.schema.tag_schema import Tag
 
 
@@ -29,6 +31,15 @@ def _canonical_tag_name(name: str) -> str:
     return name.strip().lower()
 
 
+def _tag_from_model(row: MagicBotoTagModel) -> Tag:
+    return Tag(
+        name=row.name,
+        description=row.description,
+        sweep_include_types=[r.card_type for r in row.tag_types],
+        sweep_include_supertypes=[r.card_supertype for r in row.supertypes],
+    )
+
+
 class TagService:
     """Create, read, and delete tags; apply and remove tags from cards."""
 
@@ -36,7 +47,7 @@ class TagService:
         """Return all tags sorted by name."""
         stmt = select(MagicBotoTagModel).order_by(MagicBotoTagModel.name.asc())
         result = await session.execute(stmt)
-        return [Tag(name=row.name, description=row.description) for row in result.scalars().all()]
+        return [_tag_from_model(row) for row in result.scalars().all()]
 
     async def get_tag(self, session: AsyncSession, name: str) -> Tag | None:
         """Return a tag by canonical name, or None if not found."""
@@ -44,16 +55,36 @@ class TagService:
         stmt = select(MagicBotoTagModel).where(MagicBotoTagModel.name == canonical)
         result = await session.execute(stmt)
         row = result.scalar_one_or_none()
-        return Tag(name=row.name, description=row.description) if row else None
+        return _tag_from_model(row) if row else None
 
-    async def create_tag(self, session: AsyncSession, name: str, description: str) -> Tag:
+    async def create_tag(
+        self,
+        session: AsyncSession,
+        name: str,
+        description: str,
+        sweep_include_types: Sequence[str] = (),
+        sweep_include_supertypes: Sequence[str] = (),
+    ) -> Tag:
         """Insert a new tag; does not commit (caller owns the transaction)."""
         canonical = _canonical_tag_name(name)
-        tag = MagicBotoTagModel(name=canonical, description=description.strip())
+        tag = MagicBotoTagModel(
+            name=canonical,
+            description=description.strip(),
+            tag_types=[
+                MagicBotoTagTypeModel(card_type=t.strip().lower())
+                for t in sweep_include_types
+                if t.strip()
+            ],
+            supertypes=[
+                MagicBotoTagSupertypeModel(card_supertype=s.strip().lower())
+                for s in sweep_include_supertypes
+                if s.strip()
+            ],
+        )
         session.add(tag)
         await session.flush()
         await session.refresh(tag)
-        return Tag(name=tag.name, description=tag.description)
+        return _tag_from_model(tag)
 
     async def rename_tag(self, session: AsyncSession, old_name: str, new_name: str) -> bool:
         """Rename a tag.

@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import uuid
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Text, Uuid
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
+
+if TYPE_CHECKING:
+    from .magic_boto_tag_supertype import MagicBotoTagSupertypeModel
+    from .magic_boto_tag_type import MagicBotoTagTypeModel
 
 
 class MagicBotoTagModel(Base):
@@ -23,3 +28,16 @@ class MagicBotoTagModel(Base):
     )
     name: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     description: Mapped[str] = mapped_column(Text, nullable=False)
+
+    tag_types: Mapped[list[MagicBotoTagTypeModel]] = relationship(
+        "MagicBotoTagTypeModel",
+        back_populates="tag",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+    )
+    supertypes: Mapped[list[MagicBotoTagSupertypeModel]] = relationship(
+        "MagicBotoTagSupertypeModel",
+        back_populates="tag",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+    )

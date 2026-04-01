@@ -4,7 +4,8 @@
       "Bash(find /f/Projects/magic-boto/tools_api -name *.sql -type f ! -path */.git/*)",
       "Bash(grep -E \"\\\\.py$|\\\\.sql$\")",
       "Bash(wc -l /f/Projects/magic-boto/tools_api/app/mcp/tools/*.py)",
-      "Bash(uv run:*)"
+      "Bash(uv run:*)",
+      "WebFetch(domain:mtg.wiki)"
     ]
   }
 }

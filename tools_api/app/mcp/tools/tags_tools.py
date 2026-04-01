@@ -81,6 +81,26 @@ def register_tags_tools(app_mcp: AppMcp) -> None:
             str,
             Field(description="Description of the tag's intent for the agent to understand."),
         ],
+        sweep_include_types: Annotated[
+            list[str],
+            Field(
+                default_factory=list,
+                description=(
+                    "Card types the sweep should be restricted to "
+                    "(e.g. ['creature', 'artifact']). Omit or pass empty to sweep all types."
+                ),
+            ),
+        ] = [],
+        sweep_include_supertypes: Annotated[
+            list[str],
+            Field(
+                default_factory=list,
+                description=(
+                    "Card supertypes the sweep should be restricted to "
+                    "(e.g. ['legendary']). Omit or pass empty to sweep all supertypes."
+                ),
+            ),
+        ] = [],
     ) -> Tag:
         canonical = name.strip().lower()
         if not canonical:
@@ -92,7 +112,13 @@ def register_tags_tools(app_mcp: AppMcp) -> None:
             existing = await _tag_service.get_tag(session, canonical)
             if existing is not None:
                 raise InvalidRequestError(f"Tag '{canonical}' already exists.")
-            tag = await _tag_service.create_tag(session, canonical, description)
+            tag = await _tag_service.create_tag(
+                session,
+                canonical,
+                description,
+                sweep_include_types=sweep_include_types,
+                sweep_include_supertypes=sweep_include_supertypes,
+            )
             await session.commit()
         return tag
 
