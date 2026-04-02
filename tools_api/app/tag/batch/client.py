@@ -65,7 +65,7 @@ class BatchSweepClient:
                         {
                             "type": "text",
                             "text": self._system_prompt,
-                            "cache_control": {"type": "ephemeral"},
+                            "cache_control": {"type": "ephemeral", "ttl": "1h"},
                         }
                     ],
                     "messages": [{"role": "user", "content": _card_to_user_message(card)}],

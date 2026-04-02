@@ -43,8 +43,6 @@ _sweep_run_service = create_sweep_run_service()
 _tag_service = create_tag_service()
 
 
-
-
 async def _submit_oracle_ids_file(oracle_ids_file: str, tag: MagicBotoTagModel) -> None:
     """Create a fresh run and submit the oracle IDs from the file."""
     oracle_ids = [

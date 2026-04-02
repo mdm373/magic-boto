@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import cast
 
-from sqlalchemy import exists, func, select, update
+from sqlalchemy import delete, exists, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.magic_boto_card import MagicBotoCardModel
@@ -78,6 +78,20 @@ class SweepRunService:
             .where(SweepRunModel.id == run_id)
             .values(status=SweepRunStatus.FAILED)
         )
+
+    async def delete_open_run(self, session: AsyncSession, tag_id: uuid.UUID) -> uuid.UUID | None:
+        """Delete the open run for a tag (cascades to batches). Returns the deleted run ID or None."""
+        row = await session.scalar(
+            select(SweepRunModel)
+            .where(SweepRunModel.tag_id == tag_id, SweepRunModel.status == SweepRunStatus.OPEN)
+            .order_by(SweepRunModel.triggered_at.desc())
+            .limit(1)
+        )
+        if row is None:
+            return None
+        run_id = row.id
+        await session.execute(delete(SweepRunModel).where(SweepRunModel.id == run_id))
+        return run_id
 
     async def get_epoch_gate(self, session: AsyncSession, tag_id: uuid.UUID) -> datetime | None:
         """Return triggered_at of the last complete run, or None (first-ever sweep)."""

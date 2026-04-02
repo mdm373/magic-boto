@@ -77,6 +77,8 @@ MCP tools are organized by resource under `app/mcp/tools/` — one `register_*_t
 
 DB session lifecycle: services never commit; the tool or route that opens the session calls `session.commit()`.
 
+**Session scope:** open one session per logical unit of work — not one per service call. A sequence of reads, or a read-then-write that commits once, should share a single `async with session_factory() as session:` block. Only open separate sessions when each block genuinely needs its own independent commit boundary (e.g. a loop that records batches one at a time so a mid-loop failure does not roll back prior commits).
+
 ## General
 
 - **Prefer libraries over custom code.** Before adding types, helpers, or integrations, check whether an official or widely adopted library already provides them. Use those so the codebase stays aligned with specs and benefits from upstream fixes.

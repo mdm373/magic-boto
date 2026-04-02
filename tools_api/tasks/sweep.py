@@ -7,6 +7,8 @@ import webbrowser
 
 from invoke import Collection, Context, Exit, task
 
+from ._import import _read_multiline
+
 _BATCHES_URL = "https://platform.claude.com/workspaces/default/batches"
 
 
@@ -124,11 +126,24 @@ def run(
         if not tag:
             raise Exit("Tag name is required.")
     else:
-        # Delegate to import.tag — it prompts for name, types, supertypes, description.
-        _run_subprocess(c, ["uv", "run", "invoke", "import.tag"])
-        tag = input("Tag name just created: ").strip()
+        tag = input("Tag name: ").strip()
         if not tag:
             raise Exit("Tag name is required.")
+        types_raw = input(
+            "Sweep include types (comma-separated, e.g. creature,artifact — blank for all): "
+        ).strip()
+        supertypes_raw = input(
+            "Sweep include supertypes (comma-separated, e.g. legendary or -basic — blank for all): "
+        ).strip()
+        description = _read_multiline("Tag description (two blank lines to finish):")
+        if not description:
+            raise Exit("Tag description is required.")
+        create_argv = ["uv", "run", "python", "-m", "app.tag.create.main", tag, description]
+        if types_raw:
+            create_argv += [f"--types={types_raw}"]
+        if supertypes_raw:
+            create_argv += [f"--supertypes={supertypes_raw}"]
+        _run_subprocess(c, create_argv)
 
     # --- Limit ---
     if limit == 0:
@@ -138,9 +153,22 @@ def run(
 
     include_unsure = _prompt_yn("Tag uncertain cards with {tag}_unsure?")
     include_excluded = _prompt_yn("Tag non-qualifying cards with {tag}_excluded?")
+    send_canary = _prompt_yn(
+        "Send cache canary first? (submits 1 card, waits for it to finish, then sends the rest)"
+    )
 
-    # --- Kickoff ---
-    kickoff_argv = ["uv", "run", "python", "-m", "app.tag.kickoff.main", tag]
+    kickoff_base = ["uv", "run", "python", "-m", "app.tag.kickoff.main", tag]
+
+    # --- Canary: kickoff 1 card, wait for it, then resume ---
+    if send_canary:
+        result = _run_subprocess(c, kickoff_base + ["--limit", "1"], capture_stdout=True)
+        run_id = result.stdout.strip()
+        if not run_id:
+            raise Exit("Canary kickoff did not return a run ID.")
+        _run_subprocess(c, ["uv", "run", "python", "-m", "app.tag.poll.main", run_id, "--wait"])
+
+    # --- Kickoff remaining (or all cards if no canary) ---
+    kickoff_argv = kickoff_base[:]
     if limit > 0:
         kickoff_argv += ["--limit", str(limit)]
     result = _run_subprocess(c, kickoff_argv, capture_stdout=True)
@@ -149,11 +177,38 @@ def run(
         raise Exit("Kickoff did not return a run ID.")
 
     # --- Poll ---
-    poll_argv = ["uv", "run", "python", "-m", "app.tag.poll.main", run_id, "--wait"]
-    _run_subprocess(c, poll_argv)
+    _run_subprocess(c, ["uv", "run", "python", "-m", "app.tag.poll.main", run_id, "--wait"])
 
     # --- Process ---
     process(c, run_id=run_id, include_unsure=include_unsure, include_excluded=include_excluded)
+
+
+@task
+def reset(c: Context, tag: str = "") -> None:
+    """Show or delete the open sweep run for a tag.
+
+    Without --delete, prints current run and batch state.
+    With --delete, deletes the open run (cascades to batches) so kickoff starts fresh.
+    """
+    if not tag.strip():
+        tag = input("Tag name: ").strip()
+    if not tag:
+        raise Exit("Tag name is required.")
+
+    # Show current state first.
+    result = _run_subprocess(
+        c,
+        ["uv", "run", "python", "-m", "app.tag.reset.main", tag],
+        capture_stdout=True,
+    )
+    run_id = result.stdout.strip()
+    if not run_id:
+        return
+
+    if not _prompt_yn(f"Delete run {run_id} and all its batches? Kickoff will start fresh."):
+        return
+
+    _run_subprocess(c, ["uv", "run", "python", "-m", "app.tag.reset.main", tag, "--delete"])
 
 
 def _run_subprocess(
@@ -174,3 +229,4 @@ ns.add_task(kickoff)
 ns.add_task(poll)
 ns.add_task(process)
 ns.add_task(run, default=True)
+ns.add_task(reset)

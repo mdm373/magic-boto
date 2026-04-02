@@ -61,10 +61,7 @@ def _parse_result_line(text: str) -> tuple[Verdict, str] | None:
     return verdict, reason.strip()
 
 
-
-async def _ensure_side_tags(
-    tag_name: str, include_unsure: bool, include_excluded: bool
-) -> None:
+async def _ensure_side_tags(tag_name: str, include_unsure: bool, include_excluded: bool) -> None:
     """Create _unsure / _excluded side-tags if they are needed and don't yet exist."""
     session_factory = get_async_session_factory()
     async with session_factory() as session:
@@ -91,6 +88,10 @@ class _BatchClassification:
     unsure_entries: Sequence[CardTagEntry] = field(default_factory=list)
     excluded_entries: Sequence[CardTagEntry] = field(default_factory=list)
     failed_ids: Sequence[str] = field(default_factory=list)
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_creation_tokens: int = 0
 
 
 def _classify_batch_results(
@@ -101,6 +102,7 @@ def _classify_batch_results(
     unsure_entries: list[CardTagEntry] = []
     excluded_entries: list[CardTagEntry] = []
     failed_ids: list[str] = []
+    input_tokens = output_tokens = cache_read_tokens = cache_creation_tokens = 0
 
     for result in batch_client.get_results(batch.batch_id):
         oracle_id: str = result.custom_id
@@ -115,9 +117,13 @@ def _classify_batch_results(
             failed_ids.append(oracle_id)
             continue
 
-        text_blocks: list[Any] = [
-            b for b in result.result.message.content if b.type == "text"
-        ]
+        usage = result.result.message.usage
+        input_tokens += usage.input_tokens
+        output_tokens += usage.output_tokens
+        cache_read_tokens += getattr(usage, "cache_read_input_tokens", 0) or 0
+        cache_creation_tokens += getattr(usage, "cache_creation_input_tokens", 0) or 0
+
+        text_blocks: list[Any] = [b for b in result.result.message.content if b.type == "text"]
         raw = text_blocks[0].text if text_blocks else ""
         parsed = _parse_result_line(raw)
 
@@ -147,6 +153,10 @@ def _classify_batch_results(
         unsure_entries=unsure_entries,
         excluded_entries=excluded_entries,
         failed_ids=failed_ids,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cache_read_tokens=cache_read_tokens,
+        cache_creation_tokens=cache_creation_tokens,
     )
 
 
@@ -248,6 +258,7 @@ async def _run(run_id_str: str, include_unsure: bool, include_excluded: bool) ->
 
     batch_client = create_batch_client(tag.description)
     total_tagged = total_unsure = total_excluded = 0
+    total_input = total_output = total_cache_read = total_cache_creation = 0
     all_failed_ids: list[str] = []
 
     for batch in processable:
@@ -258,22 +269,48 @@ async def _run(run_id_str: str, include_unsure: bool, include_excluded: bool) ->
         total_unsure += len(classified.unsure_entries)
         total_excluded += len(classified.excluded_entries)
         all_failed_ids.extend(classified.failed_ids)
+        total_input += classified.input_tokens
+        total_output += classified.output_tokens
+        total_cache_read += classified.cache_read_tokens
+        total_cache_creation += classified.cache_creation_tokens
 
+        cacheable = classified.input_tokens + classified.cache_read_tokens
+        hit_pct = (classified.cache_read_tokens / cacheable * 100) if cacheable else 0.0
+        batch_prefix = batch.batch_id[:20]
         logger.info(
             "Batch {} — tagged: {} | unsure: {} | excluded: {} | failed: {}",
-            batch.batch_id[:20],
+            batch_prefix,
             len(classified.tag_entries),
             len(classified.unsure_entries),
             len(classified.excluded_entries),
             len(classified.failed_ids),
         )
+        logger.info(
+            "Batch {} — tokens in: {} out: {} cache_read: {} cache_write: {} (hit {:.0f}%)",
+            batch_prefix,
+            classified.input_tokens,
+            classified.output_tokens,
+            classified.cache_read_tokens,
+            classified.cache_creation_tokens,
+            hit_pct,
+        )
 
+    total_cacheable = total_input + total_cache_read
+    total_hit_pct = (total_cache_read / total_cacheable * 100) if total_cacheable else 0.0
     logger.info(
         "Total — tagged: {} | unsure: {} | excluded: {} | failed: {}",
         total_tagged,
         total_unsure,
         total_excluded,
         len(all_failed_ids),
+    )
+    logger.info(
+        "Total — tokens in: {} out: {} cache_read: {} cache_write: {} (hit {:.0f}%)",
+        total_input,
+        total_output,
+        total_cache_read,
+        total_cache_creation,
+        total_hit_pct,
     )
 
     await _maybe_complete_run(run_id)
