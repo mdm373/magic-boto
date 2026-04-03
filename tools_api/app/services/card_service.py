@@ -1,5 +1,6 @@
 """Card lookup service for MTGJSON cards API."""
 
+from collections.abc import Sequence
 from typing import Any, cast
 
 from fastapi_pagination import Params
@@ -72,6 +73,21 @@ class CardService:
                 transformer=lambda items: [self._mapper.to_response(card) for card in items],
             ),
         )
+
+    async def fetch_cards_by_oracle_ids(
+        self, session: AsyncSession, oracle_ids: Sequence[str]
+    ) -> Sequence[MagicBotoCardModel]:
+        """Return one representative card per oracle_id, preserving input order."""
+        if not oracle_ids:
+            return []
+        rows = await session.execute(
+            select(MagicBotoCardModel)
+            .where(MagicBotoCardModel.oracle_id.in_(oracle_ids))
+            .distinct(MagicBotoCardModel.oracle_id)
+            .order_by(MagicBotoCardModel.oracle_id, MagicBotoCardModel.card_id)
+        )
+        by_oracle_id = {card.oracle_id: card for card in rows.scalars()}
+        return [by_oracle_id[oid] for oid in oracle_ids if oid in by_oracle_id]
 
     async def query_card(
         self,

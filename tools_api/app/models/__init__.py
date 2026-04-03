@@ -1,5 +1,6 @@
 """SQLAlchemy ORM models."""
 
+from .batch import BatchModel
 from .card_rarity import CardRarity
 from .card_supertype import CardSupertype
 from .card_type import CardType
@@ -16,11 +17,13 @@ from .magic_boto_inventory import MagicBotoInventoryCardModel, MagicBotoInventor
 from .magic_boto_tag import MagicBotoTagModel
 from .magic_boto_tag_supertype import MagicBotoTagSupertypeModel
 from .magic_boto_tag_type import MagicBotoTagTypeModel
-from .sweep_run import SweepRunModel
-from .sweep_run_batch import SweepRunBatchModel
-from .sweep_run_batch_card import SweepRunBatchCardModel
+from .sweep_run import TagSweepModel
+from .sweep_run_batch import TagSweepBatchModel
+from .sweep_run_batch_card import TagSweepBatchCardModel
+from .tag_audit import TagAuditModel
 
 __all__ = [
+    "BatchModel",
     "CardRarity",
     "ColorIdentity",
     "CardSupertype",
@@ -38,7 +41,8 @@ __all__ = [
     "MagicBotoTagModel",
     "MagicBotoTagSupertypeModel",
     "MagicBotoTagTypeModel",
-    "SweepRunModel",
-    "SweepRunBatchModel",
-    "SweepRunBatchCardModel",
+    "TagAuditModel",
+    "TagSweepBatchCardModel",
+    "TagSweepBatchModel",
+    "TagSweepModel",
 ]

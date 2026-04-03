@@ -87,9 +87,9 @@ async def _run(
         tag_name,
     )
 
-    tagged_dicts = [card_to_dict(card, reason) for card, reason in tagged_cards]
-    excluded_dicts = [card_to_dict(card, reason) for card, reason in excluded_cards]
-    unsure_dicts = [card_to_dict(card, reason) for card, reason in unsure_cards]
+    tagged_dicts = [card_to_dict(card) for card in tagged_cards]
+    excluded_dicts = [card_to_dict(card) for card in excluded_cards]
+    unsure_dicts = [card_to_dict(card) for card in unsure_cards]
 
     user_message = _USER_PROMPT_TEMPLATE.format(
         tag_name=tag_name,

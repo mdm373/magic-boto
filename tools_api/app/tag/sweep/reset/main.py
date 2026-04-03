@@ -10,9 +10,9 @@ from loguru import logger
 
 from app.db import get_async_session_factory
 from app.log import configure_cli_logging
-from app.services import create_sweep_run_service, create_tag_service
+from app.services import create_tag_sweep_service, create_tag_service
 
-_sweep_run_service = create_sweep_run_service()
+_sweep_run_service = create_tag_sweep_service()
 _tag_service = create_tag_service()
 
 
@@ -21,20 +21,20 @@ async def _run(tag_name: str) -> None:
 
     async with session_factory() as session:
         tag = await _tag_service.require_tag_model(session, tag_name)
-        run = await _sweep_run_service.get_open_run(session, tag.id)
+        run = await _sweep_run_service.get_open_sweep(session, tag.id)
 
         if run is None:
             logger.info("No open sweep run found for tag '{}'.", tag_name)
             return
 
         batches = await _sweep_run_service.get_batches(session, run.id)
-        submitted_ids = await _sweep_run_service.get_submitted_oracle_ids_for_run(session, run.id)
+        submitted_ids = await _sweep_run_service.get_submitted_oracle_ids_for_sweep(session, run.id)
 
     logger.info("Open run: {}", run.id)
     logger.info("  submitted cards: {}", len(submitted_ids))
     logger.info("  batches: {}", len(batches))
     for b in batches:
-        logger.info("    {} — {} cards — {}", b.batch_id[:28], b.card_count, b.status)
+        logger.info("    {} — {} cards — {}", b.batch.anthropic_batch_id[:28], b.card_count, b.batch.status)
 
     print(run.id, flush=True)
 
@@ -61,7 +61,7 @@ async def _delete(tag_name: str) -> None:
 
     async with session_factory() as session:
         tag = await _tag_service.require_tag_model(session, tag_name)
-        deleted_id = await _sweep_run_service.delete_open_run(session, tag.id)
+        deleted_id = await _sweep_run_service.delete_open_sweep(session, tag.id)
         if deleted_id is None:
             logger.info("No open sweep run found for tag '{}'.", tag_name)
             sys.exit(0)

@@ -36,7 +36,7 @@ def kickoff(
     if not tag:
         raise Exit("Tag name is required.")
 
-    argv = ["uv", "run", "python", "-m", "app.tag.kickoff.main", tag]
+    argv = ["uv", "run", "python", "-m", "app.tag.sweep.kickoff.main", tag]
     if limit > 0:
         argv += ["--limit", str(limit)]
     if reenqueue_failed:
@@ -52,32 +52,28 @@ def kickoff(
 @task
 def poll(
     c: Context,
-    run_id: str = "",
+    sweep_id: str = "",
     wait: bool = False,
 ) -> None:
     """Check and update Anthropic batch statuses for a sweep run.
 
     With --wait, loops every 30s until all batches reach a terminal state.
     """
-    if not run_id.strip():
-        run_id = input("Run ID: ").strip()
-    if not run_id:
-        raise Exit("Run ID is required.")
+    if not sweep_id.strip():
+        sweep_id = input("Sweep ID: ").strip()
+    if not sweep_id:
+        raise Exit("Sweep ID is required.")
 
-    argv = ["uv", "run", "python", "-m", "app.tag.poll.main", run_id]
+    argv = ["uv", "run", "python", "-m", "app.tag.sweep.poll.main", sweep_id]
     if wait:
         argv += ["--wait"]
-
-    if c.cwd:
-        subprocess.run(argv, check=True, cwd=c.cwd)
-    else:
-        subprocess.run(argv, check=True)
+    _run_subprocess(c, argv)
 
 
 @task
 def process(
     c: Context,
-    run_id: str = "",
+    sweep_id: str = "",
     include_unsure: bool | None = None,
     include_excluded: bool | None = None,
 ) -> None:
@@ -85,26 +81,23 @@ def process(
 
     All batches must be in a terminal state before running (use sweep.poll --wait).
     """
-    if not run_id.strip():
-        run_id = input("Run ID: ").strip()
-    if not run_id:
-        raise Exit("Run ID is required.")
+    if not sweep_id.strip():
+        sweep_id = input("Sweep ID: ").strip()
+    if not sweep_id:
+        raise Exit("Sweep ID is required.")
 
     if include_unsure is None:
         include_unsure = _prompt_yn("Tag uncertain cards with {tag}_unsure?")
     if include_excluded is None:
         include_excluded = _prompt_yn("Tag non-qualifying cards with {tag}_excluded?")
 
-    argv = ["uv", "run", "python", "-m", "app.tag.process.main", run_id]
+    argv = ["uv", "run", "python", "-m", "app.tag.sweep.process.main", sweep_id]
     if include_unsure:
         argv += ["--include-unsure"]
     if include_excluded:
         argv += ["--include-excluded"]
 
-    if c.cwd:
-        subprocess.run(argv, check=True, cwd=c.cwd)
-    else:
-        subprocess.run(argv, check=True)
+    _run_subprocess(c, argv)
 
 
 @task
@@ -113,11 +106,7 @@ def run(
     tag: str = "",
     limit: int = 0,
 ) -> None:
-    """Full sweep orchestration: create or select a tag, kick off batches, poll, then process.
-
-    Prompts to create a new tag or use an existing one, then runs the full pipeline end-to-end.
-    """
-    # --- Tag selection ---
+    """Full sweep orchestration: create or select a tag, kick off batches, poll, then process."""
     use_existing = _prompt_yn("Use an existing tag?")
     if use_existing:
         if not tag.strip():
@@ -140,7 +129,6 @@ def run(
             create_argv += [f"--supertypes={supertypes_raw}"]
         _run_subprocess(c, create_argv)
 
-    # --- Limit ---
     if limit == 0:
         raw = input("Card limit per kickoff run (blank for no limit): ").strip()
         if raw.isdigit():
@@ -149,48 +137,39 @@ def run(
     include_unsure = _prompt_yn("Tag uncertain cards with {tag}_unsure?")
     include_excluded = _prompt_yn("Tag non-qualifying cards with {tag}_excluded?")
 
-    # --- Kickoff ---
-    kickoff_argv = ["uv", "run", "python", "-m", "app.tag.kickoff.main", tag]
+    kickoff_argv = ["uv", "run", "python", "-m", "app.tag.sweep.kickoff.main", tag]
     if limit > 0:
         kickoff_argv += ["--limit", str(limit)]
     result = _run_subprocess(c, kickoff_argv, capture_stdout=True)
-    run_id = result.stdout.strip()
-    if not run_id:
-        raise Exit("Kickoff did not return a run ID.")
+    sweep_id = result.stdout.strip()
+    if not sweep_id:
+        raise Exit("Kickoff did not return a sweep ID.")
 
-    # --- Poll ---
-    _run_subprocess(c, ["uv", "run", "python", "-m", "app.tag.poll.main", run_id, "--wait"])
-
-    # --- Process ---
-    process(c, run_id=run_id, include_unsure=include_unsure, include_excluded=include_excluded)
+    _run_subprocess(c, ["uv", "run", "python", "-m", "app.tag.sweep.poll.main", sweep_id, "--wait"])
+    process(c, sweep_id=sweep_id, include_unsure=include_unsure, include_excluded=include_excluded)
 
 
 @task
 def reset(c: Context, tag: str = "") -> None:
-    """Show or delete the open sweep run for a tag.
-
-    Without --delete, prints current run and batch state.
-    With --delete, deletes the open run (cascades to batches) so kickoff starts fresh.
-    """
+    """Show or delete the open sweep run for a tag."""
     if not tag.strip():
         tag = input("Tag name: ").strip()
     if not tag:
         raise Exit("Tag name is required.")
 
-    # Show current state first.
     result = _run_subprocess(
         c,
-        ["uv", "run", "python", "-m", "app.tag.reset.main", tag],
+        ["uv", "run", "python", "-m", "app.tag.sweep.reset.main", tag],
         capture_stdout=True,
     )
-    run_id = result.stdout.strip()
-    if not run_id:
+    sweep_id = result.stdout.strip()
+    if not sweep_id:
         return
 
-    if not _prompt_yn(f"Delete run {run_id} and all its batches? Kickoff will start fresh."):
+    if not _prompt_yn(f"Delete run {sweep_id} and all its batches? Kickoff will start fresh."):
         return
 
-    _run_subprocess(c, ["uv", "run", "python", "-m", "app.tag.reset.main", tag, "--delete"])
+    _run_subprocess(c, ["uv", "run", "python", "-m", "app.tag.sweep.reset.main", tag, "--delete"])
 
 
 def _run_subprocess(
@@ -203,7 +182,7 @@ def _run_subprocess(
         kwargs["stdout"] = subprocess.PIPE
     if c.cwd:
         kwargs["cwd"] = c.cwd
-    return subprocess.run(argv, **kwargs)  # type: ignore[call-overload]
+    return subprocess.run(argv, **kwargs)  # type: ignore[call-overload, no-any-return]
 
 
 ns = Collection("sweep")

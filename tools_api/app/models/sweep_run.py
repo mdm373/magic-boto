@@ -1,4 +1,4 @@
-"""ORM: ``magic_boto.sweep_runs`` (batch sweep run state per tag)."""
+"""ORM: ``magic_boto.tag_sweep`` (batch sweep run state per tag)."""
 
 from __future__ import annotations
 
@@ -12,14 +12,14 @@ from .base import Base
 from .sweep_status import SweepRunStatus
 
 
-class SweepRunModel(Base):
+class TagSweepModel(Base):
     """One row per sweep epoch per tag.
 
     A run is 'open' while kickoff is submitting batches and process is applying tags.
     It becomes 'complete' once all batches are processed and no eligible cards remain.
     """
 
-    __tablename__ = "sweep_runs"
+    __tablename__ = "tag_sweep"
     __table_args__ = {"schema": "magic_boto"}
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import ForeignKey, String, Text, Uuid
+from sqlalchemy import ForeignKey, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
@@ -35,7 +35,6 @@ class MagicBotoCardTagModel(Base):
         String,
         primary_key=True,
     )
-    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     tag: Mapped[MagicBotoTagModel] = relationship(
         "MagicBotoTagModel",

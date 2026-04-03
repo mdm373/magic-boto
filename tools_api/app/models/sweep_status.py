@@ -16,7 +16,7 @@ class BatchStatus(StrEnum):
     IN_PROGRESS = "in_progress"
     CANCELING = "canceling"
     ENDED = "ended"  # Anthropic finished; individual results available
-    PROCESSED = "processed"  # we have applied tags from this batch
+    PROCESSED = "processed"  # results have been consumed and applied
     ERRORED = "errored"
     EXPIRED = "expired"
     CANCELED = "canceled"
@@ -37,5 +37,14 @@ TERMINAL_BATCH_STATUSES: frozenset[BatchStatus] = frozenset(
 PROCESSABLE_BATCH_STATUSES: frozenset[BatchStatus] = frozenset(
     {
         BatchStatus.ENDED,
+    }
+)
+
+# Batches that failed without producing results; their cards need re-enqueueing.
+FAILED_BATCH_STATUSES: frozenset[BatchStatus] = frozenset(
+    {
+        BatchStatus.ERRORED,
+        BatchStatus.EXPIRED,
+        BatchStatus.CANCELED,
     }
 )

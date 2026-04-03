@@ -49,13 +49,16 @@ select = ["E", "F", "I", "N", "W", "UP"]
 ignore = []
 
 # ORM package: sibling modules and ``Mapped`` string forward refs; allow UP037/F821 to support bi-directional ORM relations.
+# Migration versions: long lines are normal in generated Alembic files.
 [tool.ruff.lint.per-file-ignores]
 "app/models/**/*.py" = ["UP037", "F821"]
+"migrations/versions/*.py" = ["E501"]
 
 [tool.ruff.format]
 quote-style = "double"
 
 [tool.mypy]
+plugins = ["sqlalchemy.ext.mypy.plugin"]
 python_version = "3.11"
 strict = true
 warn_return_any = true

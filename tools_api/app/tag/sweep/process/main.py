@@ -8,19 +8,23 @@ import json
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any
 
+from anthropic.types.beta import BetaTextBlock
 from loguru import logger
+from sqlalchemy import select as _select
 
 from app.db import get_async_session_factory
 from app.log import configure_cli_logging
-from app.models.sweep_run_batch import SweepRunBatchModel
-from app.services import create_sweep_run_service, create_tag_service
+from app.models.batch import BatchModel
+from app.models.magic_boto_tag import MagicBotoTagModel
+from app.models.sweep_run_batch import TagSweepBatchModel
+from app.services import create_batch_service, create_tag_service, create_tag_sweep_service
 from app.services.tag_service import CardTagEntry
-from app.tag.batch.client import BatchSweepClient, create_batch_client
+from app.tag.batch.client import BatchApiClient, create_batch_client
 from app.tag.batch.verdict import Verdict
 
-_sweep_run_service = create_sweep_run_service()
+_sweep_run_service = create_tag_sweep_service()
+_batch_service = create_batch_service()
 _tag_service = create_tag_service()
 
 
@@ -28,7 +32,7 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Apply tags from completed batch results for a sweep run."
     )
-    parser.add_argument("run_id", help="Sweep run UUID.")
+    parser.add_argument("sweep_id", help="Sweep run UUID.")
     parser.add_argument(
         "--include-unsure",
         action="store_true",
@@ -42,7 +46,6 @@ def _parse_args() -> argparse.Namespace:
         help="Tag non-qualifying cards with {tag}_excluded.",
     )
     return parser.parse_args()
-
 
 
 def _parse_verdicts(text: str, expected: int) -> dict[int, Verdict]:
@@ -112,7 +115,7 @@ class _BatchClassification:
 
 
 async def _classify_batch_results(
-    batch_client: BatchSweepClient, batch: SweepRunBatchModel
+    batch_client: BatchApiClient, sweep_batch: TagSweepBatchModel
 ) -> _BatchClassification:
     """Stream batch results and sort each chunk into tag / unsure / excluded / failed buckets."""
     session_factory = get_async_session_factory()
@@ -122,20 +125,21 @@ async def _classify_batch_results(
     failed_ids: list[str] = []
     input_tokens = output_tokens = cache_read_tokens = cache_creation_tokens = 0
 
-    for result in batch_client.get_results(batch.batch_id):
+    anthropic_batch_id = sweep_batch.batch.anthropic_batch_id
+
+    for result in batch_client.get_results(anthropic_batch_id):
         chunk_custom_id: str = result.custom_id
 
         if result.result.type != "succeeded":
             logger.warning(
                 "Chunk {} in batch {} failed with type '{}'.",
                 chunk_custom_id,
-                batch.batch_id,
+                anthropic_batch_id,
                 result.result.type,
             )
-            # Mark all cards in this chunk as failed.
             async with session_factory() as session:
                 chunk_cards = await _sweep_run_service.get_batch_cards(
-                    session, batch.id, chunk_custom_id
+                    session, sweep_batch.id, chunk_custom_id
                 )
             failed_ids.extend(c.oracle_id for c in chunk_cards)
             continue
@@ -146,12 +150,14 @@ async def _classify_batch_results(
         cache_read_tokens += getattr(usage, "cache_read_input_tokens", 0) or 0
         cache_creation_tokens += getattr(usage, "cache_creation_input_tokens", 0) or 0
 
-        text_blocks: list[Any] = [b for b in result.result.message.content if b.type == "text"]
+        text_blocks: list[BetaTextBlock] = [
+            b for b in result.result.message.content if b.type == "text"
+        ]
         raw = text_blocks[0].text if text_blocks else ""
 
         async with session_factory() as session:
             chunk_cards = await _sweep_run_service.get_batch_cards(
-                session, batch.id, chunk_custom_id
+                session, sweep_batch.id, chunk_custom_id
             )
 
         verdicts = _parse_verdicts(raw, expected=len(chunk_cards))
@@ -161,7 +167,7 @@ async def _classify_batch_results(
             logger.warning(
                 "Chunk {} in batch {}: {} of {} verdicts missing — failing those cards.",
                 chunk_custom_id,
-                batch.batch_id,
+                anthropic_batch_id,
                 missing,
                 len(chunk_cards),
             )
@@ -171,7 +177,7 @@ async def _classify_batch_results(
             if verdict is None:
                 failed_ids.append(card_row.oracle_id)
                 continue
-            entry = CardTagEntry(oracle_id=card_row.oracle_id, reason=None)
+            entry = CardTagEntry(oracle_id=card_row.oracle_id)
             match verdict:
                 case Verdict.TAG:
                     tag_entries.append(entry)
@@ -193,7 +199,7 @@ async def _classify_batch_results(
 
 
 async def _apply_batch(
-    batch: SweepRunBatchModel,
+    sweep_batch: TagSweepBatchModel,
     classified: _BatchClassification,
     tag_name: str,
     include_unsure: bool,
@@ -214,41 +220,45 @@ async def _apply_batch(
             )
         if classified.failed_ids:
             await _sweep_run_service.mark_batch_cards_failed(
-                session, batch.id, classified.failed_ids
+                session, sweep_batch.id, classified.failed_ids
             )
-        await _sweep_run_service.mark_batch_processed(session, batch.batch_id)
+        batch = await session.scalar(
+            _select(BatchModel).where(BatchModel.id == sweep_batch.batch_id)
+        )
+        if batch is not None:
+            _batch_service.mark_batch_processed(batch)
         await session.commit()
 
 
-async def _maybe_complete_run(run_id: uuid.UUID, tag: Any) -> None:
+async def _maybe_complete_run(sweep_id: uuid.UUID, tag: MagicBotoTagModel) -> None:
     """Mark the run complete when all batches are processed and no eligible cards remain."""
     session_factory = get_async_session_factory()
     async with session_factory() as session:
-        complete = await _sweep_run_service.is_run_complete(session, run_id, tag)
+        complete = await _sweep_run_service.is_sweep_complete(session, sweep_id, tag)
         if complete:
-            await _sweep_run_service.complete_run(session, run_id)
+            await _sweep_run_service.complete_sweep(session, sweep_id)
             await session.commit()
-            logger.info("Run {} marked complete.", run_id)
+            logger.info("Run {} marked complete.", sweep_id)
         else:
-            remaining = await _sweep_run_service.get_non_terminal_batches(session, run_id)
-            eligible = await _sweep_run_service.fetch_eligible_oracle_ids(session, tag, run_id)
+            remaining = await _sweep_run_service.get_non_terminal_batches(session, sweep_id)
+            eligible = await _sweep_run_service.fetch_eligible_oracle_ids(session, tag, sweep_id)
             logger.info(
                 "Run {} remains open ({} batch(es) not yet processed, "
                 "{} eligible card(s) remaining).",
-                run_id,
+                sweep_id,
                 len(remaining),
                 len(eligible),
             )
 
 
-async def _run(run_id_str: str, include_unsure: bool, include_excluded: bool) -> None:
-    run_id = uuid.UUID(run_id_str)
+async def _run(sweep_id_str: str, include_unsure: bool, include_excluded: bool) -> None:
+    sweep_id = uuid.UUID(sweep_id_str)
 
     session_factory = get_async_session_factory()
     async with session_factory() as session:
-        run = await _sweep_run_service.get_run(session, run_id)
+        run = await _sweep_run_service.get_sweep(session, sweep_id)
         if run is None:
-            raise ValueError(f"Sweep run {run_id} not found.")
+            raise ValueError(f"Sweep run {sweep_id} not found.")
         tag = await _tag_service.require_tag_model_by_id(
             session, run.tag_id, load_relationships=True
         )
@@ -256,7 +266,7 @@ async def _run(run_id_str: str, include_unsure: bool, include_excluded: bool) ->
     await _ensure_side_tags(tag.name, include_unsure, include_excluded)
 
     async with session_factory() as session:
-        not_terminal = await _sweep_run_service.get_non_terminal_batches(session, run_id)
+        not_terminal = await _sweep_run_service.get_non_terminal_batches(session, sweep_id)
 
     if not_terminal:
         raise RuntimeError(
@@ -265,20 +275,20 @@ async def _run(run_id_str: str, include_unsure: bool, include_excluded: bool) ->
         )
 
     async with session_factory() as session:
-        processable = await _sweep_run_service.get_processable_batches(session, run_id)
+        processable = await _sweep_run_service.get_processable_batches(session, sweep_id)
 
     if not processable:
-        logger.info("No ended batches to process for run {}.", run_id)
+        logger.info("No ended batches to process for run {}.", sweep_id)
         return
 
-    batch_client = create_batch_client(tag.description)
+    batch_client = create_batch_client()
     total_tagged = total_unsure = total_excluded = 0
     total_input = total_output = total_cache_read = total_cache_creation = 0
     all_failed_ids: list[str] = []
 
-    for batch in processable:
-        classified = await _classify_batch_results(batch_client, batch)
-        await _apply_batch(batch, classified, tag.name, include_unsure, include_excluded)
+    for sweep_batch in processable:
+        classified = await _classify_batch_results(batch_client, sweep_batch)
+        await _apply_batch(sweep_batch, classified, tag.name, include_unsure, include_excluded)
 
         total_tagged += len(classified.tag_entries)
         total_unsure += len(classified.unsure_entries)
@@ -291,7 +301,7 @@ async def _run(run_id_str: str, include_unsure: bool, include_excluded: bool) ->
 
         cacheable = classified.input_tokens + classified.cache_read_tokens
         hit_pct = (classified.cache_read_tokens / cacheable * 100) if cacheable else 0.0
-        batch_prefix = batch.batch_id[:20]
+        batch_prefix = sweep_batch.batch.anthropic_batch_id[:20]
         logger.info(
             "Batch {} — tagged: {} | unsure: {} | excluded: {} | failed: {}",
             batch_prefix,
@@ -328,7 +338,7 @@ async def _run(run_id_str: str, include_unsure: bool, include_excluded: bool) ->
         total_hit_pct,
     )
 
-    await _maybe_complete_run(run_id, tag)
+    await _maybe_complete_run(sweep_id, tag)
 
     if all_failed_ids:
         logger.warning(
@@ -342,7 +352,7 @@ async def _run(run_id_str: str, include_unsure: bool, include_excluded: bool) ->
 def main() -> None:
     configure_cli_logging()
     args = _parse_args()
-    asyncio.run(_run(args.run_id, args.include_unsure, args.include_excluded))
+    asyncio.run(_run(args.sweep_id, args.include_unsure, args.include_excluded))
 
 
 if __name__ == "__main__":

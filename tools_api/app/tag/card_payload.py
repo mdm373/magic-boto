@@ -63,14 +63,9 @@ def cards_to_csv(cards: Sequence[MagicBotoCardModel]) -> str:
     return buf.getvalue()
 
 
-def card_to_dict(card: MagicBotoCardModel, reason: str | None = None) -> Mapping[str, object]:
-    """Serialise a card model to the dict shape sent to Claude.
-
-    ``reason`` is the sweep model's prior classification rationale; when provided
-    it is included as ``reason_tagged`` so the audit model can reference it.
-    """
+def card_to_dict(card: MagicBotoCardModel) -> Mapping[str, object]:
+    """Serialise a card model to the dict shape sent to Claude."""
     payload: dict[str, object] = {
-        "oracle_id": card.oracle_id,
         "name": card.name,
         "mana_cost": card.mana_cost,
         "type": card.type_line,
@@ -79,6 +74,4 @@ def card_to_dict(card: MagicBotoCardModel, reason: str | None = None) -> Mapping
     if card.power is not None and card.toughness is not None:
         payload["power"] = card.power
         payload["toughness"] = card.toughness
-    if reason:
-        payload["reason_tagged"] = reason
     return payload

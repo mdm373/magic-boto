@@ -1,4 +1,4 @@
-"""ORM: ``magic_boto.sweep_run_batch_cards`` (cards submitted per batch chunk)."""
+"""ORM: ``magic_boto.tag_sweep_batch_cards`` (cards submitted per batch chunk)."""
 
 from __future__ import annotations
 
@@ -10,19 +10,19 @@ from sqlalchemy.orm import Mapped, mapped_column
 from .base import Base
 
 
-class SweepRunBatchCardModel(Base):
-    """One row per oracle_id submitted within a chunk of a sweep_run_batch.
+class TagSweepBatchCardModel(Base):
+    """One row per oracle_id submitted within a chunk of a tag_sweep_batch.
 
     position is the 0-based row index within the chunk — used to zip the
     Y/N/U response string back to oracle_ids at process time.
     """
 
-    __tablename__ = "sweep_run_batch_cards"
+    __tablename__ = "tag_sweep_batch_cards"
     __table_args__ = {"schema": "magic_boto"}
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    sweep_run_batch_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("magic_boto.sweep_run_batches.id", ondelete="CASCADE"),
+    tag_sweep_batch_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("magic_boto.tag_sweep_batches.id", ondelete="CASCADE"),
         nullable=False,
     )
     chunk_custom_id: Mapped[str] = mapped_column(Text, nullable=False)

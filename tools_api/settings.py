@@ -68,6 +68,12 @@ class Settings(BaseSettings):
         description="Directory for debug output files (Claude logs, unsure-card logs, etc.).",
     )
 
+    batch_poll_interval_seconds: int = Field(
+        default=30,
+        ge=1,
+        description="Seconds between Anthropic batch status polls when --wait is active.",
+    )
+
     db_insert_chunk_size: int = Field(
         default=1_000,
         ge=1,
