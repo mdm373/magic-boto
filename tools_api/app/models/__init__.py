@@ -18,6 +18,7 @@ from .magic_boto_tag_supertype import MagicBotoTagSupertypeModel
 from .magic_boto_tag_type import MagicBotoTagTypeModel
 from .sweep_run import SweepRunModel
 from .sweep_run_batch import SweepRunBatchModel
+from .sweep_run_batch_card import SweepRunBatchCardModel
 
 __all__ = [
     "CardRarity",
@@ -39,4 +40,5 @@ __all__ = [
     "MagicBotoTagTypeModel",
     "SweepRunModel",
     "SweepRunBatchModel",
+    "SweepRunBatchCardModel",
 ]

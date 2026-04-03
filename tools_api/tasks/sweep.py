@@ -23,14 +23,13 @@ def kickoff(
     c: Context,
     tag: str = "",
     limit: int = 0,
-    oracle_ids_file: str = "",
+    reenqueue_failed: bool = False,
 ) -> None:
     """Submit Anthropic batch requests for cards pending a tag sweep.
 
     Resumes an existing open run for the tag, or creates a new one.
-    Use --limit N to submit N cards and exit; re-run kickoff to resume from the cursor.
-    The run only completes once all cards are queued and all batches are processed.
-    Use --oracle-ids-file to re-enqueue specific oracle IDs (e.g. from a failed process run).
+    Use --limit N to submit N cards and exit; re-run kickoff to resume.
+    Use --reenqueue-failed to re-submit oracle IDs from failed batches in the open run.
     """
     if not tag.strip():
         tag = input("Tag name to sweep: ").strip()
@@ -40,8 +39,8 @@ def kickoff(
     argv = ["uv", "run", "python", "-m", "app.tag.kickoff.main", tag]
     if limit > 0:
         argv += ["--limit", str(limit)]
-    if oracle_ids_file:
-        argv += ["--oracle-ids-file", oracle_ids_file]
+    if reenqueue_failed:
+        argv += ["--reenqueue-failed"]
 
     if c.cwd:
         subprocess.run(argv, check=True, cwd=c.cwd)
@@ -129,12 +128,8 @@ def run(
         tag = input("Tag name: ").strip()
         if not tag:
             raise Exit("Tag name is required.")
-        types_raw = input(
-            "Sweep include types (comma-separated, e.g. creature,artifact — blank for all): "
-        ).strip()
-        supertypes_raw = input(
-            "Sweep include supertypes (comma-separated, e.g. legendary or -basic — blank for all): "
-        ).strip()
+        types_raw = input("Sweep include types: ").strip()
+        supertypes_raw = input("Sweep include supertypes: ").strip()
         description = _read_multiline("Tag description (two blank lines to finish):")
         if not description:
             raise Exit("Tag description is required.")
@@ -153,22 +148,9 @@ def run(
 
     include_unsure = _prompt_yn("Tag uncertain cards with {tag}_unsure?")
     include_excluded = _prompt_yn("Tag non-qualifying cards with {tag}_excluded?")
-    send_canary = _prompt_yn(
-        "Send cache canary first? (submits 1 card, waits for it to finish, then sends the rest)"
-    )
 
-    kickoff_base = ["uv", "run", "python", "-m", "app.tag.kickoff.main", tag]
-
-    # --- Canary: kickoff 1 card, wait for it, then resume ---
-    if send_canary:
-        result = _run_subprocess(c, kickoff_base + ["--limit", "1"], capture_stdout=True)
-        run_id = result.stdout.strip()
-        if not run_id:
-            raise Exit("Canary kickoff did not return a run ID.")
-        _run_subprocess(c, ["uv", "run", "python", "-m", "app.tag.poll.main", run_id, "--wait"])
-
-    # --- Kickoff remaining (or all cards if no canary) ---
-    kickoff_argv = kickoff_base[:]
+    # --- Kickoff ---
+    kickoff_argv = ["uv", "run", "python", "-m", "app.tag.kickoff.main", tag]
     if limit > 0:
         kickoff_argv += ["--limit", str(limit)]
     result = _run_subprocess(c, kickoff_argv, capture_stdout=True)

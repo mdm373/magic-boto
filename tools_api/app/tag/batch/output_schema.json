@@ -1,0 +1,19 @@
+{
+  "type": "object",
+  "properties": {
+    "verdicts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "r": { "type": "integer" },
+          "v": { "type": "string", "enum": ["Y", "N", "U"] }
+        },
+        "required": ["r", "v"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["verdicts"],
+  "additionalProperties": false
+}

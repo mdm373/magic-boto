@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 from loguru import logger
@@ -19,7 +19,6 @@ from app.services import create_sweep_run_service, create_tag_service
 from app.services.tag_service import CardTagEntry
 from app.tag.batch.client import BatchSweepClient, create_batch_client
 from app.tag.batch.verdict import Verdict
-from settings import Settings, get_settings
 
 _sweep_run_service = create_sweep_run_service()
 _tag_service = create_tag_service()
@@ -45,20 +44,38 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _parse_result_line(text: str) -> tuple[Verdict, str] | None:
-    """Parse '{verdict} {reason}' from a model response line.
 
-    Returns (verdict, reason) or None if the response is unparseable.
+def _parse_verdicts(text: str, expected: int) -> dict[int, Verdict]:
+    """Parse structured JSON verdicts from the response.
+
+    Returns a dict of row index → Verdict for valid, non-duplicate entries within range.
+    Rows absent from the dict (missing, duplicate, or unparseable) should be failed.
     """
-    stripped = text.strip()
-    raw_verdict, sep, reason = stripped.partition(" ")
-    if not sep:
-        return None
+    char_map = {"Y": Verdict.TAG, "N": Verdict.EXCLUDE, "U": Verdict.UNSURE}
     try:
-        verdict = Verdict(raw_verdict.strip().lower())
-    except ValueError:
-        return None
-    return verdict, reason.strip()
+        items = json.loads(text)["verdicts"]
+    except (json.JSONDecodeError, KeyError, TypeError):
+        return {}
+
+    seen: dict[int, Verdict] = {}
+    duplicates: set[int] = set()
+    for item in items:
+        try:
+            row = int(item["r"])
+            verdict = char_map[str(item["v"]).upper()]
+        except (KeyError, TypeError, ValueError):
+            continue
+        if row < 0 or row >= expected:
+            continue
+        if row in seen:
+            duplicates.add(row)
+        else:
+            seen[row] = verdict
+
+    for row in duplicates:
+        del seen[row]
+
+    return seen
 
 
 async def _ensure_side_tags(tag_name: str, include_unsure: bool, include_excluded: bool) -> None:
@@ -94,10 +111,11 @@ class _BatchClassification:
     cache_creation_tokens: int = 0
 
 
-def _classify_batch_results(
+async def _classify_batch_results(
     batch_client: BatchSweepClient, batch: SweepRunBatchModel
 ) -> _BatchClassification:
-    """Stream batch results and sort each into tag / unsure / excluded / failed buckets."""
+    """Stream batch results and sort each chunk into tag / unsure / excluded / failed buckets."""
+    session_factory = get_async_session_factory()
     tag_entries: list[CardTagEntry] = []
     unsure_entries: list[CardTagEntry] = []
     excluded_entries: list[CardTagEntry] = []
@@ -105,16 +123,21 @@ def _classify_batch_results(
     input_tokens = output_tokens = cache_read_tokens = cache_creation_tokens = 0
 
     for result in batch_client.get_results(batch.batch_id):
-        oracle_id: str = result.custom_id
+        chunk_custom_id: str = result.custom_id
 
         if result.result.type != "succeeded":
             logger.warning(
-                "Request {} in batch {} failed with type '{}'.",
-                oracle_id,
+                "Chunk {} in batch {} failed with type '{}'.",
+                chunk_custom_id,
                 batch.batch_id,
                 result.result.type,
             )
-            failed_ids.append(oracle_id)
+            # Mark all cards in this chunk as failed.
+            async with session_factory() as session:
+                chunk_cards = await _sweep_run_service.get_batch_cards(
+                    session, batch.id, chunk_custom_id
+                )
+            failed_ids.extend(c.oracle_id for c in chunk_cards)
             continue
 
         usage = result.result.message.usage
@@ -125,28 +148,37 @@ def _classify_batch_results(
 
         text_blocks: list[Any] = [b for b in result.result.message.content if b.type == "text"]
         raw = text_blocks[0].text if text_blocks else ""
-        parsed = _parse_result_line(raw)
 
-        if parsed is None:
-            logger.warning(
-                "Unparseable response for {} in batch {}: {!r}",
-                oracle_id,
-                batch.batch_id,
-                raw,
+        async with session_factory() as session:
+            chunk_cards = await _sweep_run_service.get_batch_cards(
+                session, batch.id, chunk_custom_id
             )
-            failed_ids.append(oracle_id)
-            continue
 
-        verdict, reason = parsed
-        entry = CardTagEntry(oracle_id=oracle_id, reason=reason)
+        verdicts = _parse_verdicts(raw, expected=len(chunk_cards))
 
-        match verdict:
-            case Verdict.TAG:
-                tag_entries.append(entry)
-            case Verdict.UNSURE:
-                unsure_entries.append(entry)
-            case _:
-                excluded_entries.append(entry)
+        missing = len(chunk_cards) - len(verdicts)
+        if missing > 0:
+            logger.warning(
+                "Chunk {} in batch {}: {} of {} verdicts missing — failing those cards.",
+                chunk_custom_id,
+                batch.batch_id,
+                missing,
+                len(chunk_cards),
+            )
+
+        for i, card_row in enumerate(chunk_cards):
+            verdict = verdicts.get(i)
+            if verdict is None:
+                failed_ids.append(card_row.oracle_id)
+                continue
+            entry = CardTagEntry(oracle_id=card_row.oracle_id, reason=None)
+            match verdict:
+                case Verdict.TAG:
+                    tag_entries.append(entry)
+                case Verdict.UNSURE:
+                    unsure_entries.append(entry)
+                case _:
+                    excluded_entries.append(entry)
 
     return _BatchClassification(
         tag_entries=tag_entries,
@@ -161,7 +193,7 @@ def _classify_batch_results(
 
 
 async def _apply_batch(
-    batch_id: str,
+    batch: SweepRunBatchModel,
     classified: _BatchClassification,
     tag_name: str,
     include_unsure: bool,
@@ -180,63 +212,46 @@ async def _apply_batch(
             await _tag_service.add_card_tags(
                 session, f"{tag_name}_excluded", classified.excluded_entries
             )
-        await _sweep_run_service.mark_batch_processed(session, batch_id)
+        if classified.failed_ids:
+            await _sweep_run_service.mark_batch_cards_failed(
+                session, batch.id, classified.failed_ids
+            )
+        await _sweep_run_service.mark_batch_processed(session, batch.batch_id)
         await session.commit()
 
 
-async def _maybe_complete_run(run_id: uuid.UUID) -> None:
-    """Mark the run complete when all cards are queued and all batches are processed."""
+async def _maybe_complete_run(run_id: uuid.UUID, tag: Any) -> None:
+    """Mark the run complete when all batches are processed and no eligible cards remain."""
     session_factory = get_async_session_factory()
     async with session_factory() as session:
-        fresh_run = await _sweep_run_service.get_run(session, run_id)
-        all_processed = await _sweep_run_service.are_all_batches_processed(session, run_id)
-
-        if fresh_run is not None and fresh_run.all_cards_queued and all_processed:
+        complete = await _sweep_run_service.is_run_complete(session, run_id, tag)
+        if complete:
             await _sweep_run_service.complete_run(session, run_id)
             await session.commit()
             logger.info("Run {} marked complete.", run_id)
         else:
             remaining = await _sweep_run_service.get_non_terminal_batches(session, run_id)
+            eligible = await _sweep_run_service.fetch_eligible_oracle_ids(session, tag, run_id)
             logger.info(
-                "Run {} remains open ({} batch(es) not yet processed, all_cards_queued={}).",
+                "Run {} remains open ({} batch(es) not yet processed, "
+                "{} eligible card(s) remaining).",
                 run_id,
                 len(remaining),
-                fresh_run.all_cards_queued if fresh_run else "?",
+                len(eligible),
             )
-
-
-def _write_failed_ids(
-    failed_ids: list[str], run_id: uuid.UUID, tag_name: str, settings: Settings
-) -> None:
-    """Persist failed oracle IDs to disk and log a re-enqueue command."""
-    debug_dir = Path(settings.debug_output_dir)
-    debug_dir.mkdir(parents=True, exist_ok=True)
-    failed_path = debug_dir / f"failed_ids_{run_id}.txt"
-    failed_path.write_text("\n".join(failed_ids))
-    logger.warning(
-        "{} request(s) failed. Oracle IDs written to {}.\n"
-        "Re-enqueue with:\n"
-        "  uv run invoke sweep.kickoff --tag {} --oracle-ids-file {}",
-        len(failed_ids),
-        failed_path,
-        tag_name,
-        failed_path,
-    )
 
 
 async def _run(run_id_str: str, include_unsure: bool, include_excluded: bool) -> None:
     run_id = uuid.UUID(run_id_str)
-    settings = get_settings()
-
-    if not settings.anthropic_api_key:
-        raise RuntimeError("ANTHROPIC_API_KEY is not set.")
 
     session_factory = get_async_session_factory()
     async with session_factory() as session:
         run = await _sweep_run_service.get_run(session, run_id)
         if run is None:
             raise ValueError(f"Sweep run {run_id} not found.")
-        tag = await _tag_service.require_tag_model_by_id(session, run.tag_id)
+        tag = await _tag_service.require_tag_model_by_id(
+            session, run.tag_id, load_relationships=True
+        )
 
     await _ensure_side_tags(tag.name, include_unsure, include_excluded)
 
@@ -262,8 +277,8 @@ async def _run(run_id_str: str, include_unsure: bool, include_excluded: bool) ->
     all_failed_ids: list[str] = []
 
     for batch in processable:
-        classified = _classify_batch_results(batch_client, batch)
-        await _apply_batch(batch.batch_id, classified, tag.name, include_unsure, include_excluded)
+        classified = await _classify_batch_results(batch_client, batch)
+        await _apply_batch(batch, classified, tag.name, include_unsure, include_excluded)
 
         total_tagged += len(classified.tag_entries)
         total_unsure += len(classified.unsure_entries)
@@ -313,10 +328,15 @@ async def _run(run_id_str: str, include_unsure: bool, include_excluded: bool) ->
         total_hit_pct,
     )
 
-    await _maybe_complete_run(run_id)
+    await _maybe_complete_run(run_id, tag)
 
     if all_failed_ids:
-        _write_failed_ids(all_failed_ids, run_id, tag.name, settings)
+        logger.warning(
+            "{} oracle ID(s) failed. Re-enqueue with:\n"
+            "  uv run invoke sweep.kickoff --tag {} --reenqueue-failed",
+            len(all_failed_ids),
+            tag.name,
+        )
 
 
 def main() -> None:

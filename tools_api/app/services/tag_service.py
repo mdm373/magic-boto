@@ -13,6 +13,7 @@ from sqlalchemy.engine import CursorResult  # used by delete_tag
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import InvalidRequestError
+from settings import get_settings
 from app.models import MagicBotoCardTagModel, MagicBotoTagModel
 from app.models.magic_boto_card import MagicBotoCardModel
 from app.models.magic_boto_tag_supertype import MagicBotoTagSupertypeModel
@@ -112,9 +113,7 @@ class TagService:
         load_relationships: bool = False,
     ) -> MagicBotoTagModel:
         """Return the ORM tag model by ID. Raises ValueError if not found."""
-        tag = await self.get_tag_model_by_id(
-            session, tag_id, load_relationships=load_relationships
-        )
+        tag = await self.get_tag_model_by_id(session, tag_id, load_relationships=load_relationships)
         if tag is None:
             raise ValueError(f"Tag ID {tag_id} not found.")
         return tag
@@ -216,20 +215,24 @@ class TagService:
             raise InvalidRequestError(f"Oracle IDs not found: {', '.join(not_found)}")
 
         has_reasons = any(entries_by_id[oid].reason for oid in found_ids)
-        insert_stmt = pg_insert(MagicBotoCardTagModel).values(
-            [
-                {"tag_id": tag_row.id, "oracle_id": oid, "reason": entries_by_id[oid].reason}
-                for oid in found_ids
-            ]
-        )
-        if has_reasons:
-            stmt = insert_stmt.on_conflict_do_update(
-                index_elements=["tag_id", "oracle_id"],
-                set_={"reason": insert_stmt.excluded.reason},
+        chunk_size = get_settings().db_insert_chunk_size
+        found_list = list(found_ids)
+        for i in range(0, len(found_list), chunk_size):
+            chunk = found_list[i : i + chunk_size]
+            insert_stmt = pg_insert(MagicBotoCardTagModel).values(
+                [
+                    {"tag_id": tag_row.id, "oracle_id": oid, "reason": entries_by_id[oid].reason}
+                    for oid in chunk
+                ]
             )
-        else:
-            stmt = insert_stmt.on_conflict_do_nothing(index_elements=["tag_id", "oracle_id"])
-        await session.execute(stmt)
+            if has_reasons:
+                stmt = insert_stmt.on_conflict_do_update(
+                    index_elements=["tag_id", "oracle_id"],
+                    set_={"reason": insert_stmt.excluded.reason},
+                )
+            else:
+                stmt = insert_stmt.on_conflict_do_nothing(index_elements=["tag_id", "oracle_id"])
+            await session.execute(stmt)
         return True
 
     async def sample_cards_for_tag(

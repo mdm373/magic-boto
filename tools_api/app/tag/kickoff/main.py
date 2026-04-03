@@ -5,16 +5,14 @@ from __future__ import annotations
 import argparse
 import asyncio
 import uuid
-from pathlib import Path
 
 from loguru import logger
 
 from app.db import get_async_session_factory
 from app.log import configure_cli_logging
-from app.models.magic_boto_card import MagicBotoCardModel
-from app.models.magic_boto_tag import MagicBotoTagModel
 from app.services import create_sweep_run_service, create_tag_service
-from app.tag.batch.client import create_batch_client
+from app.tag.batch.client import BatchChunk, BatchChunkRecord, BatchSweepClient, create_batch_client
+from settings import get_settings
 
 
 def _parse_args() -> argparse.Namespace:
@@ -27,14 +25,14 @@ def _parse_args() -> argparse.Namespace:
         metavar="N",
         help=(
             "Submit at most N cards then exit. The run stays open; "
-            "re-run kickoff for the same tag to resume from the cursor. 0 = no limit."
+            "re-run kickoff for the same tag to resume. 0 = no limit."
         ),
     )
     parser.add_argument(
-        "--oracle-ids-file",
-        metavar="PATH",
-        help="Submit only the oracle IDs listed in this file (one per line). "
-        "Creates a new run; used to re-enqueue failed requests.",
+        "--reenqueue-failed",
+        action="store_true",
+        default=False,
+        help="Re-submit oracle IDs from failed batches in the current open run.",
     )
     return parser.parse_args()
 
@@ -43,63 +41,80 @@ _sweep_run_service = create_sweep_run_service()
 _tag_service = create_tag_service()
 
 
-async def _submit_oracle_ids_file(oracle_ids_file: str, tag: MagicBotoTagModel) -> None:
-    """Create a fresh run and submit the oracle IDs from the file."""
-    oracle_ids = [
-        line.strip() for line in Path(oracle_ids_file).read_text().splitlines() if line.strip()
+async def _submit_chunks(
+    run_id: uuid.UUID,
+    oracle_ids: list[str],
+    batch_client: BatchSweepClient,
+    chunk_size: int,
+    label: str,
+) -> None:
+    """Chunk oracle_ids, fetch cards, submit one Anthropic batch, record in DB."""
+    session_factory = get_async_session_factory()
+    settings = get_settings()
+
+    records: list[BatchChunkRecord] = [
+        BatchChunkRecord(
+            custom_id=f"chunk_{i // chunk_size}",
+            oracle_ids=oracle_ids[i : i + chunk_size],
+        )
+        for i in range(0, len(oracle_ids), chunk_size)
     ]
-    if not oracle_ids:
-        logger.warning("No oracle IDs found in '{}'; nothing to submit.", oracle_ids_file)
-        return
 
-    session_factory = get_async_session_factory()
-    batch_client = create_batch_client(tag.description)
+    if len(records) > settings.batch_api_max_requests:
+        raise RuntimeError(
+            f"Chunk count {len(records)} exceeds batch_api_max_requests "
+            f"({settings.batch_api_max_requests}). Reduce --limit or increase chunk size."
+        )
 
-    # Create the run.
+    # Fetch card models for all chunks.
+    all_oracle_ids = [oid for record in records for oid in record.oracle_ids]
     async with session_factory() as session:
-        run = await _sweep_run_service.create_run(session, tag.id)
+        cards_by_oracle_id = {
+            c.oracle_id: c
+            for c in await _sweep_run_service.fetch_cards_by_oracle_ids(session, all_oracle_ids)
+        }
+
+    chunks: list[BatchChunk] = [
+        BatchChunk(
+            custom_id=record.custom_id,
+            cards=[
+                cards_by_oracle_id[oid]
+                for oid in record.oracle_ids
+                if oid in cards_by_oracle_id
+            ],
+        )
+        for record in records
+    ]
+
+    batch_id = batch_client.submit_batch(chunks)
+
+    async with session_factory() as session:
+        await _sweep_run_service.record_batch_with_cards(
+            session,
+            run_id,
+            batch_id,
+            records,
+        )
         await session.commit()
-        run_id = run.id
 
-    # Fetch the cards.
-    async with session_factory() as session:
-        cards = await _sweep_run_service.fetch_cards_by_oracle_ids(session, oracle_ids)
-
-    if not cards:
-        logger.warning("None of the provided oracle IDs matched known cards.")
-        return
-
-    logger.info("Re-enqueueing {} card(s) from '{}'.", len(cards), oracle_ids_file)
-
-    # Submit in chunks, committing each batch atomically.
-    for i in range(0, len(cards), batch_client.max_requests_per_batch):
-        chunk = cards[i : i + batch_client.max_requests_per_batch]
-        batch_id = batch_client.submit_batch(chunk)
-        async with session_factory() as session:
-            await _sweep_run_service.record_batch(
-                session, run_id, batch_id, len(chunk), str(chunk[-1].oracle_id)
-            )
-            await session.commit()
-        logger.info("  submitted batch {} ({} cards)", batch_id, len(chunk))
-
-    # All cards queued — mark the run accordingly.
-    async with session_factory() as session:
-        await _sweep_run_service.mark_all_cards_queued(session, run_id)
-        await session.commit()
-
-    logger.info("Run ID: {}", run_id)
+    logger.info(
+        "{}: submitted batch {} ({} cards in {} chunk(s))",
+        label,
+        batch_id,
+        len(oracle_ids),
+        len(records),
+    )
 
 
-async def _run(tag_name: str, limit: int, oracle_ids_file: str | None) -> uuid.UUID | None:
+async def _run(tag_name: str, limit: int, reenqueue_failed: bool) -> uuid.UUID | None:
+    settings = get_settings()
     session_factory = get_async_session_factory()
+
     async with session_factory() as session:
         tag = await _tag_service.require_tag_model(session, tag_name)
 
-    if oracle_ids_file is not None:
-        await _submit_oracle_ids_file(oracle_ids_file, tag)
-        return None
-
     batch_client = create_batch_client(tag.description)
+    logger.info("Using model: {}", settings.tag_sweep_model)
 
     # Get or create the open run for this tag.
     async with session_factory() as session:
@@ -109,77 +124,44 @@ async def _run(tag_name: str, limit: int, oracle_ids_file: str | None) -> uuid.U
             await session.commit()
             logger.info("Created new sweep run.")
         else:
-            logger.info(
-                "Resuming existing run {} (cursor: {}).",
-                run.id,
-                run.last_submitted_oracle_id or "start",
-            )
+            logger.info("Resuming existing run {}.", run.id)
         run_id: uuid.UUID = run.id
-        cursor: str | None = run.last_submitted_oracle_id
 
-    # Derive the epoch gate from the last complete run.
+    if reenqueue_failed:
+        async with session_factory() as session:
+            failed_ids = list(
+                await _sweep_run_service.get_failed_oracle_ids_for_run(session, run_id)
+            )
+        if not failed_ids:
+            logger.info("No failed oracle IDs found for run {}.", run_id)
+        else:
+            logger.info("Re-enqueueing {} failed oracle ID(s).", len(failed_ids))
+            await _submit_chunks(
+                run_id, failed_ids, batch_client, settings.tag_sweep_batch_size, "reenqueue"
+            )
+        logger.info("Run ID: {}", run_id)
+        return run_id
+
+    # Load tag model with relationships for eligibility filtering.
     async with session_factory() as session:
-        last_swept_at = await _sweep_run_service.get_epoch_gate(session, tag.id)
-
-    remaining = limit if limit > 0 else None
-    total_submitted = 0
-
-    while True:
-        max_per_batch = batch_client.max_requests_per_batch
-        chunk_size = min(max_per_batch, remaining) if remaining is not None else max_per_batch
-
-        # Load the tag model fresh each iteration (selectin relationships).
-        async with session_factory() as session:
-            tag_model = await _tag_service.require_tag_model_by_id(
-                session, tag.id, load_relationships=True
-            )
-
-        async with session_factory() as session:
-            cards: list[MagicBotoCardModel] = await _sweep_run_service.fetch_all_pending(
-                session, tag_model, last_swept_at, cursor, chunk_size
-            )
-
-        if not cards:
-            # All eligible cards for this epoch have been submitted.
-            async with session_factory() as session:
-                await _sweep_run_service.mark_all_cards_queued(session, run_id)
-                await session.commit()
-            logger.info(
-                "All cards queued. {} card(s) submitted this call. Run ID: {}",
-                total_submitted,
-                run_id,
-            )
-            break
-
-        # Submit to Anthropic — synchronous, blocks until confirmed.
-        batch_id = batch_client.submit_batch(cards)
-
-        # Commit the batch record and advance the cursor atomically.
-        async with session_factory() as session:
-            await _sweep_run_service.record_batch(
-                session, run_id, batch_id, len(cards), str(cards[-1].oracle_id)
-            )
-            await session.commit()
-
-        cursor = str(cards[-1].oracle_id)
-        total_submitted += len(cards)
-
-        logger.info(
-            "Submitted batch {} ({} cards | cursor: {})",
-            batch_id,
-            len(cards),
-            cursor,
+        tag_model = await _tag_service.require_tag_model_by_id(
+            session, tag.id, load_relationships=True
         )
 
-        if remaining is not None:
-            remaining -= len(cards)
-            if remaining <= 0:
-                logger.info(
-                    "Limit reached. {} card(s) submitted. Run stays open. Run ID: {}",
-                    total_submitted,
-                    run_id,
-                )
-                break
+    async with session_factory() as session:
+        eligible = list(
+            await _sweep_run_service.fetch_eligible_oracle_ids(
+                session, tag_model, run_id, limit=limit
+            )
+        )
+
+    if not eligible:
+        logger.info("No eligible cards to sweep for run {}.", run_id)
+        logger.info("Run ID: {}", run_id)
+        return run_id
+
+    logger.info("{} eligible card(s) to submit.", len(eligible))
+    await _submit_chunks(run_id, eligible, batch_client, settings.tag_sweep_batch_size, "kickoff")
 
     logger.info("Run ID: {}", run_id)
     return run_id
@@ -188,7 +170,7 @@ async def _run(tag_name: str, limit: int, oracle_ids_file: str | None) -> uuid.U
 def main() -> None:
     configure_cli_logging()
     args = _parse_args()
-    run_id = asyncio.run(_run(args.tag, args.limit, args.oracle_ids_file))
+    run_id = asyncio.run(_run(args.tag, args.limit, args.reenqueue_failed))
     if run_id is not None:
         print(run_id, flush=True)
 

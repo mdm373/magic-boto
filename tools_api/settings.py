@@ -42,21 +42,15 @@ class Settings(BaseSettings):
         default="claude-haiku-4-5-20251001",
         description="Fast, low-cost model used by the bulk tag sweep task.",
     )
-    tag_sweep_limit: int = Field(
-        default=20,
+    tag_sweep_batch_size: int = Field(
+        default=1000,
         ge=1,
-        le=200,
-        description="Cards per page for the tag sweep task.",
+        description="Cards per CSV chunk / Anthropic request in the bulk tag sweep.",
     )
     tag_sweep_max_tokens: int = Field(
-        default=2048,
+        default=16_000,
         ge=256,
         description="Max tokens per Claude call in the tag sweep task.",
-    )
-    tag_sweep_max_hallucination_retries: int = Field(
-        default=2,
-        ge=0,
-        description="How many times to retry a Claude call that returns hallucinated oracle IDs.",
     )
 
     # High-effort audit: powerful model reviews a sample for quality feedback.
@@ -72,6 +66,12 @@ class Settings(BaseSettings):
     debug_output_dir: str = Field(
         default="debug",
         description="Directory for debug output files (Claude logs, unsure-card logs, etc.).",
+    )
+
+    db_insert_chunk_size: int = Field(
+        default=1_000,
+        ge=1,
+        description="Max rows per bulk INSERT statement to stay within Postgres parameter limits.",
     )
 
     inventory_import_max_unknown_scryfall_ids: int = Field(

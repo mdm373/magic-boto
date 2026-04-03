@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import cast
 
-from sqlalchemy import delete, exists, func, select, update
+from sqlalchemy import delete, exists, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.magic_boto_card import MagicBotoCardModel
@@ -16,12 +16,14 @@ from app.models.magic_boto_card_type import MagicBotoCardTypeModel
 from app.models.magic_boto_tag import MagicBotoTagModel
 from app.models.sweep_run import SweepRunModel
 from app.models.sweep_run_batch import SweepRunBatchModel
+from app.models.sweep_run_batch_card import SweepRunBatchCardModel
 from app.models.sweep_status import (
     PROCESSABLE_BATCH_STATUSES,
     TERMINAL_BATCH_STATUSES,
     BatchStatus,
     SweepRunStatus,
 )
+from app.tag.batch.client import BatchChunkRecord
 
 
 class SweepRunService:
@@ -57,12 +59,6 @@ class SweepRunService:
         await session.flush()
         return run
 
-    async def mark_all_cards_queued(self, session: AsyncSession, run_id: uuid.UUID) -> None:
-        """Signal that kickoff has submitted every eligible card for this epoch."""
-        await session.execute(
-            update(SweepRunModel).where(SweepRunModel.id == run_id).values(all_cards_queued=True)
-        )
-
     async def complete_run(self, session: AsyncSession, run_id: uuid.UUID) -> None:
         """Mark the run complete. Caller must commit."""
         await session.execute(
@@ -80,7 +76,7 @@ class SweepRunService:
         )
 
     async def delete_open_run(self, session: AsyncSession, tag_id: uuid.UUID) -> uuid.UUID | None:
-        """Delete the open run for a tag (cascades to batches). Returns the deleted run ID or None."""
+        """Delete the open run for a tag (cascades to batches). Returns deleted run ID or None."""
         row = await session.scalar(
             select(SweepRunModel)
             .where(SweepRunModel.tag_id == tag_id, SweepRunModel.status == SweepRunStatus.OPEN)
@@ -93,44 +89,41 @@ class SweepRunService:
         await session.execute(delete(SweepRunModel).where(SweepRunModel.id == run_id))
         return run_id
 
-    async def get_epoch_gate(self, session: AsyncSession, tag_id: uuid.UUID) -> datetime | None:
-        """Return triggered_at of the last complete run, or None (first-ever sweep)."""
-        return cast(
-            datetime | None,
-            await session.scalar(
-                select(func.max(SweepRunModel.triggered_at)).where(
-                    SweepRunModel.tag_id == tag_id,
-                    SweepRunModel.status == SweepRunStatus.COMPLETE,
-                )
-            ),
-        )
-
     # ------------------------------------------------------------------
     # Batch management
     # ------------------------------------------------------------------
 
-    async def record_batch(
+    async def record_batch_with_cards(
         self,
         session: AsyncSession,
         run_id: uuid.UUID,
         batch_id: str,
-        card_count: int,
-        last_oracle_id: str,
+        chunks: Sequence[BatchChunkRecord],
     ) -> None:
-        """Insert a sweep_run_batches row and advance the run cursor. Caller must commit."""
-        session.add(
-            SweepRunBatchModel(
-                run_id=run_id,
-                batch_id=batch_id,
-                card_count=card_count,
-            )
+        """Insert a sweep_run_batches row and all sweep_run_batch_cards rows.
+
+        Flushes but does not commit — caller commits.
+        """
+        total_cards = sum(len(chunk.oracle_ids) for chunk in chunks)
+        batch_row = SweepRunBatchModel(
+            run_id=run_id,
+            batch_id=batch_id,
+            card_count=total_cards,
         )
+        session.add(batch_row)
         await session.flush()
-        await session.execute(
-            update(SweepRunModel)
-            .where(SweepRunModel.id == run_id)
-            .values(last_submitted_oracle_id=last_oracle_id)
-        )
+
+        for chunk in chunks:
+            for position, oracle_id in enumerate(chunk.oracle_ids):
+                session.add(
+                    SweepRunBatchCardModel(
+                        sweep_run_batch_id=batch_row.id,
+                        chunk_custom_id=chunk.custom_id,
+                        oracle_id=oracle_id,
+                        position=position,
+                    )
+                )
+        await session.flush()
 
     async def get_batches(
         self, session: AsyncSession, run_id: uuid.UUID
@@ -199,34 +192,148 @@ class SweepRunService:
             session, batch_id, BatchStatus.PROCESSED, completed_at=datetime.now(UTC)
         )
 
+    async def get_batch_cards(
+        self,
+        session: AsyncSession,
+        sweep_run_batch_id: uuid.UUID,
+        chunk_custom_id: str,
+    ) -> Sequence[SweepRunBatchCardModel]:
+        """Return card rows for a chunk ordered by position."""
+        result = await session.execute(
+            select(SweepRunBatchCardModel)
+            .where(
+                SweepRunBatchCardModel.sweep_run_batch_id == sweep_run_batch_id,
+                SweepRunBatchCardModel.chunk_custom_id == chunk_custom_id,
+            )
+            .order_by(SweepRunBatchCardModel.position)
+        )
+        return list(result.scalars().all())
+
+    async def get_submitted_oracle_ids_for_run(
+        self, session: AsyncSession, run_id: uuid.UUID
+    ) -> frozenset[str]:
+        """Return all oracle_ids submitted in any batch for this run."""
+        card_batch_join = SweepRunBatchCardModel.sweep_run_batch_id == SweepRunBatchModel.id
+        result = await session.execute(
+            select(SweepRunBatchCardModel.oracle_id)
+            .join(SweepRunBatchModel, card_batch_join)
+            .where(SweepRunBatchModel.run_id == run_id)
+            .distinct()
+        )
+        return frozenset(result.scalars().all())
+
+    async def get_failed_oracle_ids_for_run(
+        self, session: AsyncSession, run_id: uuid.UUID
+    ) -> Sequence[str]:
+        """Return oracle_ids that need re-enqueueing.
+
+        Covers two failure modes:
+        - Batches that reached a non-processed terminal state (errored/expired/canceled).
+        - Individual cards marked failed within an otherwise-processed batch
+          (e.g. unparseable model response for their chunk).
+        """
+        card_batch_join = SweepRunBatchCardModel.sweep_run_batch_id == SweepRunBatchModel.id
+
+        # Anthropic-level batch failures.
+        api_failed_statuses = {"errored", "expired", "canceled"}
+        api_failed = await session.execute(
+            select(SweepRunBatchCardModel.oracle_id)
+            .join(SweepRunBatchModel, card_batch_join)
+            .where(
+                SweepRunBatchModel.run_id == run_id,
+                SweepRunBatchModel.status.in_(api_failed_statuses),
+            )
+        )
+
+        # Parse-level failures: cards flagged failed within a processed batch.
+        parse_failed = await session.execute(
+            select(SweepRunBatchCardModel.oracle_id)
+            .join(SweepRunBatchModel, card_batch_join)
+            .where(
+                SweepRunBatchModel.run_id == run_id,
+                SweepRunBatchModel.status == BatchStatus.PROCESSED,
+                SweepRunBatchCardModel.failed.is_(True),
+            )
+        )
+
+        seen: set[str] = set()
+        results: list[str] = []
+        for oracle_id in [*api_failed.scalars().all(), *parse_failed.scalars().all()]:
+            if oracle_id not in seen:
+                seen.add(oracle_id)
+                results.append(oracle_id)
+        return results
+
+    async def mark_batch_cards_failed(
+        self,
+        session: AsyncSession,
+        sweep_run_batch_id: uuid.UUID,
+        oracle_ids: Sequence[str],
+    ) -> None:
+        """Mark specific oracle_ids as failed within a batch. Caller must commit."""
+        await session.execute(
+            update(SweepRunBatchCardModel)
+            .where(
+                SweepRunBatchCardModel.sweep_run_batch_id == sweep_run_batch_id,
+                SweepRunBatchCardModel.oracle_id.in_(oracle_ids),
+            )
+            .values(failed=True)
+        )
+
     # ------------------------------------------------------------------
-    # Card fetching
+    # Card fetching / eligibility
     # ------------------------------------------------------------------
 
-    async def fetch_all_pending(
+    async def fetch_eligible_oracle_ids(
         self,
         session: AsyncSession,
         tag: MagicBotoTagModel,
-        last_swept_at: datetime | None,
-        after_oracle_id: str | None,
-        limit: int,
-    ) -> Sequence[MagicBotoCardModel]:
-        """Return up to ``limit`` cards eligible for this sweep epoch.
+        run_id: uuid.UUID,
+        limit: int = 0,
+    ) -> Sequence[str]:
+        """Return oracle_ids eligible for this sweep run.
 
-        Applies the same eligibility logic as the old OracleTagSweepService:
-        - Only oracle_ids whose MIN(created_at) > last_swept_at (skips prior epochs).
-        - Respects the tag's sweep_include_types and sweep_include_supertypes filters.
-        - Ordered by oracle_id; starts strictly after after_oracle_id (cursor).
-        - last_swept_at=None → all cards eligible (first-ever sweep).
+        Excludes:
+        - oracle_ids already swept in any completed run for this tag
+        - oracle_ids already submitted in the current open run (resumption)
+
+        Applies tag type/supertype filters. Returns oracle_ids only — caller
+        fetches card details via fetch_cards_by_oracle_ids.
         """
-        base = select(MagicBotoCardModel.oracle_id).group_by(MagicBotoCardModel.oracle_id)
+        card_batch_join = SweepRunBatchCardModel.sweep_run_batch_id == SweepRunBatchModel.id
 
-        if last_swept_at is not None:
-            base = base.having(func.min(MagicBotoCardModel.created_at) > last_swept_at)
+        # Subquery: oracle_ids covered by a completed run for this tag.
+        completed_subq = (
+            select(SweepRunBatchCardModel.oracle_id)
+            .join(SweepRunBatchModel, card_batch_join)
+            .join(SweepRunModel, SweepRunBatchModel.run_id == SweepRunModel.id)
+            .where(
+                SweepRunModel.tag_id == tag.id,
+                SweepRunModel.status == SweepRunStatus.COMPLETE,
+            )
+            .scalar_subquery()
+        )
+
+        # Subquery: oracle_ids already submitted in the current run.
+        current_subq = (
+            select(SweepRunBatchCardModel.oracle_id)
+            .join(SweepRunBatchModel, card_batch_join)
+            .where(SweepRunBatchModel.run_id == run_id)
+            .scalar_subquery()
+        )
+
+        stmt = (
+            select(MagicBotoCardModel.oracle_id)
+            .group_by(MagicBotoCardModel.oracle_id)
+            .where(
+                MagicBotoCardModel.oracle_id.not_in(completed_subq),
+                MagicBotoCardModel.oracle_id.not_in(current_subq),
+            )
+        )
 
         include_types = [r.card_type for r in tag.tag_types]
         if include_types:
-            base = base.where(
+            stmt = stmt.where(
                 exists(
                     select(MagicBotoCardTypeModel.card_id).where(
                         MagicBotoCardTypeModel.card_id == MagicBotoCardModel.card_id,
@@ -237,7 +344,7 @@ class SweepRunService:
 
         include_supertypes = [r.card_supertype for r in tag.supertypes]
         if include_supertypes:
-            base = base.where(
+            stmt = stmt.where(
                 exists(
                     select(MagicBotoCardSupertypeModel.card_id).where(
                         MagicBotoCardSupertypeModel.card_id == MagicBotoCardModel.card_id,
@@ -246,28 +353,11 @@ class SweepRunService:
                 )
             )
 
-        if after_oracle_id is not None:
-            base = base.where(MagicBotoCardModel.oracle_id > after_oracle_id)
+        stmt = stmt.order_by(MagicBotoCardModel.oracle_id)
+        if limit > 0:
+            stmt = stmt.limit(limit)
 
-        base = base.order_by(MagicBotoCardModel.oracle_id).limit(limit)
-
-        oracle_ids: list[str] = list((await session.execute(base)).scalars().all())
-        if not oracle_ids:
-            return []
-
-        cards_stmt = (
-            select(MagicBotoCardModel)
-            .where(MagicBotoCardModel.oracle_id.in_(oracle_ids))
-            .order_by(MagicBotoCardModel.oracle_id, MagicBotoCardModel.card_id)
-        )
-        all_cards = list((await session.execute(cards_stmt)).scalars().all())
-
-        seen: dict[str, MagicBotoCardModel] = {}
-        for card in all_cards:
-            if card.oracle_id not in seen:
-                seen[card.oracle_id] = card
-
-        return [seen[oid] for oid in oracle_ids if oid in seen]
+        return list((await session.execute(stmt)).scalars().all())
 
     async def fetch_cards_by_oracle_ids(
         self, session: AsyncSession, oracle_ids: Sequence[str]
@@ -291,6 +381,18 @@ class SweepRunService:
             if card.oracle_id not in seen:
                 seen[card.oracle_id] = card
         return [seen[oid] for oid in oracle_ids if oid in seen]
+
+    async def is_run_complete(
+        self,
+        session: AsyncSession,
+        run_id: uuid.UUID,
+        tag: MagicBotoTagModel,
+    ) -> bool:
+        """Return True when all batches are processed and no eligible cards remain."""
+        if not await self.are_all_batches_processed(session, run_id):
+            return False
+        remaining = await self.fetch_eligible_oracle_ids(session, tag, run_id)
+        return len(remaining) == 0
 
 
 def create_sweep_run_service() -> SweepRunService:

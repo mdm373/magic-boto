@@ -28,10 +28,10 @@ async def _run(tag_name: str) -> None:
             return
 
         batches = await _sweep_run_service.get_batches(session, run.id)
+        submitted_ids = await _sweep_run_service.get_submitted_oracle_ids_for_run(session, run.id)
 
     logger.info("Open run: {}", run.id)
-    logger.info("  all_cards_queued: {}", run.all_cards_queued)
-    logger.info("  cursor: {}", run.last_submitted_oracle_id or "start")
+    logger.info("  submitted cards: {}", len(submitted_ids))
     logger.info("  batches: {}", len(batches))
     for b in batches:
         logger.info("    {} — {} cards — {}", b.batch_id[:28], b.card_count, b.status)
