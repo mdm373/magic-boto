@@ -30,7 +30,7 @@ def delete_inventory(c: Context) -> None:
         "run",
         "python",
         "-m",
-        "app.inventory.delete.main",
+        "app.cmd.inventory.delete",
         inventory_name,
     ]
     if c.cwd:
@@ -51,7 +51,7 @@ def delete_tag(c: Context) -> None:
     if reply.strip().lower() != "yes":
         raise Exit("Aborted.")
 
-    argv = ["uv", "run", "python", "-m", "app.tag.delete.main", tag_name]
+    argv = ["uv", "run", "python", "-m", "app.cmd.tag.delete", tag_name]
     if c.cwd:
         subprocess.run(argv, check=True, cwd=c.cwd)
     else:

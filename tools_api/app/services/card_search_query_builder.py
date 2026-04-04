@@ -7,19 +7,19 @@ from collections.abc import Sequence
 from sqlalchemy import exists, or_, select
 from sqlalchemy.sql.elements import ColumnElement
 
+from app.api_schema.card_search import CardSearchFilters
 from app.models import (
-    MagicBotoCardKeywordModel,
-    MagicBotoCardMetaModel,
-    MagicBotoCardModel,
-    MagicBotoCardSubtypeModel,
-    MagicBotoCardSupertypeModel,
-    MagicBotoCardTagModel,
-    MagicBotoCardTypeModel,
-    MagicBotoInventoryCardModel,
-    MagicBotoInventoryModel,
-    MagicBotoTagModel,
+    CardKeywordModel,
+    CardMetaModel,
+    CardModel,
+    CardSubtypeModel,
+    CardSupertypeModel,
+    CardTagModel,
+    CardTypeModel,
+    InventoryCardModel,
+    InventoryModel,
+    TagModel,
 )
-from app.schema.card_search import CardSearchFilters
 
 
 class CardSearchQueryBuilder:
@@ -60,10 +60,10 @@ def _build_mana_value_filters(filters: CardSearchFilters) -> Sequence[ColumnElem
 def _meta_mana_eq(val: int) -> ColumnElement[bool]:
     return exists(
         select(1)
-        .select_from(MagicBotoCardMetaModel)
+        .select_from(CardMetaModel)
         .where(
-            MagicBotoCardMetaModel.card_id == MagicBotoCardModel.card_id,
-            MagicBotoCardMetaModel.mana_value == val,
+            CardMetaModel.card_id == CardModel.card_id,
+            CardMetaModel.mana_value == val,
         )
     )
 
@@ -71,10 +71,10 @@ def _meta_mana_eq(val: int) -> ColumnElement[bool]:
 def _meta_mana_lt(val: int) -> ColumnElement[bool]:
     return exists(
         select(1)
-        .select_from(MagicBotoCardMetaModel)
+        .select_from(CardMetaModel)
         .where(
-            MagicBotoCardMetaModel.card_id == MagicBotoCardModel.card_id,
-            MagicBotoCardMetaModel.mana_value < val,
+            CardMetaModel.card_id == CardModel.card_id,
+            CardMetaModel.mana_value < val,
         )
     )
 
@@ -82,10 +82,10 @@ def _meta_mana_lt(val: int) -> ColumnElement[bool]:
 def _meta_mana_gt(val: int) -> ColumnElement[bool]:
     return exists(
         select(1)
-        .select_from(MagicBotoCardMetaModel)
+        .select_from(CardMetaModel)
         .where(
-            MagicBotoCardMetaModel.card_id == MagicBotoCardModel.card_id,
-            MagicBotoCardMetaModel.mana_value > val,
+            CardMetaModel.card_id == CardModel.card_id,
+            CardMetaModel.mana_value > val,
         )
     )
 
@@ -93,24 +93,24 @@ def _meta_mana_gt(val: int) -> ColumnElement[bool]:
 def _build_name_filters(filters: CardSearchFilters) -> Sequence[ColumnElement[bool]]:
     out: list[ColumnElement[bool]] = []
     if filters.name_eq is not None:
-        out.append(MagicBotoCardModel.name == filters.name_eq)
+        out.append(CardModel.name == filters.name_eq)
     if filters.name_like is not None:
-        out.append(MagicBotoCardModel.name.ilike(f"%{filters.name_like}%"))
+        out.append(CardModel.name.ilike(f"%{filters.name_like}%"))
     return out
 
 
 def _build_text_like_filters(filters: CardSearchFilters) -> Sequence[ColumnElement[bool]]:
     if filters.text_like is None:
         return ()
-    return (MagicBotoCardModel.oracle_text.ilike(f"%{filters.text_like}%"),)
+    return (CardModel.oracle_text.ilike(f"%{filters.text_like}%"),)
 
 
 def _build_identifier_filters(filters: CardSearchFilters) -> Sequence[ColumnElement[bool]]:
     out: list[ColumnElement[bool]] = []
     if filters.scryfall_id is not None:
-        out.append(MagicBotoCardModel.scryfall_id == str(filters.scryfall_id))
+        out.append(CardModel.scryfall_id == str(filters.scryfall_id))
     if filters.oracle_id is not None:
-        out.append(MagicBotoCardModel.oracle_id == str(filters.oracle_id))
+        out.append(CardModel.oracle_id == str(filters.oracle_id))
     return out
 
 
@@ -120,14 +120,14 @@ def _build_inventory_filters(filters: CardSearchFilters) -> Sequence[ColumnEleme
     return (
         exists(
             select(1)
-            .select_from(MagicBotoInventoryCardModel)
+            .select_from(InventoryCardModel)
             .join(
-                MagicBotoInventoryModel,
-                MagicBotoInventoryCardModel.inventory_id == MagicBotoInventoryModel.id,
+                InventoryModel,
+                InventoryCardModel.inventory_id == InventoryModel.id,
             )
             .where(
-                MagicBotoInventoryCardModel.card_id == MagicBotoCardModel.card_id,
-                MagicBotoInventoryModel.name == filters.inventory_name,
+                InventoryCardModel.card_id == CardModel.card_id,
+                InventoryModel.name == filters.inventory_name,
             )
         ),
     )
@@ -136,27 +136,21 @@ def _build_inventory_filters(filters: CardSearchFilters) -> Sequence[ColumnEleme
 def _build_rarity_filters(filters: CardSearchFilters) -> Sequence[ColumnElement[bool]]:
     if filters.rarity is None:
         return ()
-    return (MagicBotoCardModel.rarity == filters.rarity,)
+    return (CardModel.rarity == filters.rarity,)
 
 
 def _build_subtype_filters(filters: CardSearchFilters) -> Sequence[ColumnElement[bool]]:
     out: list[ColumnElement[bool]] = []
     if filters.subtype is not None:
-        out.append(
-            MagicBotoCardModel.subtypes.any(
-                MagicBotoCardSubtypeModel.card_subtype == filters.subtype
-            )
-        )
+        out.append(CardModel.subtypes.any(CardSubtypeModel.card_subtype == filters.subtype))
     if filters.subtype_one_of:
         out.append(
-            MagicBotoCardModel.subtypes.any(
-                MagicBotoCardSubtypeModel.card_subtype.in_(filters.subtype_one_of)
-            )
+            CardModel.subtypes.any(CardSubtypeModel.card_subtype.in_(filters.subtype_one_of))
         )
     if filters.subtype_all_of:
         out.extend(
             [
-                MagicBotoCardModel.subtypes.any(MagicBotoCardSubtypeModel.card_subtype == value)
+                CardModel.subtypes.any(CardSubtypeModel.card_subtype == value)
                 for value in filters.subtype_all_of
             ]
         )
@@ -166,21 +160,15 @@ def _build_subtype_filters(filters: CardSearchFilters) -> Sequence[ColumnElement
 def _build_keyword_filters(filters: CardSearchFilters) -> Sequence[ColumnElement[bool]]:
     out: list[ColumnElement[bool]] = []
     if filters.keyword is not None:
-        out.append(
-            MagicBotoCardModel.keywords.any(
-                MagicBotoCardKeywordModel.card_keyword == filters.keyword
-            )
-        )
+        out.append(CardModel.keywords.any(CardKeywordModel.card_keyword == filters.keyword))
     if filters.keyword_one_of:
         out.append(
-            MagicBotoCardModel.keywords.any(
-                MagicBotoCardKeywordModel.card_keyword.in_(filters.keyword_one_of)
-            )
+            CardModel.keywords.any(CardKeywordModel.card_keyword.in_(filters.keyword_one_of))
         )
     if filters.keyword_all_of:
         out.extend(
             [
-                MagicBotoCardModel.keywords.any(MagicBotoCardKeywordModel.card_keyword == v)
+                CardModel.keywords.any(CardKeywordModel.card_keyword == v)
                 for v in filters.keyword_all_of
             ]
         )
@@ -191,18 +179,16 @@ def _build_supertype_filters(filters: CardSearchFilters) -> Sequence[ColumnEleme
     if filters.super_type is None:
         return ()
     return (
-        MagicBotoCardModel.supertypes.any(
-            MagicBotoCardSupertypeModel.card_supertype == filters.super_type.value
-        ),
+        CardModel.supertypes.any(CardSupertypeModel.card_supertype == filters.super_type.value),
     )
 
 
 def _build_set_code_filters(filters: CardSearchFilters) -> Sequence[ColumnElement[bool]]:
     out: list[ColumnElement[bool]] = []
     if filters.set_code is not None:
-        out.append(MagicBotoCardModel.set_code == filters.set_code)
+        out.append(CardModel.set_code == filters.set_code)
     if filters.set_code_any_of:
-        out.append(MagicBotoCardModel.set_code.in_(filters.set_code_any_of))
+        out.append(CardModel.set_code.in_(filters.set_code_any_of))
     return out
 
 
@@ -215,10 +201,10 @@ def _build_pt_meta_filters(
         out.append(
             exists(
                 select(1)
-                .select_from(MagicBotoCardMetaModel)
+                .select_from(CardMetaModel)
                 .where(
-                    MagicBotoCardMetaModel.card_id == MagicBotoCardModel.card_id,
-                    MagicBotoCardMetaModel.power_number == filters.power_eq,
+                    CardMetaModel.card_id == CardModel.card_id,
+                    CardMetaModel.power_number == filters.power_eq,
                 )
             )
         )
@@ -226,10 +212,10 @@ def _build_pt_meta_filters(
         out.append(
             exists(
                 select(1)
-                .select_from(MagicBotoCardMetaModel)
+                .select_from(CardMetaModel)
                 .where(
-                    MagicBotoCardMetaModel.card_id == MagicBotoCardModel.card_id,
-                    MagicBotoCardMetaModel.power_number < filters.power_lt,
+                    CardMetaModel.card_id == CardModel.card_id,
+                    CardMetaModel.power_number < filters.power_lt,
                 )
             )
         )
@@ -237,10 +223,10 @@ def _build_pt_meta_filters(
         out.append(
             exists(
                 select(1)
-                .select_from(MagicBotoCardMetaModel)
+                .select_from(CardMetaModel)
                 .where(
-                    MagicBotoCardMetaModel.card_id == MagicBotoCardModel.card_id,
-                    MagicBotoCardMetaModel.power_number > filters.power_gt,
+                    CardMetaModel.card_id == CardModel.card_id,
+                    CardMetaModel.power_number > filters.power_gt,
                 )
             )
         )
@@ -248,10 +234,10 @@ def _build_pt_meta_filters(
         out.append(
             exists(
                 select(1)
-                .select_from(MagicBotoCardMetaModel)
+                .select_from(CardMetaModel)
                 .where(
-                    MagicBotoCardMetaModel.card_id == MagicBotoCardModel.card_id,
-                    MagicBotoCardMetaModel.toughness_number == filters.toughness_eq,
+                    CardMetaModel.card_id == CardModel.card_id,
+                    CardMetaModel.toughness_number == filters.toughness_eq,
                 )
             )
         )
@@ -259,10 +245,10 @@ def _build_pt_meta_filters(
         out.append(
             exists(
                 select(1)
-                .select_from(MagicBotoCardMetaModel)
+                .select_from(CardMetaModel)
                 .where(
-                    MagicBotoCardMetaModel.card_id == MagicBotoCardModel.card_id,
-                    MagicBotoCardMetaModel.toughness_number < filters.toughness_lt,
+                    CardMetaModel.card_id == CardModel.card_id,
+                    CardMetaModel.toughness_number < filters.toughness_lt,
                 )
             )
         )
@@ -270,10 +256,10 @@ def _build_pt_meta_filters(
         out.append(
             exists(
                 select(1)
-                .select_from(MagicBotoCardMetaModel)
+                .select_from(CardMetaModel)
                 .where(
-                    MagicBotoCardMetaModel.card_id == MagicBotoCardModel.card_id,
-                    MagicBotoCardMetaModel.toughness_number > filters.toughness_gt,
+                    CardMetaModel.card_id == CardModel.card_id,
+                    CardMetaModel.toughness_number > filters.toughness_gt,
                 )
             )
         )
@@ -286,15 +272,15 @@ def _build_number_filters(
     """Filter by parsed collector number in ``magic_boto.card_meta``."""
     out: list[ColumnElement[bool]] = []
     if filters.number_like is not None:
-        out.append(MagicBotoCardModel.collector_number.ilike(f"%{filters.number_like}%"))
+        out.append(CardModel.collector_number.ilike(f"%{filters.number_like}%"))
     if filters.number_eq is not None:
         out.append(
             exists(
                 select(1)
-                .select_from(MagicBotoCardMetaModel)
+                .select_from(CardMetaModel)
                 .where(
-                    MagicBotoCardMetaModel.card_id == MagicBotoCardModel.card_id,
-                    MagicBotoCardMetaModel.collector_number == filters.number_eq,
+                    CardMetaModel.card_id == CardModel.card_id,
+                    CardMetaModel.collector_number == filters.number_eq,
                 )
             )
         )
@@ -302,10 +288,10 @@ def _build_number_filters(
         out.append(
             exists(
                 select(1)
-                .select_from(MagicBotoCardMetaModel)
+                .select_from(CardMetaModel)
                 .where(
-                    MagicBotoCardMetaModel.card_id == MagicBotoCardModel.card_id,
-                    MagicBotoCardMetaModel.collector_number < filters.number_lt,
+                    CardMetaModel.card_id == CardModel.card_id,
+                    CardMetaModel.collector_number < filters.number_lt,
                 )
             )
         )
@@ -313,10 +299,10 @@ def _build_number_filters(
         out.append(
             exists(
                 select(1)
-                .select_from(MagicBotoCardMetaModel)
+                .select_from(CardMetaModel)
                 .where(
-                    MagicBotoCardMetaModel.card_id == MagicBotoCardModel.card_id,
-                    MagicBotoCardMetaModel.collector_number > filters.number_gt,
+                    CardMetaModel.card_id == CardModel.card_id,
+                    CardMetaModel.collector_number > filters.number_gt,
                 )
             )
         )
@@ -329,9 +315,9 @@ def _build_pt_raw_filters(
     """Substring match on raw ``magic_boto.cards`` power/toughness text."""
     out: list[ColumnElement[bool]] = []
     if filters.power_like is not None:
-        out.append(MagicBotoCardModel.power.ilike(f"%{filters.power_like}%"))
+        out.append(CardModel.power.ilike(f"%{filters.power_like}%"))
     if filters.toughness_like is not None:
-        out.append(MagicBotoCardModel.toughness.ilike(f"%{filters.toughness_like}%"))
+        out.append(CardModel.toughness.ilike(f"%{filters.toughness_like}%"))
 
     return out
 
@@ -342,20 +328,19 @@ def _build_color_identity_filters(
     """Filter by canonical ``magic_boto.cards.color_identity`` string (WUBRG pips)."""
     out: list[ColumnElement[bool]] = []
     if filters.color_identity is not None:
-        out.append(MagicBotoCardModel.color_identity.like(f"%{filters.color_identity.value}%"))
+        out.append(CardModel.color_identity.like(f"%{filters.color_identity.value}%"))
     if filters.color_identity_one_of:
         out.append(
             or_(
                 *[
-                    MagicBotoCardModel.color_identity.like(f"%{c.value}%")
+                    CardModel.color_identity.like(f"%{c.value}%")
                     for c in filters.color_identity_one_of
                 ]
             )
         )
     if filters.color_identity_all_of:
         out.extend(
-            MagicBotoCardModel.color_identity.like(f"%{c.value}%")
-            for c in filters.color_identity_all_of
+            CardModel.color_identity.like(f"%{c.value}%") for c in filters.color_identity_all_of
         )
     return out
 
@@ -366,19 +351,13 @@ def _build_card_type_filters(
     """Filter via ``magic_boto.card_types`` junction."""
     out: list[ColumnElement[bool]] = []
     if filters.card_type is not None:
-        out.append(
-            MagicBotoCardModel.card_types.any(
-                MagicBotoCardTypeModel.card_type == filters.card_type.value
-            )
-        )
+        out.append(CardModel.card_types.any(CardTypeModel.card_type == filters.card_type.value))
     if filters.card_type_one_of:
         values = [ct.value for ct in filters.card_type_one_of]
-        out.append(MagicBotoCardModel.card_types.any(MagicBotoCardTypeModel.card_type.in_(values)))
+        out.append(CardModel.card_types.any(CardTypeModel.card_type.in_(values)))
     if filters.card_type_all_of:
         for ct in filters.card_type_all_of:
-            out.append(
-                MagicBotoCardModel.card_types.any(MagicBotoCardTypeModel.card_type == ct.value)
-            )
+            out.append(CardModel.card_types.any(CardTypeModel.card_type == ct.value))
     return out
 
 
@@ -386,11 +365,11 @@ def _tag_subquery(tag_name: str) -> ColumnElement[bool]:
     """True when the card's oracle_id has the named tag."""
     return exists(
         select(1)
-        .select_from(MagicBotoCardTagModel)
-        .join(MagicBotoTagModel, MagicBotoCardTagModel.tag_id == MagicBotoTagModel.id)
+        .select_from(CardTagModel)
+        .join(TagModel, CardTagModel.tag_id == TagModel.id)
         .where(
-            MagicBotoCardTagModel.oracle_id == MagicBotoCardModel.oracle_id,
-            MagicBotoTagModel.name == tag_name,
+            CardTagModel.oracle_id == CardModel.oracle_id,
+            TagModel.name == tag_name,
         )
     )
 

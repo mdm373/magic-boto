@@ -1,0 +1,1 @@
+DEFAULT_INVENTORY_NAME = "_default"

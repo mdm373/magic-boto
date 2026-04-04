@@ -1,0 +1,153 @@
+"""Repository for ``magic_boto.cards``."""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from typing import cast
+
+from fastapi_pagination import Params
+from fastapi_pagination.bases import AbstractPage
+from fastapi_pagination.ext.sqlalchemy import paginate
+from sqlalchemy import and_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+from sqlalchemy.sql import Select
+from sqlalchemy.sql.elements import ColumnElement
+
+from app.models import CardModel
+
+from .pg_bulk_upsert import bulk_insert_on_conflict_do_nothing, orm_columns_dict
+
+
+def _apply_ordering(
+    stmt: Select[tuple[CardModel]], *, distinct_oracle: bool
+) -> Select[tuple[CardModel]]:
+    if distinct_oracle:
+        return stmt.distinct(CardModel.oracle_id).order_by(
+            CardModel.oracle_id.asc(),
+            CardModel.name.asc(),
+        )
+    return stmt.order_by(CardModel.name.asc())
+
+
+class CardRepo:
+    """Pure ORM access for ``magic_boto.cards``."""
+
+    async def search_cards(
+        self,
+        session: AsyncSession,
+        *,
+        filters: Sequence[ColumnElement[bool]],
+        distinct_oracle: bool,
+        page_number: int,
+        page_size: int,
+    ) -> AbstractPage[CardModel]:
+        """Paginated card search. Returns a page of CardModel instances."""
+        base = (
+            select(CardModel)
+            .options(
+                selectinload(CardModel.card_types),
+                selectinload(CardModel.subtypes),
+                selectinload(CardModel.keywords),
+                selectinload(CardModel.supertypes),
+                selectinload(CardModel.meta),
+            )
+            .where(and_(*filters))
+        )
+        stmt = _apply_ordering(base, distinct_oracle=distinct_oracle)
+        return cast(
+            AbstractPage[CardModel],
+            await paginate(
+                session,
+                stmt,
+                params=Params(page=page_number, size=page_size),
+            ),
+        )
+
+    async def fetch_by_oracle_ids(
+        self,
+        session: AsyncSession,
+        oracle_ids: Sequence[str],
+    ) -> Sequence[CardModel]:
+        """Return one representative card per oracle_id, preserving input order."""
+        if not oracle_ids:
+            return []
+        rows = await session.execute(
+            select(CardModel)
+            .where(CardModel.oracle_id.in_(oracle_ids))
+            .distinct(CardModel.oracle_id)
+            .order_by(CardModel.oracle_id, CardModel.card_id)
+        )
+        by_oracle_id = {card.oracle_id: card for card in rows.scalars()}
+        return [by_oracle_id[oid] for oid in oracle_ids if oid in by_oracle_id]
+
+    async def get_by_id(
+        self,
+        session: AsyncSession,
+        card_id: str,
+    ) -> CardModel | None:
+        """Return a single card by primary key, with all relationships loaded."""
+        stmt = (
+            select(CardModel)
+            .options(
+                selectinload(CardModel.card_types),
+                selectinload(CardModel.subtypes),
+                selectinload(CardModel.keywords),
+                selectinload(CardModel.supertypes),
+                selectinload(CardModel.meta),
+            )
+            .where(CardModel.card_id == card_id)
+        )
+        result = await session.execute(stmt)
+        return result.scalars().one_or_none()
+
+    async def filter_known_oracle_ids(
+        self,
+        session: AsyncSession,
+        oracle_ids: Sequence[str],
+    ) -> frozenset[str]:
+        """Return the subset of oracle_ids that exist in ``magic_boto.cards``."""
+        result = await session.execute(
+            select(CardModel.oracle_id).where(CardModel.oracle_id.in_(list(oracle_ids)))
+        )
+        return frozenset(result.scalars().all())
+
+    async def resolve_scryfall_ids(
+        self,
+        session: AsyncSession,
+        scryfall_ids: Sequence[str],
+    ) -> dict[str, str]:
+        """Return a mapping of scryfall_id → card_id for known IDs."""
+        _batch = 500
+        out: dict[str, str] = {}
+        ids = list(scryfall_ids)
+        for i in range(0, len(ids), _batch):
+            chunk = ids[i : i + _batch]
+            rows = (
+                await session.execute(
+                    select(CardModel.scryfall_id, CardModel.card_id).where(
+                        CardModel.scryfall_id.in_(chunk),
+                        CardModel.scryfall_id.is_not(None),
+                    )
+                )
+            ).all()
+            for row in rows:
+                assert row.scryfall_id is not None and row.card_id is not None
+                out[row.scryfall_id] = row.card_id
+        return out
+
+    async def insert_many(
+        self,
+        session: AsyncSession,
+        rows: Sequence[CardModel],
+        *,
+        batch_size: int,
+    ) -> None:
+        """Bulk-insert cards, ignoring conflicts on ``card_id``."""
+        await bulk_insert_on_conflict_do_nothing(
+            session,
+            batch_size=batch_size,
+            model=CardModel,
+            index_elements=("card_id",),
+            param_rows=[orm_columns_dict(row) for row in rows],
+        )

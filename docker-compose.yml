@@ -31,7 +31,7 @@ services:
       - "${TOOLS_API_LOCAL_PORT:-8000}:${TOOLS_API_PORT:-8000}"
     volumes:
       - ./tools_api/app:/app/app
-    command: [ "sh", "-c", "uv run uvicorn app.http.main:app --host 0.0.0.0 --port ${TOOLS_API_PORT:-8000} --reload" ]
+    command: [ "sh", "-c", "uv run uvicorn app.cmd.serve_http:app --host 0.0.0.0 --port ${TOOLS_API_PORT:-8000} --reload" ]
     healthcheck:
       test: [ "CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')\" || exit 1" ]
       interval: 5s
@@ -60,7 +60,7 @@ services:
       [
         "sh",
         "-c",
-        "uv run uvicorn app.mcp.asgi:app --host ${TOOLS_MCP_HOST:-0.0.0.0} --port ${TOOLS_MCP_PORT:-8765} --reload",
+        "uv run uvicorn app.cmd.serve_mcp.asgi:app --host ${TOOLS_MCP_HOST:-0.0.0.0} --port ${TOOLS_MCP_PORT:-8765} --reload",
       ]
     healthcheck:
       test:

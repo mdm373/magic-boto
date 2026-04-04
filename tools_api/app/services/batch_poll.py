@@ -14,12 +14,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_async_session_factory
 from app.log import configure_cli_logging
-from app.models.batch import BatchModel
-from app.models.sweep_status import TERMINAL_BATCH_STATUSES
-from app.tag.batch.client import BatchApiClient, create_batch_client
+from app.models import TERMINAL_BATCH_STATUSES, BatchModel
+from app.repository import BatchRepo
 from settings import get_settings
 
-from .batch_service import BatchService
+from .batch_client import BatchApiClient, create_batch_client
 
 
 class BatchPollProvider(Protocol):
@@ -43,11 +42,11 @@ class BatchPoller:
         self,
         provider: BatchPollProvider,
         batch_client: BatchApiClient,
-        batch_service: BatchService,
+        batch_repo: BatchRepo,
     ) -> None:
         self._provider = provider
         self._batch_client = batch_client
-        self._batch_service = batch_service
+        self._batch_repo = batch_repo
 
     def run(self) -> None:
         """Configure logging, parse CLI args, and run the poll loop."""
@@ -76,9 +75,7 @@ class BatchPoller:
 
         while True:
             async with session_factory() as session:
-                batches = await self._batch_service.get_non_terminal_batches_by_ids(
-                    session, batch_ids
-                )
+                batches = await self._batch_repo.get_non_terminal_batches_by_ids(session, batch_ids)
                 if not batches:
                     logger.info("All batches are in a terminal state.")
                     break
@@ -109,5 +106,5 @@ def create_batch_poller(provider: BatchPollProvider) -> BatchPoller:
     return BatchPoller(
         provider=provider,
         batch_client=create_batch_client(),
-        batch_service=BatchService(),
+        batch_repo=BatchRepo(),
     )

@@ -1,9 +1,9 @@
 """Card mapper: convert ORM card models to API response schema."""
 
+from app.api_schema import Card
 from app.errors import InternalError
-from app.models import CardRarity, CardSupertype, CardType, MagicBotoCardModel
+from app.models import CardModel, CardRarity, CardSupertype, CardType
 from app.models.color_identity import color_identity_string_to_list
-from app.schema import MtgjsonCard
 
 
 def _map_mana_value(meta_mana: int | None) -> int:
@@ -15,7 +15,7 @@ def _map_mana_value(meta_mana: int | None) -> int:
 class CardMapper:
     """Map ORM card model to API response schema."""
 
-    def to_response(self, card: MagicBotoCardModel) -> MtgjsonCard:
+    def to_response(self, card: CardModel) -> Card:
         scryfall_id = (card.scryfall_id or "").strip()
         if not scryfall_id:
             raise InternalError("catalog printing has no Scryfall id; cannot map to API response")
@@ -31,7 +31,7 @@ class CardMapper:
         except ValueError as err:
             raise InternalError(f"card scryfall_id={scryfall_id!r} has invalid rarity") from err
         tags = sorted({ct.tag.name for ct in (card.card_tags or [])})
-        return MtgjsonCard(
+        return Card(
             card_id=card.card_id,
             name=card.name or "",
             mana_cost=card.mana_cost,

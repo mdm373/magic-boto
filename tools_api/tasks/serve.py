@@ -12,18 +12,18 @@ def local(c: Context) -> None:
     """Start postgres in Docker, then run uvicorn locally. Port from TOOLS_API_PORT env."""
     c.run(f"{_COMPOSE} up -d postgres")
     port = os.environ.get("TOOLS_API_PORT", "8000")
-    c.run(f"uv run uvicorn app.http.main:app --reload --host 0.0.0.0 --port {port}")
+    c.run(f"uv run uvicorn app.cmd.serve_http:app --reload --host 0.0.0.0 --port {port}")
 
 
 @task
 def mcp(c: Context) -> None:
     """Run MCP streamable HTTP via Uvicorn (same pattern as HTTP).
 
-    Stdio: ``uv run python -m app.mcp.main``.
+    Stdio: ``uv run python -m app.cmd.serve_mcp.stdio``.
     """
     c.run(f"{_COMPOSE} up -d postgres")
     port = os.environ.get("TOOLS_MCP_PORT", "8765")
-    c.run(f"uv run uvicorn app.mcp.asgi:app --reload --host 0.0.0.0 --port {port}")
+    c.run(f"uv run uvicorn app.cmd.serve_mcp.asgi:app --reload --host 0.0.0.0 --port {port}")
 
 
 @task

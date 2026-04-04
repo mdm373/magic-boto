@@ -36,7 +36,7 @@ def kickoff(
     if not tag:
         raise Exit("Tag name is required.")
 
-    argv = ["uv", "run", "python", "-m", "app.tag.sweep.kickoff.main", tag]
+    argv = ["uv", "run", "python", "-m", "app.cmd.tag.sweep.kickoff", tag]
     if limit > 0:
         argv += ["--limit", str(limit)]
     if reenqueue_failed:
@@ -64,7 +64,7 @@ def poll(
     if not sweep_id:
         raise Exit("Sweep ID is required.")
 
-    argv = ["uv", "run", "python", "-m", "app.tag.sweep.poll.main", sweep_id]
+    argv = ["uv", "run", "python", "-m", "app.cmd.tag.sweep.poll", sweep_id]
     if wait:
         argv += ["--wait"]
     _run_subprocess(c, argv)
@@ -91,7 +91,7 @@ def process(
     if include_excluded is None:
         include_excluded = _prompt_yn("Tag non-qualifying cards with {tag}_excluded?")
 
-    argv = ["uv", "run", "python", "-m", "app.tag.sweep.process.main", sweep_id]
+    argv = ["uv", "run", "python", "-m", "app.cmd.tag.sweep.process", sweep_id]
     if include_unsure:
         argv += ["--include-unsure"]
     if include_excluded:
@@ -122,7 +122,7 @@ def run(
         description = _read_multiline("Tag description (two blank lines to finish):")
         if not description:
             raise Exit("Tag description is required.")
-        create_argv = ["uv", "run", "python", "-m", "app.tag.create.main", tag, description]
+        create_argv = ["uv", "run", "python", "-m", "app.cmd.tag.create", tag, description]
         if types_raw:
             create_argv += [f"--types={types_raw}"]
         if supertypes_raw:
@@ -137,7 +137,7 @@ def run(
     include_unsure = _prompt_yn("Tag uncertain cards with {tag}_unsure?")
     include_excluded = _prompt_yn("Tag non-qualifying cards with {tag}_excluded?")
 
-    kickoff_argv = ["uv", "run", "python", "-m", "app.tag.sweep.kickoff.main", tag]
+    kickoff_argv = ["uv", "run", "python", "-m", "app.cmd.tag.sweep.kickoff", tag]
     if limit > 0:
         kickoff_argv += ["--limit", str(limit)]
     result = _run_subprocess(c, kickoff_argv, capture_stdout=True)
@@ -145,7 +145,7 @@ def run(
     if not sweep_id:
         raise Exit("Kickoff did not return a sweep ID.")
 
-    _run_subprocess(c, ["uv", "run", "python", "-m", "app.tag.sweep.poll.main", sweep_id, "--wait"])
+    _run_subprocess(c, ["uv", "run", "python", "-m", "app.cmd.tag.sweep.poll", sweep_id, "--wait"])
     process(c, sweep_id=sweep_id, include_unsure=include_unsure, include_excluded=include_excluded)
 
 
@@ -159,7 +159,7 @@ def reset(c: Context, tag: str = "") -> None:
 
     result = _run_subprocess(
         c,
-        ["uv", "run", "python", "-m", "app.tag.sweep.reset.main", tag],
+        ["uv", "run", "python", "-m", "app.cmd.tag.sweep.reset", tag],
         capture_stdout=True,
     )
     sweep_id = result.stdout.strip()
@@ -169,7 +169,7 @@ def reset(c: Context, tag: str = "") -> None:
     if not _prompt_yn(f"Delete run {sweep_id} and all its batches? Kickoff will start fresh."):
         return
 
-    _run_subprocess(c, ["uv", "run", "python", "-m", "app.tag.sweep.reset.main", tag, "--delete"])
+    _run_subprocess(c, ["uv", "run", "python", "-m", "app.cmd.tag.sweep.reset", tag, "--delete"])
 
 
 def _run_subprocess(

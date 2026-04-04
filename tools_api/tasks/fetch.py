@@ -6,7 +6,7 @@ from invoke import Collection, Context, task
 @task(default=True)
 def all_sets(c: Context) -> None:
     """Run MTGJSON fetch/ingest pipeline."""
-    c.run("uv run python -m app.fetch.main")
+    c.run("uv run python -m app.cmd.mtgjson_fetch")
 
 
 ns = Collection("fetch")

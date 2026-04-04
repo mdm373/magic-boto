@@ -74,7 +74,7 @@ def import_csv(c: Context) -> None:
         "run",
         "python",
         "-m",
-        "app.inventory.import.main",
+        "app.cmd.inventory.ingest",
         csv_path,
         inventory_name,
     ]
@@ -102,7 +102,7 @@ def create_tag(c: Context) -> None:
     if not description:
         raise Exit("Tag description is required.")
 
-    argv = ["uv", "run", "python", "-m", "app.tag.create.main", name, description]
+    argv = ["uv", "run", "python", "-m", "app.cmd.tag.create", name, description]
     if types_raw:
         argv += [f"--types={types_raw}"]
     if supertypes_raw:
@@ -127,7 +127,7 @@ def rename_tag(c: Context, old_name: str = "", new_name: str = "") -> None:
     if not new_name:
         raise Exit("New tag name is required.")
 
-    argv = ["uv", "run", "python", "-m", "app.tag.rename.main", old_name, new_name]
+    argv = ["uv", "run", "python", "-m", "app.cmd.tag.rename", old_name, new_name]
     if c.cwd:
         subprocess.run(argv, check=True, cwd=c.cwd)
     else:

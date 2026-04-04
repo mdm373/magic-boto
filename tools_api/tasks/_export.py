@@ -29,7 +29,7 @@ def export_inventory(c: Context) -> None:
         "run",
         "python",
         "-m",
-        "app.inventory.export.main",
+        "app.cmd.inventory.export",
         inventory_name,
     ]
     if c.cwd:
@@ -53,7 +53,7 @@ def db_schema(c: Context) -> None:
 @task
 def get_tag(c: Context, name: str = "") -> None:
     """Show a tag by name, or list all tags if no name is given."""
-    argv = ["uv", "run", "python", "-m", "app.tag.get.main"]
+    argv = ["uv", "run", "python", "-m", "app.cmd.tag.get"]
     if name.strip():
         argv.append(name.strip())
     if c.cwd:

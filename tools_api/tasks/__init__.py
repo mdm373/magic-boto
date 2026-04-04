@@ -15,7 +15,6 @@ from tasks import (
     audit,
     build,
     fetch,
-    generate,
     lint,
     migrate,
     serve,
@@ -37,5 +36,4 @@ ns.add_collection(_from_module(fetch), name="fetch")
 ns.add_collection(_from_module(_export), name="export")
 ns.add_collection(_from_module(_import), name="import")
 ns.add_collection(_from_module(_delete), name="delete")
-ns.add_collection(_from_module(generate), name="generate")
 ns.add_collection(_from_module(sweep), name="sweep")

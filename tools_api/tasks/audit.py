@@ -42,7 +42,7 @@ def kickoff(
         "run",
         "python",
         "-m",
-        "app.tag.audit.kickoff.main",
+        "app.cmd.tag.audit.kickoff",
         tag,
         "--tagged-sample",
         str(tagged_sample),
@@ -69,7 +69,7 @@ def poll(
     if not audit_id:
         raise Exit("Audit ID is required.")
 
-    argv = ["uv", "run", "python", "-m", "app.tag.audit.poll.main", audit_id]
+    argv = ["uv", "run", "python", "-m", "app.cmd.tag.audit.poll", audit_id]
     if wait:
         argv += ["--wait"]
     _run_subprocess(c, argv)
@@ -86,7 +86,7 @@ def process(
     if not audit_id:
         raise Exit("Audit ID is required.")
 
-    _run_subprocess(c, ["uv", "run", "python", "-m", "app.tag.audit.process.main", audit_id])
+    _run_subprocess(c, ["uv", "run", "python", "-m", "app.cmd.tag.audit.process", audit_id])
 
 
 @task
@@ -108,7 +108,7 @@ def run(
         "run",
         "python",
         "-m",
-        "app.tag.audit.kickoff.main",
+        "app.cmd.tag.audit.kickoff",
         tag,
         "--tagged-sample",
         str(tagged_sample),
@@ -122,8 +122,8 @@ def run(
     if not audit_id:
         raise Exit("Kickoff did not return an audit ID.")
 
-    _run_subprocess(c, ["uv", "run", "python", "-m", "app.tag.audit.poll.main", audit_id, "--wait"])
-    _run_subprocess(c, ["uv", "run", "python", "-m", "app.tag.audit.process.main", audit_id])
+    _run_subprocess(c, ["uv", "run", "python", "-m", "app.cmd.tag.audit.poll", audit_id, "--wait"])
+    _run_subprocess(c, ["uv", "run", "python", "-m", "app.cmd.tag.audit.process", audit_id])
 
 
 ns = Collection("audit")
