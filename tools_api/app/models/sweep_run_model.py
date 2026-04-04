@@ -17,6 +17,8 @@ class TagSweepModel(Base):
 
     A run is 'open' while kickoff is submitting batches and process is applying tags.
     It becomes 'complete' once all batches are processed and no eligible cards remain.
+    ``completed_at`` is set when status transitions to COMPLETE and acts as the epoch
+    gate: the next kickoff will only consider cards created after this timestamp.
     """
 
     __tablename__ = "tag_sweep"
@@ -31,5 +33,9 @@ class TagSweepModel(Base):
         DateTime(timezone=True),
         nullable=False,
         default=lambda: datetime.now(UTC),
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
     )
     status: Mapped[str] = mapped_column(Text, nullable=False, default=SweepRunStatus.OPEN)

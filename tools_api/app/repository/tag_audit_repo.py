@@ -5,7 +5,8 @@ from __future__ import annotations
 import uuid
 from typing import cast
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import TagAuditModel
@@ -38,3 +39,13 @@ class TagAuditRepo:
                 .limit(1)
             ),
         )
+
+    async def delete_audits_for_tag(self, session: AsyncSession, tag_id: uuid.UUID) -> int:
+        """Delete all audit rows for a tag. Returns the number of rows deleted."""
+        result = cast(
+            CursorResult[tuple[()]],
+            await session.execute(
+                delete(TagAuditModel).where(TagAuditModel.tag_id == tag_id)
+            ),
+        )
+        return result.rowcount or 0

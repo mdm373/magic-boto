@@ -5,8 +5,11 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import cast
 
 from sqlalchemy import delete, exists, select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -49,28 +52,42 @@ class TagSweepRepo:
     async def get_open_sweep(
         self, session: AsyncSession, tag_id: uuid.UUID
     ) -> TagSweepModel | None:
-        """Return the most recently created open sweep for this tag, or None."""
-        result = await session.scalars(
-            select(TagSweepModel)
-            .where(TagSweepModel.tag_id == tag_id, TagSweepModel.status == SweepRunStatus.OPEN)
-            .order_by(TagSweepModel.triggered_at.desc())
-            .limit(1)
+        """Return the open sweep for this tag, or None."""
+        return await session.scalar(
+            select(TagSweepModel).where(
+                TagSweepModel.tag_id == tag_id,
+                TagSweepModel.status == SweepRunStatus.OPEN,
+            )
         )
-        return result.first()
 
     async def create_sweep(self, session: AsyncSession, tag_id: uuid.UUID) -> TagSweepModel:
-        """Create a new open sweep. Caller must commit."""
+        """Open a sweep for this tag.
+
+        Creates a new row on first use.  On subsequent calls (after a prior sweep
+        completed) resets the existing row to OPEN and updates ``triggered_at``.
+        ``completed_at`` is intentionally preserved — it acts as the epoch gate
+        for card eligibility until the new sweep finishes and overwrites it.
+        Caller must commit.
+        """
+        existing = await session.scalar(
+            select(TagSweepModel).where(TagSweepModel.tag_id == tag_id)
+        )
+        if existing is not None:
+            existing.status = SweepRunStatus.OPEN
+            existing.triggered_at = datetime.now(UTC)
+            await session.flush()
+            return existing
         sweep = TagSweepModel(tag_id=tag_id)
         session.add(sweep)
         await session.flush()
         return sweep
 
     async def complete_sweep(self, session: AsyncSession, sweep_id: uuid.UUID) -> None:
-        """Mark the sweep complete. Caller must commit."""
+        """Mark the sweep complete and record the epoch timestamp. Caller must commit."""
         await session.execute(
             update(TagSweepModel)
             .where(TagSweepModel.id == sweep_id)
-            .values(status=SweepRunStatus.COMPLETE)
+            .values(status=SweepRunStatus.COMPLETE, completed_at=datetime.now(UTC))
         )
 
     async def fail_sweep(self, session: AsyncSession, sweep_id: uuid.UUID) -> None:
@@ -81,13 +98,38 @@ class TagSweepRepo:
             .values(status=SweepRunStatus.FAILED)
         )
 
+    async def delete_sweep_batch_history_for_tag(
+        self, session: AsyncSession, tag_id: uuid.UUID
+    ) -> int:
+        """Delete all batch + batch-card records for a tag's sweeps.
+
+        Deletes rows from ``batches`` whose IDs appear in ``tag_sweep_batches``
+        for any sweep belonging to this tag.  The CASCADE on
+        ``tag_sweep_batches.batch_id`` and ``tag_sweep_batch_cards.tag_sweep_batch_id``
+        cleans up the child rows automatically.  The ``tag_sweep`` rows themselves
+        are preserved so their ``completed_at`` epoch remains in place.
+
+        Returns the number of batch rows deleted.
+        """
+        batch_id_subq = (
+            select(TagSweepBatchModel.batch_id)
+            .join(TagSweepModel, TagSweepBatchModel.tag_sweep_id == TagSweepModel.id)
+            .where(TagSweepModel.tag_id == tag_id)
+            .scalar_subquery()
+        )
+        result = cast(
+            CursorResult[tuple[()]],
+            await session.execute(delete(BatchModel).where(BatchModel.id.in_(batch_id_subq))),
+        )
+        return result.rowcount or 0
+
     async def delete_open_sweep(self, session: AsyncSession, tag_id: uuid.UUID) -> uuid.UUID | None:
         """Delete the open sweep for a tag. Returns deleted sweep ID or None."""
         row = await session.scalar(
-            select(TagSweepModel)
-            .where(TagSweepModel.tag_id == tag_id, TagSweepModel.status == SweepRunStatus.OPEN)
-            .order_by(TagSweepModel.triggered_at.desc())
-            .limit(1)
+            select(TagSweepModel).where(
+                TagSweepModel.tag_id == tag_id,
+                TagSweepModel.status == SweepRunStatus.OPEN,
+            )
         )
         if row is None:
             return None
@@ -281,18 +323,16 @@ class TagSweepRepo:
         sweep_id: uuid.UUID,
         limit: int = 0,
     ) -> Sequence[str]:
-        """Return oracle_ids eligible for this sweep."""
-        completed_subq = (
-            select(TagSweepBatchCardModel.oracle_id)
-            .join(
-                TagSweepBatchModel,
-                TagSweepBatchCardModel.tag_sweep_batch_id == TagSweepBatchModel.id,
-            )
-            .join(TagSweepModel, TagSweepBatchModel.tag_sweep_id == TagSweepModel.id)
-            .where(
-                TagSweepModel.tag_id == tag.id,
-                TagSweepModel.status == SweepRunStatus.COMPLETE,
-            )
+        """Return oracle_ids eligible for this sweep.
+
+        Epoch gate: cards created at or before the sweep's ``completed_at`` are
+        skipped — they were already evaluated.  Only cards ingested after that
+        epoch (or all cards when no completed sweep exists yet) are considered.
+        One sweep row per tag is assumed.
+        """
+        epoch_subq = (
+            select(TagSweepModel.completed_at)
+            .where(TagSweepModel.tag_id == tag.id)
             .scalar_subquery()
         )
 
@@ -310,7 +350,8 @@ class TagSweepRepo:
             select(CardModel.oracle_id)
             .group_by(CardModel.oracle_id)
             .where(
-                CardModel.oracle_id.not_in(completed_subq),
+                # Epoch gate: skip cards that existed when the last sweep completed.
+                (epoch_subq.is_(None)) | (CardModel.created_at > epoch_subq),
                 CardModel.oracle_id.not_in(current_subq),
             )
         )

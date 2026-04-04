@@ -12,6 +12,7 @@ from tasks import (
     _delete,
     _export,
     _import,
+    _prune,
     _restore,
     audit,
     build,
@@ -37,5 +38,6 @@ ns.add_collection(_from_module(fetch), name="fetch")
 ns.add_collection(_from_module(_export), name="export")
 ns.add_collection(_from_module(_import), name="import")
 ns.add_collection(_from_module(_restore), name="restore")
+ns.add_collection(_from_module(_prune), name="prune")
 ns.add_collection(_from_module(_delete), name="delete")
 ns.add_collection(_from_module(sweep), name="sweep")
