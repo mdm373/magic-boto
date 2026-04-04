@@ -23,6 +23,16 @@ from settings import get_settings
 _audit_repo = TagAuditRepo()
 _batch_repo = BatchRepo()
 
+_SUGGESTION_MARKER = "## Suggested Description"
+
+
+def _extract_suggestion(report: str) -> str | None:
+    """Extract the '## Suggested Description' section from an audit report."""
+    idx = report.find(_SUGGESTION_MARKER)
+    if idx == -1:
+        return None
+    return report[idx + len(_SUGGESTION_MARKER):].strip()
+
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Process a completed tag audit batch.")
@@ -74,12 +84,17 @@ async def _run(audit_id_str: str) -> None:
         logger.error("No text content in audit batch response.")
         sys.exit(1)
 
+    suggestion = _extract_suggestion(report)
+    if suggestion is None:
+        logger.warning("No '## Suggested Description' section found in audit report.")
+
     async with session_factory() as session:
         audit = await _audit_repo.get_audit(session, audit_id)
         if audit is None or audit.batch is None:
             logger.error("Audit {} disappeared during processing.", audit_id)
             sys.exit(1)
         audit.report = report
+        audit.suggestion = suggestion
         _batch_repo.mark_batch_processed(audit.batch)
         tag_row = await session.scalar(select(TagModel).where(TagModel.id == audit.tag_id))
         if tag_row is None:

@@ -21,7 +21,7 @@ _audit_repo = TagAuditRepo()
 _batch_repo = BatchRepo()
 _tag_repo = TagRepo()
 
-_PROMPTS_DIR = Path("prompts/audit")
+_PROMPTS_DIR = Path("app/prompts/audit")
 _SYSTEM_PROMPT = (_PROMPTS_DIR / "system_prompt.md").read_text().strip()
 _USER_PROMPT_TEMPLATE = (_PROMPTS_DIR / "user_prompt.md").read_text()
 

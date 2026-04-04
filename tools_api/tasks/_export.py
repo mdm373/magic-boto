@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+from datetime import datetime
 from pathlib import Path
 
 from invoke import Collection, Context, Exit, task
@@ -62,7 +63,22 @@ def get_tag(c: Context, name: str = "") -> None:
         subprocess.run(argv, check=True)
 
 
+@task()
+def db_data(c: Context) -> None:
+    """Full pg_dump (custom compressed format) saved to dumps/ with a timestamp."""
+    out_dir = Path("pg_dump")
+    out_dir.mkdir(exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out_path = out_dir / f"magic_boto_{timestamp}.pgdump"
+
+    env = pg_env()
+    print(f"Dumping database to: {out_path}")
+    c.run(f'pg_dump -Fc -f "{out_path}"', env=env)
+    print("Done.")
+
+
 ns = Collection("export")
 ns.add_task(export_inventory, name="inventory", default=True)
 ns.add_task(db_schema, name="db-schema")
 ns.add_task(get_tag, name="tag")
+ns.add_task(db_data, name="db-data")

@@ -15,9 +15,9 @@ from app.repository import BatchChunkRecord, CardRepo, TagRepo, TagSweepRepo
 from app.services import BatchApiClient, Request, cards_to_csv, create_batch_client
 from settings import get_settings
 
-_PROMPTS_DIR = Path("prompts/sweep")
+_PROMPTS_DIR = Path("app/prompts/sweep")
 _SYSTEM_PROMPT_TEMPLATE = (_PROMPTS_DIR / "system_prompt.md").read_text().strip()
-_OUTPUT_SCHEMA_PATH = Path("message_schema/sweep_verdict.json")
+_OUTPUT_SCHEMA_PATH = Path("app/message_schema/sweep_verdict.json")
 
 
 def _parse_args() -> argparse.Namespace:

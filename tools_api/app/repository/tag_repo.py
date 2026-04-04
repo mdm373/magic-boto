@@ -137,6 +137,18 @@ class TagRepo:
         await session.flush()
         return True
 
+    async def update_description(
+        self, session: AsyncSession, name: str, description: str
+    ) -> bool:
+        """Update a tag's description. Returns False if not found."""
+        canonical = canonical_name(name)
+        row = await session.scalar(select(TagModel).where(TagModel.name == canonical))
+        if row is None:
+            return False
+        row.description = description.strip()
+        await session.flush()
+        return True
+
     async def delete_tag(self, session: AsyncSession, name: str) -> bool:
         """Delete a tag by canonical name. Returns True if deleted, False if not found."""
         canonical = canonical_name(name)

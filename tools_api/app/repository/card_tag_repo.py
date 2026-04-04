@@ -5,9 +5,11 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import cast
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import CardTagModel
@@ -70,3 +72,11 @@ class CardTagRepo:
                 CardTagModel.oracle_id.in_(list(oracle_ids)),
             )
         )
+
+    async def delete_all_for_tag(self, session: AsyncSession, tag_id: object) -> int:
+        """Remove all card_tag rows for a tag. Returns row count. Caller must commit."""
+        result = cast(
+            CursorResult[tuple[()]],
+            await session.execute(delete(CardTagModel).where(CardTagModel.tag_id == tag_id)),
+        )
+        return result.rowcount or 0

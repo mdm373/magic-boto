@@ -40,5 +40,6 @@ class TagAuditModel(Base):
         nullable=True,
     )
     report: Mapped[str | None] = mapped_column(Text, nullable=True)
+    suggestion: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     batch: Mapped[BatchModel | None] = relationship("BatchModel", lazy="selectin")

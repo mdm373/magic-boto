@@ -26,7 +26,7 @@ def register_tags_tools(app_mcp: AppMcp) -> None:
     @app_mcp.tool(
         name="list_tags",
         description=(
-            "List all user-defined tags. "
+            "List all user-defined tags. Tags have descriptions indicating their intent"
             "Tags can be applied to cards to organise them by intent or theme."
         ),
         annotations=ToolAnnotations(

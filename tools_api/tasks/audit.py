@@ -6,6 +6,8 @@ import subprocess
 
 from invoke import Collection, Context, Exit, task
 
+from .sweep import _prompt_yn
+
 
 def _run_subprocess(
     c: Context,
@@ -126,8 +128,34 @@ def run(
     _run_subprocess(c, ["uv", "run", "python", "-m", "app.cmd.tag.audit.process", audit_id])
 
 
+@task
+def apply(c: Context, tag: str = "") -> None:
+    """Apply the latest audit suggestion to a tag, optionally reset tags, then kick off a new sweep.
+    """
+    if not tag.strip():
+        tag = input("Tag name: ").strip()
+    if not tag:
+        raise Exit("Tag name is required.")
+
+    apply_argv = ["uv", "run", "python", "-m", "app.cmd.tag.audit.apply", tag]
+
+    if _prompt_yn("Delete all tagged/unsure/excluded cards for this tag?", default=True):
+        apply_argv.append("--delete-tagged")
+
+    if _prompt_yn("Delete the _unsure and _excluded side tags entirely?", default=True):
+        apply_argv.append("--delete-side-tags")
+
+    _run_subprocess(c, apply_argv)
+
+    if not _prompt_yn("Kick off a new sweep for this tag?", default=True):
+        return
+
+    _run_subprocess(c, ["uv", "run", "invoke", "sweep", "--tag", tag])
+
+
 ns = Collection("audit")
 ns.add_task(kickoff)
 ns.add_task(poll)
 ns.add_task(process)
+ns.add_task(apply)
 ns.add_task(run, default=True)

@@ -12,9 +12,12 @@ from ._import import _read_multiline
 _BATCHES_URL = "https://platform.claude.com/workspaces/default/batches"
 
 
-def _prompt_yn(prompt: str) -> bool:
+def _prompt_yn(prompt: str, default: bool = False) -> bool:
     """Prompt the operator for a yes/no answer. Returns True for 'y'."""
-    answer = input(f"{prompt} [y/N] ").strip().lower()
+    hint = "[Y/n]" if default else "[y/N]"
+    answer = input(f"{prompt} {hint} ").strip().lower()
+    if not answer:
+        return default
     return answer in {"y", "yes"}
 
 
@@ -87,9 +90,9 @@ def process(
         raise Exit("Sweep ID is required.")
 
     if include_unsure is None:
-        include_unsure = _prompt_yn("Tag uncertain cards with {tag}_unsure?")
+        include_unsure = _prompt_yn("Tag uncertain cards with {tag}_unsure?", default=True)
     if include_excluded is None:
-        include_excluded = _prompt_yn("Tag non-qualifying cards with {tag}_excluded?")
+        include_excluded = _prompt_yn("Tag non-qualifying cards with {tag}_excluded?", default=True)
 
     argv = ["uv", "run", "python", "-m", "app.cmd.tag.sweep.process", sweep_id]
     if include_unsure:
@@ -107,10 +110,11 @@ def run(
     limit: int = 0,
 ) -> None:
     """Full sweep orchestration: create or select a tag, kick off batches, poll, then process."""
-    use_existing = _prompt_yn("Use an existing tag?")
-    if use_existing:
-        if not tag.strip():
-            tag = input("Tag name to sweep: ").strip()
+    if tag.strip():
+        # Tag provided — assume it already exists, skip creation prompt.
+        pass
+    elif _prompt_yn("Use an existing tag?"):
+        tag = input("Tag name to sweep: ").strip()
         if not tag:
             raise Exit("Tag name is required.")
     else:
@@ -134,8 +138,8 @@ def run(
         if raw.isdigit():
             limit = int(raw)
 
-    include_unsure = _prompt_yn("Tag uncertain cards with {tag}_unsure?")
-    include_excluded = _prompt_yn("Tag non-qualifying cards with {tag}_excluded?")
+    include_unsure = _prompt_yn("Tag uncertain cards with {tag}_unsure?", default=True)
+    include_excluded = _prompt_yn("Tag non-qualifying cards with {tag}_excluded?", default=True)
 
     kickoff_argv = ["uv", "run", "python", "-m", "app.cmd.tag.sweep.kickoff", tag]
     if limit > 0:

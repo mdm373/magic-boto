@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import uuid
+from typing import cast
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import TagAuditModel
@@ -22,3 +24,17 @@ class TagAuditRepo:
     async def get_audit(self, session: AsyncSession, audit_id: uuid.UUID) -> TagAuditModel | None:
         """Return an audit by ID, or None."""
         return await session.get(TagAuditModel, audit_id)
+
+    async def get_latest_for_tag(
+        self, session: AsyncSession, tag_id: uuid.UUID
+    ) -> TagAuditModel | None:
+        """Return the most recent audit for a tag, or None."""
+        return cast(
+            TagAuditModel | None,
+            await session.scalar(
+                select(TagAuditModel)
+                .where(TagAuditModel.tag_id == tag_id)
+                .order_by(TagAuditModel.triggered_at.desc())
+                .limit(1)
+            ),
+        )
