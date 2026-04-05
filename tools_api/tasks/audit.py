@@ -27,7 +27,7 @@ def kickoff(
     c: Context,
     tag: str = "",
     tagged_sample: int = 20,
-    excluded_sample: int = 20,
+    excluded_sample: int = 40,
     unsure_sample: int = 10,
 ) -> None:
     """Sample cards and submit an Anthropic batch for tag quality review.
@@ -96,7 +96,7 @@ def run(
     c: Context,
     tag: str = "",
     tagged_sample: int = 20,
-    excluded_sample: int = 20,
+    excluded_sample: int = 40,
     unsure_sample: int = 10,
 ) -> None:
     """Full audit pipeline: kickoff → poll --wait → process."""

@@ -69,9 +69,7 @@ class TagSweepRepo:
         for card eligibility until the new sweep finishes and overwrites it.
         Caller must commit.
         """
-        existing = await session.scalar(
-            select(TagSweepModel).where(TagSweepModel.tag_id == tag_id)
-        )
+        existing = await session.scalar(select(TagSweepModel).where(TagSweepModel.tag_id == tag_id))
         if existing is not None:
             existing.status = SweepRunStatus.OPEN
             existing.triggered_at = datetime.now(UTC)
@@ -122,6 +120,17 @@ class TagSweepRepo:
             await session.execute(delete(BatchModel).where(BatchModel.id.in_(batch_id_subq))),
         )
         return result.rowcount or 0
+
+    async def reset_epoch_for_tag(self, session: AsyncSession, tag_id: uuid.UUID) -> None:
+        """Clear completed_at on the sweep row for this tag, resetting the epoch gate.
+
+        After a full tag reset (all card_tags deleted), the epoch must be cleared so
+        that cards which existed before the prior sweep's completed_at become eligible
+        again on the next kickoff.  Caller must commit.
+        """
+        await session.execute(
+            update(TagSweepModel).where(TagSweepModel.tag_id == tag_id).values(completed_at=None)
+        )
 
     async def delete_open_sweep(self, session: AsyncSession, tag_id: uuid.UUID) -> uuid.UUID | None:
         """Delete the open sweep for a tag. Returns deleted sweep ID or None."""

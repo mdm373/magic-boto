@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import uuid
 from pathlib import Path
 
@@ -13,7 +12,7 @@ from loguru import logger
 from app.db import get_async_session_factory
 from app.log import configure_cli_logging
 from app.repository import BatchRepo, TagAuditRepo, TagRepo
-from app.services import Request, card_to_dict, create_batch_client, create_tag_service
+from app.services import Request, cards_to_csv_with_names, create_batch_client, create_tag_service
 from settings import get_settings
 
 _tag_service = create_tag_service()
@@ -30,7 +29,7 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Submit a tag audit batch to Anthropic.")
     parser.add_argument("tag", help="Tag name to audit (sweep results must already exist).")
     parser.add_argument("--tagged-sample", type=int, default=20, metavar="N")
-    parser.add_argument("--excluded-sample", type=int, default=20, metavar="N")
+    parser.add_argument("--excluded-sample", type=int, default=40, metavar="N")
     parser.add_argument("--unsure-sample", type=int, default=10, metavar="N")
     return parser.parse_args()
 
@@ -66,19 +65,19 @@ async def _run(
         tag_name,
     )
 
-    tagged_dicts = [card_to_dict(card) for card in tagged_cards]
-    excluded_dicts = [card_to_dict(card) for card in excluded_cards]
-    unsure_dicts = [card_to_dict(card) for card in unsure_cards]
+    tagged_csv = cards_to_csv_with_names(tagged_cards)
+    excluded_csv = cards_to_csv_with_names(excluded_cards)
+    unsure_csv = cards_to_csv_with_names(unsure_cards)
 
     user_message = _USER_PROMPT_TEMPLATE.format(
         tag_name=tag_name,
         tag_description=tag.description,
-        tagged_count=len(tagged_dicts),
-        excluded_count=len(excluded_dicts),
-        unsure_count=len(unsure_dicts),
-        tagged_json=json.dumps(tagged_dicts, indent=2),
-        excluded_json=json.dumps(excluded_dicts, indent=2),
-        unsure_json=json.dumps(unsure_dicts, indent=2),
+        tagged_count=len(tagged_cards),
+        excluded_count=len(excluded_cards),
+        unsure_count=len(unsure_cards),
+        tagged_csv=tagged_csv,
+        excluded_csv=excluded_csv,
+        unsure_csv=unsure_csv,
     )
 
     batch_client = create_batch_client()

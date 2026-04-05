@@ -55,19 +55,19 @@ def kickoff(
 @task
 def poll(
     c: Context,
-    sweep_id: str = "",
+    tag: str = "",
     wait: bool = False,
 ) -> None:
     """Check and update Anthropic batch statuses for a sweep run.
 
     With --wait, loops every 30s until all batches reach a terminal state.
     """
-    if not sweep_id.strip():
-        sweep_id = input("Sweep ID: ").strip()
-    if not sweep_id:
-        raise Exit("Sweep ID is required.")
+    if not tag.strip():
+        tag = input("Tag name to poll: ").strip()
+    if not tag:
+        raise Exit("Tag name is required.")
 
-    argv = ["uv", "run", "python", "-m", "app.cmd.tag.sweep.poll", sweep_id]
+    argv = ["uv", "run", "python", "-m", "app.cmd.tag.sweep.poll", tag]
     if wait:
         argv += ["--wait"]
     _run_subprocess(c, argv)
@@ -76,7 +76,7 @@ def poll(
 @task
 def process(
     c: Context,
-    sweep_id: str = "",
+    tag: str = "",
     include_unsure: bool | None = None,
     include_excluded: bool | None = None,
 ) -> None:
@@ -84,17 +84,17 @@ def process(
 
     All batches must be in a terminal state before running (use sweep.poll --wait).
     """
-    if not sweep_id.strip():
-        sweep_id = input("Sweep ID: ").strip()
-    if not sweep_id:
-        raise Exit("Sweep ID is required.")
+    if not tag.strip():
+        tag = input("Tag name to process: ").strip()
+    if not tag:
+        raise Exit("Tag name is required.")
 
     if include_unsure is None:
         include_unsure = _prompt_yn("Tag uncertain cards with {tag}_unsure?", default=True)
     if include_excluded is None:
         include_excluded = _prompt_yn("Tag non-qualifying cards with {tag}_excluded?", default=True)
 
-    argv = ["uv", "run", "python", "-m", "app.cmd.tag.sweep.process", sweep_id]
+    argv = ["uv", "run", "python", "-m", "app.cmd.tag.sweep.process", tag]
     if include_unsure:
         argv += ["--include-unsure"]
     if include_excluded:
@@ -140,17 +140,18 @@ def run(
 
     include_unsure = _prompt_yn("Tag uncertain cards with {tag}_unsure?", default=True)
     include_excluded = _prompt_yn("Tag non-qualifying cards with {tag}_excluded?", default=True)
+    run_audit = _prompt_yn("Run audit automatically when sweep completes?", default=True)
 
     kickoff_argv = ["uv", "run", "python", "-m", "app.cmd.tag.sweep.kickoff", tag]
     if limit > 0:
         kickoff_argv += ["--limit", str(limit)]
-    result = _run_subprocess(c, kickoff_argv, capture_stdout=True)
-    sweep_id = result.stdout.strip()
-    if not sweep_id:
-        raise Exit("Kickoff did not return a sweep ID.")
+    _run_subprocess(c, kickoff_argv)
 
-    _run_subprocess(c, ["uv", "run", "python", "-m", "app.cmd.tag.sweep.poll", sweep_id, "--wait"])
-    process(c, sweep_id=sweep_id, include_unsure=include_unsure, include_excluded=include_excluded)
+    _run_subprocess(c, ["uv", "run", "python", "-m", "app.cmd.tag.sweep.poll", tag, "--wait"])
+    process(c, tag=tag, include_unsure=include_unsure, include_excluded=include_excluded)
+
+    if run_audit:
+        _run_subprocess(c, ["uv", "run", "invoke", "audit", "--tag", tag])
 
 
 @task

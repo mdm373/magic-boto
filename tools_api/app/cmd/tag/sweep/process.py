@@ -29,7 +29,7 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Apply tags from completed batch results for a sweep run."
     )
-    parser.add_argument("sweep_id", help="Sweep run UUID.")
+    parser.add_argument("tag", help="Tag name.")
     parser.add_argument(
         "--include-unsure",
         action="store_true",
@@ -248,15 +248,14 @@ async def _maybe_complete_run(sweep_id: uuid.UUID, tag: TagModel) -> None:
             )
 
 
-async def _run(sweep_id_str: str, include_unsure: bool, include_excluded: bool) -> None:
-    sweep_id = uuid.UUID(sweep_id_str)
-
+async def _run(tag_name: str, include_unsure: bool, include_excluded: bool) -> None:
     session_factory = get_async_session_factory()
     async with session_factory() as session:
-        run = await _sweep_repo.get_sweep(session, sweep_id)
+        tag = await _tag_repo.require_tag_model(session, tag_name, load_relationships=True)
+        run = await _sweep_repo.get_open_sweep(session, tag.id)
         if run is None:
-            raise ValueError(f"Sweep run {sweep_id} not found.")
-        tag = await _tag_repo.require_tag_model_by_id(session, run.tag_id, load_relationships=True)
+            raise ValueError(f"No open sweep found for tag '{tag_name}'.")
+        sweep_id = run.id
 
     await _ensure_side_tags(tag.name, include_unsure, include_excluded)
 
@@ -347,7 +346,7 @@ async def _run(sweep_id_str: str, include_unsure: bool, include_excluded: bool) 
 def main() -> None:
     configure_cli_logging()
     args = _parse_args()
-    asyncio.run(_run(args.sweep_id, args.include_unsure, args.include_excluded))
+    asyncio.run(_run(args.tag, args.include_unsure, args.include_excluded))
 
 
 if __name__ == "__main__":

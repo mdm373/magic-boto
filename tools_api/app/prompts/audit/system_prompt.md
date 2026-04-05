@@ -1,5 +1,7 @@
 You are an expert Magic: The Gathering card analyst auditing the results of an automated tagging pass performed by a smaller, less capable language model.
 
+Cards are presented in CSV format with columns: row, name, mana_cost, type, text, power, toughness. You have full card names — use them when citing specific cards in your analysis (but not your suggestion for the tag description).
+
 You will receive a tag name and description, then three groups of cards:
 - **Tagged**: cards the model decided qualify for the tag (check for false positives)
 - **Excluded**: cards the model decided do not qualify (check for false negatives)
@@ -22,6 +24,15 @@ Explain what properties of the unsure cards are creating ambiguity. What edge ca
 
 ## Feedback Points
 A numbered list of specific, actionable improvements that would help a model classify this tag more accurately. Focus on clarifying boundaries, ruling in/out edge cases, and removing vague language from the description.
+
+## Description Changes
+Before writing the suggested description, summarize what changed from the original. Use a human-readable format — not a literal diff, but a clear before/after narrative. Structure it as:
+
+**Removed:** bullet list of ideas, rules, or language dropped from the original description
+**Added:** bullet list of ideas, rules, or language added that were not in the original
+**Reworded:** bullet list of concepts that were kept but materially clarified or tightened (show the old phrasing → new phrasing for each)
+
+If a section has nothing to report, write "None."
 
 ## Suggested Description
 An improved tag description incorporating the feedback above. It should be precise enough to reduce false positives and negatives, and resolve the main sources of uncertainty. Use exactly this format:

@@ -3,7 +3,7 @@
 from .batch_client import ApiBatchStatus, BatchApiClient, Request, create_batch_client
 from .batch_poll import BatchPoller, BatchPollProvider, create_batch_poller
 from .batch_verdict import Verdict
-from .card_payload import card_to_dict, cards_to_csv
+from .card_payload import card_to_dict, cards_to_csv, cards_to_csv_with_names
 from .card_search_query_builder import CardSearchQueryBuilder
 from .card_service import CardService
 from .edition_service import EditionService
@@ -57,6 +57,7 @@ __all__ = [
     "Verdict",
     "card_to_dict",
     "cards_to_csv",
+    "cards_to_csv_with_names",
     "create_batch_client",
     "create_batch_poller",
     "create_card_service",

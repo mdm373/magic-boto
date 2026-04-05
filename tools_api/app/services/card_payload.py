@@ -36,23 +36,24 @@ def _normalize_text(text: str) -> str:
     return text.strip()
 
 
-def cards_to_csv(cards: Sequence[CardModel]) -> str:
-    """Serialise cards to CSV with header. Row index is the identity column.
+_CSV_BASE_COLS = ["mana_cost", "type", "text", "power", "toughness"]
 
-    Columns: row, mana_cost, type, text, power, toughness.
-    Uses csv.writer so text fields with commas are quoted correctly.
-    """
+
+def _serialize_cards_to_csv(cards: Sequence[CardModel], *, include_name: bool) -> str:
+    name_col: list[str] = ["name"] if include_name else []
     buf = io.StringIO()
     writer = csv.writer(buf, quoting=csv.QUOTE_NONNUMERIC)
-    writer.writerow(["row", "mana_cost", "type", "text", "power", "toughness"])
+    writer.writerow(["row", *name_col, *_CSV_BASE_COLS])
     for i, card in enumerate(cards):
         text = _strip_reminder_text(card.oracle_text) if card.oracle_text else ""
-        if card.name and card.name in text:
+        if not include_name and card.name and card.name in text:
             text = text.replace(card.name, "THIS CARD")
         text = _normalize_text(text)
+        name_val: list[object] = [card.name or ""] if include_name else []
         writer.writerow(
             [
                 i,
+                *name_val,
                 card.mana_cost or "",
                 card.type_line or "",
                 text,
@@ -61,6 +62,23 @@ def cards_to_csv(cards: Sequence[CardModel]) -> str:
             ]
         )
     return buf.getvalue()
+
+
+def cards_to_csv(cards: Sequence[CardModel]) -> str:
+    """Serialise cards to CSV. Columns: row, mana_cost, type, text, power, toughness.
+
+    Card names in oracle text are replaced with "THIS CARD".
+    """
+    return _serialize_cards_to_csv(cards, include_name=False)
+
+
+def cards_to_csv_with_names(cards: Sequence[CardModel]) -> str:
+    """Serialise cards to CSV with a name column for auditors.
+
+    Columns: row, name, mana_cost, type, text, power, toughness.
+    Card names are preserved in oracle text.
+    """
+    return _serialize_cards_to_csv(cards, include_name=True)
 
 
 def card_to_dict(card: CardModel) -> Mapping[str, object]:
