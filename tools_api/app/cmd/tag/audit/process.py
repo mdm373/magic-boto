@@ -31,7 +31,7 @@ def _extract_suggestion(report: str) -> str | None:
     idx = report.find(_SUGGESTION_MARKER)
     if idx == -1:
         return None
-    return report[idx + len(_SUGGESTION_MARKER):].strip()
+    return report[idx + len(_SUGGESTION_MARKER) :].strip()
 
 
 def _parse_args() -> argparse.Namespace:

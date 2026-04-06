@@ -130,8 +130,7 @@ def run(
 
 @task
 def apply(c: Context, tag: str = "") -> None:
-    """Apply the latest audit suggestion to a tag, optionally reset tags, then kick off a new sweep.
-    """
+    """Apply the latest audit suggestion to a tag, optionally reset tags, then kick off a new sweep."""
     if not tag.strip():
         tag = input("Tag name: ").strip()
     if not tag:

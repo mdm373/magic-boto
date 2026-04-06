@@ -5,7 +5,20 @@
       "Bash(grep -E \"\\\\.py$|\\\\.sql$\")",
       "Bash(wc -l /f/Projects/magic-boto/tools_api/app/mcp/tools/*.py)",
       "Bash(uv run:*)",
-      "WebFetch(domain:mtg.wiki)"
+      "WebFetch(domain:mtg.wiki)",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebFetch(domain:apps.extensions.modelcontextprotocol.io)",
+      "WebFetch(domain:blog.modelcontextprotocol.io)",
+      "Bash(npm view:*)",
+      "Bash(git clone:*)",
+      "Bash(python3 -c \"import mcp; print\\(mcp.__version__\\)\")",
+      "Bash(python -c \"from mcp.server.fastmcp import FastMCP; import inspect; print\\(inspect.getsource\\(FastMCP.resource\\)\\)\")",
+      "Bash(npm install:*)",
+      "Bash(npm run:*)",
+      "Bash(vite build:*)",
+      "Bash(npx vite:*)",
+      "Bash(ls:*)",
+      "Bash(node -e ':*)"
     ]
   }
 }

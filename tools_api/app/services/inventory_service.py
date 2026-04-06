@@ -34,7 +34,7 @@ class InventoryService:
         await self._ensure_exists(session, inventory_id)
 
         distinct_ids = list(cleaned.keys())
-        scryfall_to_card_id = await _card_repo.resolve_scryfall_ids(session,distinct_ids)
+        scryfall_to_card_id = await _card_repo.resolve_scryfall_ids(session, distinct_ids)
 
         missing = [sid for sid in distinct_ids if sid not in scryfall_to_card_id]
         if not skip_unknown_scryfall_ids and missing:
@@ -84,7 +84,7 @@ class InventoryService:
         await self._ensure_exists(session, inventory_id)
 
         distinct_ids = list(counts.keys())
-        resolved_map = await _card_repo.resolve_scryfall_ids(session,distinct_ids)
+        resolved_map = await _card_repo.resolve_scryfall_ids(session, distinct_ids)
 
         missing = [k for k in counts if k not in resolved_map]
         if missing:
@@ -108,9 +108,7 @@ class InventoryService:
                 continue
             cleaned[sid] = cleaned.get(sid, 0) + count
         if not cleaned:
-            raise InvalidRequestError(
-                "Provide at least one non-empty scryfall id with count > 0"
-            )
+            raise InvalidRequestError("Provide at least one non-empty scryfall id with count > 0")
         return cleaned
 
     async def _ensure_exists(

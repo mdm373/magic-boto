@@ -1,5 +1,10 @@
 .env
 
+# tools-ui build artifacts
+tools-ui/node_modules/
+tools-ui/dist/
+tools_api/app/mcp_tooling/ui_dist/
+
 # Python
 __pycache__/
 *.py[cod]

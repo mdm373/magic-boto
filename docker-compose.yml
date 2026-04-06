@@ -31,6 +31,7 @@ services:
       - "${TOOLS_API_LOCAL_PORT:-8000}:${TOOLS_API_PORT:-8000}"
     volumes:
       - ./tools_api/app:/app/app
+      - ./tools_api/cache:/app/cache
     command: [ "sh", "-c", "uv run uvicorn app.cmd.serve_http:app --host 0.0.0.0 --port ${TOOLS_API_PORT:-8000} --reload" ]
     healthcheck:
       test: [ "CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')\" || exit 1" ]
@@ -78,10 +79,13 @@ services:
 
   # MCP Inspector (debug tools_mcp). UI :6274, proxy :6277 — see README in repo root / AGENTS.md.
   # In the Inspector, use Streamable HTTP URL: http://tools_mcp:8765/mcp (Docker DNS from this network).
+  # entry point fixes https://github.com/modelcontextprotocol/inspector/issues/1082
+  # can be removed after latest pulls later than 3/7
   mcp_inspector:
     image: ghcr.io/modelcontextprotocol/inspector:latest
     container_name: magic-boto-mcp-inspector
     restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c", "mkdir -p /app/server/static && cp /app/server/build/static/sandbox_proxy.html /app/server/static/ && exec npm start"]
     ports:
       - "${MCP_INSPECTOR_CLIENT_PORT:-6274}:6274"
       - "${MCP_INSPECTOR_SERVER_PORT:-6277}:6277"

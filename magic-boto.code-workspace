@@ -9,6 +9,10 @@
       "path": "docs"
     },
     {
+      "name": "tools-ui",
+      "path": "tools-ui"
+    },
+    {
       "name": "tools_api",
       "path": "tools_api"
     },

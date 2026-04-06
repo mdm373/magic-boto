@@ -137,9 +137,7 @@ class TagRepo:
         await session.flush()
         return True
 
-    async def update_description(
-        self, session: AsyncSession, name: str, description: str
-    ) -> bool:
+    async def update_description(self, session: AsyncSession, name: str, description: str) -> bool:
         """Update a tag's description. Returns False if not found."""
         canonical = canonical_name(name)
         row = await session.scalar(select(TagModel).where(TagModel.name == canonical))
@@ -157,4 +155,3 @@ class TagRepo:
             await session.execute(delete(TagModel).where(TagModel.name == canonical)),
         )
         return (result.rowcount or 0) > 0
-

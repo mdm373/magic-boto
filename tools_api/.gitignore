@@ -1,3 +1,4 @@
 # Debug artifacts: DB schema dump, OpenAPI spec (regenerate via invoke tasks)
 debug/
 .mtg_json/
+cache/card_images

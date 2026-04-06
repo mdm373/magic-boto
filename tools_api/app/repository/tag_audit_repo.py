@@ -44,8 +44,6 @@ class TagAuditRepo:
         """Delete all audit rows for a tag. Returns the number of rows deleted."""
         result = cast(
             CursorResult[tuple[()]],
-            await session.execute(
-                delete(TagAuditModel).where(TagAuditModel.tag_id == tag_id)
-            ),
+            await session.execute(delete(TagAuditModel).where(TagAuditModel.tag_id == tag_id)),
         )
         return result.rowcount or 0

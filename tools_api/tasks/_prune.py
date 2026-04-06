@@ -14,9 +14,7 @@ def prune_tag(c: Context) -> None:
     if not tag_name:
         raise Exit("Tag name is required.")
 
-    reply = input(
-        f"Delete side tags and audits for {tag_name!r}? Type 'yes' to confirm: "
-    )
+    reply = input(f"Delete side tags and audits for {tag_name!r}? Type 'yes' to confirm: ")
     if reply.strip().lower() != "yes":
         raise Exit("Aborted.")
 
