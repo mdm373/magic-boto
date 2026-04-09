@@ -8,7 +8,7 @@ import sys
 
 from loguru import logger
 
-from app.db import get_async_session_factory
+from app.db import sqlalchemy_resources_lifespan
 from app.log import configure_cli_logging
 from app.models import TagModel
 from app.repository import CardTagRepo, TagAuditRepo, TagRepo, TagSweepRepo
@@ -43,58 +43,59 @@ async def _run(
     delete_tagged: bool,
     delete_side_tags: bool,
 ) -> None:
-    session_factory = get_async_session_factory()
+    async with sqlalchemy_resources_lifespan() as r:
+        async with r.session_scope() as session:
+            tag = await _tag_repo.require_tag_model(session, tag_name)
+            audit = await _audit_repo.get_latest_for_tag(session, tag.id)
 
-    async with session_factory() as session:
-        tag = await _tag_repo.require_tag_model(session, tag_name)
-        audit = await _audit_repo.get_latest_for_tag(session, tag.id)
-
-    if audit is None:
-        logger.error("No audit found for tag '{}'.", tag_name)
-        sys.exit(1)
-    if audit.suggestion is None:
-        logger.error("Latest audit for '{}' has no suggestion — run audit.process first.", tag_name)
-        sys.exit(1)
-
-    logger.info("Applying suggestion for tag '{}':\n{}", tag_name, audit.suggestion)
-
-    async with session_factory() as session:
-        updated = await _tag_repo.update_description(session, tag_name, audit.suggestion)
-        if not updated:
-            logger.error("Tag '{}' not found when trying to update description.", tag_name)
+        if audit is None:
+            logger.error("No audit found for tag '{}'.", tag_name)
             sys.exit(1)
-        logger.info("Updated description for tag '{}'.", tag_name)
+        if audit.suggestion is None:
+            logger.error(
+                "Latest audit for '{}' has no suggestion — run audit.process first.", tag_name
+            )
+            sys.exit(1)
 
-        if delete_tagged or delete_side_tags:
-            tags_to_clear: list[TagModel] = []
+        logger.info("Applying suggestion for tag '{}':\n{}", tag_name, audit.suggestion)
 
-            main_tag = await _tag_repo.get_tag_model(session, tag_name)
-            if main_tag is not None and delete_tagged:
-                tags_to_clear.append(main_tag)
+        async with r.session_scope() as session:
+            updated = await _tag_repo.update_description(session, tag_name, audit.suggestion)
+            if not updated:
+                logger.error("Tag '{}' not found when trying to update description.", tag_name)
+                sys.exit(1)
+            logger.info("Updated description for tag '{}'.", tag_name)
 
-            if delete_side_tags:
-                for suffix in ("_unsure", "_excluded"):
-                    side = await _tag_repo.get_tag_model(session, f"{tag_name}{suffix}")
-                    if side is not None:
-                        tags_to_clear.append(side)
+            if delete_tagged or delete_side_tags:
+                tags_to_clear: list[TagModel] = []
 
-            for t in tags_to_clear:
-                count = await _card_tag_repo.delete_all_for_tag(session, t.id)
-                logger.info("Cleared {} card_tag entries for '{}'.", count, t.name)
+                main_tag = await _tag_repo.get_tag_model(session, tag_name)
+                if main_tag is not None and delete_tagged:
+                    tags_to_clear.append(main_tag)
 
-            if delete_side_tags:
-                for suffix in ("_unsure", "_excluded"):
-                    deleted = await _tag_repo.delete_tag(session, f"{tag_name}{suffix}")
-                    if deleted:
-                        logger.info("Deleted side tag '{}{}'.", tag_name, suffix)
+                if delete_side_tags:
+                    for suffix in ("_unsure", "_excluded"):
+                        side = await _tag_repo.get_tag_model(session, f"{tag_name}{suffix}")
+                        if side is not None:
+                            tags_to_clear.append(side)
 
-        if delete_tagged:
-            batch_count = await _sweep_repo.delete_sweep_batch_history_for_tag(session, tag.id)
-            logger.info("Cleared {} sweep batch(es) for '{}'.", batch_count, tag_name)
-            await _sweep_repo.reset_epoch_for_tag(session, tag.id)
-            logger.info("Reset sweep epoch for '{}'; all cards eligible on next kickoff.", tag_name)
+                for t in tags_to_clear:
+                    count = await _card_tag_repo.delete_all_for_tag(session, t.id)
+                    logger.info("Cleared {} card_tag entries for '{}'.", count, t.name)
 
-        await session.commit()
+                if delete_side_tags:
+                    for suffix in ("_unsure", "_excluded"):
+                        deleted = await _tag_repo.delete_tag(session, f"{tag_name}{suffix}")
+                        if deleted:
+                            logger.info("Deleted side tag '{}{}'.", tag_name, suffix)
+
+            if delete_tagged:
+                batch_count = await _sweep_repo.delete_sweep_batch_history_for_tag(session, tag.id)
+                logger.info("Cleared {} sweep batch(es) for '{}'.", batch_count, tag_name)
+                await _sweep_repo.reset_epoch_for_tag(session, tag.id)
+                logger.info(
+                    "Reset sweep epoch for '{}'; all cards eligible on next kickoff.", tag_name
+                )
 
 
 def main() -> None:

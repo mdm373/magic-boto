@@ -4,34 +4,13 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import os
 import sys
-import uuid
-from datetime import UTC, datetime
-from pathlib import Path
 
 from loguru import logger
-from sqlalchemy import select
 
-from app.db import get_async_session_factory
+from app.db import sqlalchemy_resources_lifespan
 from app.log import configure_cli_logging
-from app.models import BatchStatus, TagModel
-from app.repository import BatchRepo, TagAuditRepo
-from app.services import create_batch_client
-from settings import get_settings
-
-_audit_repo = TagAuditRepo()
-_batch_repo = BatchRepo()
-
-_SUGGESTION_MARKER = "## Suggested Description"
-
-
-def _extract_suggestion(report: str) -> str | None:
-    """Extract the '## Suggested Description' section from an audit report."""
-    idx = report.find(_SUGGESTION_MARKER)
-    if idx == -1:
-        return None
-    return report[idx + len(_SUGGESTION_MARKER) :].strip()
+from app.services import process_tag_audit
 
 
 def _parse_args() -> argparse.Namespace:
@@ -40,82 +19,20 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-async def _run(audit_id_str: str) -> None:
-    audit_id = uuid.UUID(audit_id_str)
-    settings = get_settings()
-    session_factory = get_async_session_factory()
-
-    async with session_factory() as session:
-        audit = await _audit_repo.get_audit(session, audit_id)
-        if audit is None:
-            logger.error("Audit {} not found.", audit_id)
-            sys.exit(1)
-        if audit.batch is None:
-            logger.error("Audit {} has no batch — run kickoff first.", audit_id)
-            sys.exit(1)
-        if audit.batch.status != BatchStatus.ENDED:
-            logger.error(
-                "Batch is not in ENDED state (current: {}). Run audit.poll --wait first.",
-                audit.batch.status,
-            )
-            sys.exit(1)
-        if audit.report is not None:
-            logger.warning("Audit {} already has a report — re-processing.", audit_id)
-
-        anthropic_batch_id = audit.batch.anthropic_batch_id
-
-    batch_client = create_batch_client()
-    results = batch_client.get_results(anthropic_batch_id)
-
-    report: str | None = None
-    for result in results:
-        if result.result.type == "succeeded":
-            text_blocks = [b for b in result.result.message.content if b.type == "text"]
-            if text_blocks:
-                report = text_blocks[0].text.strip()
-        else:
-            logger.error(
-                "Audit batch request failed with type '{}'. Cannot process.",
-                result.result.type,
-            )
-            sys.exit(1)
-
-    if report is None:
-        logger.error("No text content in audit batch response.")
-        sys.exit(1)
-
-    suggestion = _extract_suggestion(report)
-    if suggestion is None:
-        logger.warning("No '## Suggested Description' section found in audit report.")
-
-    async with session_factory() as session:
-        audit = await _audit_repo.get_audit(session, audit_id)
-        if audit is None or audit.batch is None:
-            logger.error("Audit {} disappeared during processing.", audit_id)
-            sys.exit(1)
-        audit.report = report
-        audit.suggestion = suggestion
-        _batch_repo.mark_batch_processed(audit.batch)
-        tag_row = await session.scalar(select(TagModel).where(TagModel.id == audit.tag_id))
-        if tag_row is None:
-            logger.error("Tag {} not found for audit {}.", audit.tag_id, audit_id)
-            sys.exit(1)
-        tag_name = tag_row.name
-        await session.commit()
-
-    debug_dir = Path(settings.debug_output_dir)
-    debug_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-    output_path = debug_dir / f"{timestamp}_{tag_name}_audit.md"
-    output_path.write_text(report, encoding="utf-8")
-    logger.info("Audit report saved to {}.", output_path)
-    os.startfile(str(output_path))
+async def _run(audit_id: str) -> None:
+    async with sqlalchemy_resources_lifespan() as r:
+        async with r.session_scope() as session:
+            await process_tag_audit(session, audit_id)
 
 
 def main() -> None:
     configure_cli_logging()
     args = _parse_args()
-    asyncio.run(_run(args.audit_id))
+    try:
+        asyncio.run(_run(args.audit_id))
+    except ValueError as e:
+        logger.error("{}", e)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

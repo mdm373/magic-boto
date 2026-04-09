@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from fastapi_pagination import add_pagination
 from loguru import logger
 
-from app.db import close_async_engine, close_pool, get_async_engine, get_pool
+from app.db import build_async_sqlalchemy_resources, close_pool, get_pool
 from app.errors import InternalError, InvalidRequestError, NotFoundError
 from app.http_routing import v1_router
 
@@ -41,9 +41,9 @@ logging.getLogger("uvicorn.access").addFilter(_NoHealthFilter())
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await get_pool()
-    get_async_engine()
+    app.state.async_sqlalchemy = build_async_sqlalchemy_resources()
     yield
-    await close_async_engine()
+    await app.state.async_sqlalchemy.engine.dispose()
     await close_pool()
 
 

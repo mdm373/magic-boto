@@ -13,7 +13,6 @@ from app.api_schema import (
     CardSearchQuery,
     CardsPage,
 )
-from app.db import get_async_session_factory
 from app.errors import NotFoundError
 from app.services import create_card_service
 
@@ -43,8 +42,7 @@ def register_cards_tools(app_mcp: AppMcp) -> None:
         pagination: CardSearchPagination = CardSearchPagination(),
     ) -> CardsPage:
         query = CardSearchQuery(filters=filters, pagination=pagination)
-        factory = get_async_session_factory()
-        async with factory() as session:
+        async with app_mcp.session() as session:
             page = await _card_service.search_cards(session, query)
             return cast(CardsPage, page)
 
@@ -62,8 +60,7 @@ def register_cards_tools(app_mcp: AppMcp) -> None:
         ),
     )
     async def get_card(card_id: str) -> Card:
-        factory = get_async_session_factory()
-        async with factory() as session:
+        async with app_mcp.session() as session:
             card = await _card_service.query_card(session, card_id)
             if card is None:
                 raise NotFoundError("Card not found")

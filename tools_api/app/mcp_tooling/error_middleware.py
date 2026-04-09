@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Coroutine
+from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine
+from contextlib import asynccontextmanager
 from functools import wraps
 from typing import Any, ParamSpec, TypeAlias, TypeVar
 
@@ -10,7 +11,9 @@ from loguru import logger
 from mcp import McpError
 from mcp.server.fastmcp import FastMCP
 from mcp.types import INTERNAL_ERROR, INVALID_PARAMS, ErrorData, Icon, ToolAnnotations
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db import AsyncSqlalchemyResources
 from app.errors import InternalError, InvalidRequestError, NotFoundError
 
 P = ParamSpec("P")
@@ -28,15 +31,24 @@ MCP_NOT_FOUND = -32001
 class AppMcp:
     """Binds a :class:`FastMCP` server with app-level tool registration (error mapping)."""
 
-    __slots__ = ("_mcp",)
+    __slots__ = ("_mcp", "sqlalchemy")
 
     def __init__(self, mcp: FastMCP[Any]) -> None:
         self._mcp = mcp
+        self.sqlalchemy: AsyncSqlalchemyResources | None = None
 
     @property
     def mcp(self) -> FastMCP[Any]:
         """Underlying FastMCP instance (custom routes, run, etc.)."""
         return self._mcp
+
+    @asynccontextmanager
+    async def session(self) -> AsyncIterator[AsyncSession]:
+        """One MCP tool: session; commit on success, rollback on error; callers do not commit."""
+        if self.sqlalchemy is None:
+            raise RuntimeError("MCP SQLAlchemy resources not initialized (lifespan not run).")
+        async with self.sqlalchemy.session_scope() as session:
+            yield session
 
     def tool(
         self,

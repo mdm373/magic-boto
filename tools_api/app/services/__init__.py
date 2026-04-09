@@ -1,7 +1,13 @@
 """Services layer for tool endpoints."""
 
 from .batch_client import ApiBatchStatus, BatchApiClient, Request, create_batch_client
-from .batch_poll import BatchPoller, BatchPollProvider, create_batch_poller
+from .batch_poll import (
+    BatchPoller,
+    BatchPollOutcome,
+    BatchPollProvider,
+    BatchPollResult,
+    create_batch_poller,
+)
 from .batch_verdict import Verdict
 from .card_payload import card_to_dict, cards_to_csv, cards_to_csv_with_names
 from .card_search_query_builder import CardSearchQueryBuilder
@@ -13,7 +19,22 @@ from .inventory_merger import CsvInventoryRowMerger
 from .inventory_names import DEFAULT_INVENTORY_NAME
 from .inventory_service import InventoryService
 from .mapper import CardMapper, EditionMapper
+from .sweep_audit_poll_providers import (
+    AuditPollProvider,
+    SweepPollProvider,
+    create_audit_poll_provider,
+    create_sweep_poll_provider,
+)
+from .tag_audit_processor import (
+    TagAuditProcessor,
+    create_tag_audit_processor,
+    process_tag_audit,
+)
 from .tag_service import TagService
+from .tag_sweep_processor import (
+    TagSweepProcessor,
+    create_tag_sweep_processor,
+)
 
 
 def create_card_service() -> CardService:
@@ -39,6 +60,9 @@ def create_tag_service() -> TagService:
 __all__ = [
     "ApiBatchStatus",
     "BatchApiClient",
+    "AuditPollProvider",
+    "BatchPollResult",
+    "BatchPollOutcome",
     "BatchPoller",
     "BatchPollProvider",
     "CardMapper",
@@ -53,15 +77,23 @@ __all__ = [
     "EditionService",
     "InventoryService",
     "Request",
+    "SweepPollProvider",
+    "TagAuditProcessor",
     "TagService",
+    "TagSweepProcessor",
     "Verdict",
     "card_to_dict",
     "cards_to_csv",
     "cards_to_csv_with_names",
     "create_batch_client",
+    "create_audit_poll_provider",
     "create_batch_poller",
+    "create_sweep_poll_provider",
     "create_card_service",
     "create_edition_service",
     "create_inventory_service",
+    "create_tag_audit_processor",
     "create_tag_service",
+    "create_tag_sweep_processor",
+    "process_tag_audit",
 ]

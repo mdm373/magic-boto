@@ -1,42 +1,51 @@
-"""Shared batch-poll loop for sweep and audit pipelines."""
+"""Shared batch-poll iteration for sweep and audit pipelines.
+
+The poller returns remote status snapshots; :meth:`BatchRepo.apply_batch_poll_updates`
+persists only changed rows. Caller (e.g. ``worker_session``) commits.
+"""
 
 from __future__ import annotations
 
-import argparse
-import asyncio
-import time
+import enum
 import uuid
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Protocol
 
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db import get_async_session_factory
-from app.log import configure_cli_logging
-from app.models import TERMINAL_BATCH_STATUSES, BatchModel
-from app.repository import BatchRepo
-from settings import get_settings
+from app.repository import BatchStatusMeta, BatchRepo
 
 from .batch_client import BatchApiClient, create_batch_client
 
 
+class BatchPollOutcome(enum.Enum):
+    """Result of a single poll iteration — the only gate for 'ready to process'."""
+
+    NO_BATCH_IDS = "no_batch_ids"
+    ALL_TERMINAL = "all_terminal"
+    IN_PROGRESS = "in_progress"
+
+
+@dataclass(frozen=True, slots=True)
+class BatchPollResult:
+    """One poll step: gate outcome plus every non-terminal batch read from the API this round."""
+
+    outcome: BatchPollOutcome
+    batch_status_metas: Sequence[BatchStatusMeta]
+
+
 class BatchPollProvider(Protocol):
-    """Interface a pipeline implements to participate in the shared poll loop."""
+    """Interface a pipeline implements to participate in the shared poll step."""
 
-    def populate_parser(self, parser: argparse.ArgumentParser) -> None:
-        """Configure *parser*: set its description and add pipeline-specific arguments."""
-        ...
-
-    async def fetch_batch_ids(
-        self, session: AsyncSession, args: argparse.Namespace
-    ) -> Sequence[uuid.UUID]:
+    async def fetch_batch_ids(self, session: AsyncSession) -> Sequence[uuid.UUID]:
         """Return all batch IDs for this pipeline run, regardless of status."""
         ...
 
 
 class BatchPoller:
-    """Runs the poll loop for a pipeline."""
+    """Runs a single Anthropic batch status sync for a pipeline (Celery reschedules until done)."""
 
     def __init__(
         self,
@@ -48,58 +57,31 @@ class BatchPoller:
         self._batch_client = batch_client
         self._batch_repo = batch_repo
 
-    def run(self) -> None:
-        """Configure logging, parse CLI args, and run the poll loop."""
-        configure_cli_logging()
-        interval = get_settings().batch_poll_interval_seconds
-        parser = argparse.ArgumentParser()
-        self._provider.populate_parser(parser)
-        parser.add_argument(
-            "--wait",
-            action="store_true",
-            default=False,
-            help=f"Loop every {interval}s until all batches reach a terminal state.",
-        )
-        asyncio.run(self._loop(parser.parse_args()))
-
-    async def _loop(self, args: argparse.Namespace) -> None:
-        interval = get_settings().batch_poll_interval_seconds
-        session_factory = get_async_session_factory()
-
-        async with session_factory() as session:
-            batch_ids = await self._provider.fetch_batch_ids(session, args)
+    async def sync_with_anthropic(self, session: AsyncSession) -> BatchPollResult:
+        """Fetch remote status for non-terminal batches, apply updates via repo, return outcome."""
+        batch_ids = await self._provider.fetch_batch_ids(session)
 
         if not batch_ids:
             logger.info("No batches found for this run.")
-            return
+            return BatchPollResult(BatchPollOutcome.NO_BATCH_IDS, ())
 
-        while True:
-            async with session_factory() as session:
-                batches = await self._batch_repo.get_non_terminal_batches_by_ids(session, batch_ids)
-                if not batches:
-                    logger.info("All batches are in a terminal state.")
-                    break
-                self._poll_batches(batches)
-                await session.commit()
+        batches = await self._batch_repo.get_non_terminal_batches_by_ids(session, batch_ids)
+        if not batches:
+            logger.info("All batches are in a terminal state.")
+            return BatchPollResult(BatchPollOutcome.ALL_TERMINAL, ())
 
-            logger.info("{} batch(es) still in progress.", len(batches))
-
-            if not args.wait:
-                logger.info("Re-run with --wait to poll automatically.")
-                break
-
-            logger.info("Polling again in {}s...", interval)
-            time.sleep(interval)
-
-    def _poll_batches(self, batches: Sequence[BatchModel]) -> None:
-        """Update status/completed_at in place for each non-terminal batch. Caller must commit."""
+        metas: list[BatchStatusMeta] = []
         for batch in batches:
-            if batch.status in TERMINAL_BATCH_STATUSES:
-                continue
-            result = self._batch_client.get_batch_status(batch.anthropic_batch_id)
-            batch.status = result.processing_status
-            if result.ended_at is not None:
-                batch.completed_at = result.ended_at
+            api = self._batch_client.get_batch_status(batch.anthropic_batch_id)
+            metas.append(BatchStatusMeta(batch.id, api.processing_status, api.ended_at))
+        await self._batch_repo.update_batch_status_meta(session, metas)
+        still = await self._batch_repo.get_non_terminal_batches_by_ids(session, batch_ids)
+        if not still:
+            logger.info("All batches are in a terminal state.")
+            return BatchPollResult(BatchPollOutcome.ALL_TERMINAL, metas)
+
+        logger.info("{} batch(es) still in progress.", len(still))
+        return BatchPollResult(BatchPollOutcome.IN_PROGRESS, metas)
 
 
 def create_batch_poller(provider: BatchPollProvider) -> BatchPoller:

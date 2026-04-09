@@ -1,10 +1,12 @@
 """MTGJSON v1 editions (sets) API: list and get by set code."""
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from starlette.requests import Request
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api_schema import Edition, EditionsQuery
-from app.db import get_request_session, inject_session_into_request
+from app.db import get_async_session
 from app.services import EditionQueryValidator, create_edition_service
 
 
@@ -19,7 +21,6 @@ def create_edition_router(validator: EditionQueryValidator) -> APIRouter:
     router = APIRouter(
         prefix="/edition",
         tags=["mtgjson_editions"],
-        dependencies=[Depends(inject_session_into_request)],
     )
 
     @router.get(
@@ -29,7 +30,7 @@ def create_edition_router(validator: EditionQueryValidator) -> APIRouter:
         summary="Search for editions (sets)",
     )
     async def list_editions(
-        request: Request,
+        session: Annotated[AsyncSession, Depends(get_async_session)],
         set_code: str | None = Query(
             None,
             min_length=1,
@@ -43,7 +44,6 @@ def create_edition_router(validator: EditionQueryValidator) -> APIRouter:
     ) -> list[Edition]:
         query = EditionsQuery(set_code=set_code, name=name)
         query = validator.validate_edition_query(query)
-        session = get_request_session(request)
         editions = await service.query_editions(session, query)
         return list(editions)
 
@@ -54,10 +54,9 @@ def create_edition_router(validator: EditionQueryValidator) -> APIRouter:
         summary="Get one edition (set) by set code.",
     )
     async def get_edition_by_set_code(
-        set_code: str,
-        request: Request,
+        session: Annotated[AsyncSession, Depends(get_async_session)],
+        set_code: Annotated[str, Path()],
     ) -> Edition:
-        session = get_request_session(request)
         edition = await service.get_edition(session, set_code)
         if edition is None:
             raise HTTPException(status_code=404, detail="Edition not found")

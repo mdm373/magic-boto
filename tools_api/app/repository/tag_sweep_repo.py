@@ -53,7 +53,7 @@ class TagSweepRepo:
         self, session: AsyncSession, tag_id: uuid.UUID
     ) -> TagSweepModel | None:
         """Return the open sweep for this tag, or None."""
-        return await session.scalar(
+        return await session.scalar(  # type: ignore[no-any-return]
             select(TagSweepModel).where(
                 TagSweepModel.tag_id == tag_id,
                 TagSweepModel.status == SweepRunStatus.OPEN,

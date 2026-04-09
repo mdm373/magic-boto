@@ -9,7 +9,6 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from app.api_schema.tag_schema import Tag
-from app.db import get_async_session_factory
 from app.errors import InvalidRequestError, NotFoundError
 from app.repository import CardTagEntry, TagRepo
 from app.services import create_tag_service
@@ -37,8 +36,7 @@ def register_tags_tools(app_mcp: AppMcp) -> None:
         ),
     )
     async def list_tags() -> Sequence[Tag]:
-        factory = get_async_session_factory()
-        async with factory() as session:
+        async with app_mcp.session() as session:
             return await _tag_repo.list_tags(session)
 
     @app_mcp.tool(
@@ -54,8 +52,7 @@ def register_tags_tools(app_mcp: AppMcp) -> None:
     async def get_tag(
         name: Annotated[str, Field(description="Tag name (case-insensitive).")],
     ) -> Tag:
-        factory = get_async_session_factory()
-        async with factory() as session:
+        async with app_mcp.session() as session:
             tag = await _tag_repo.get_tag(session, name)
         if tag is None:
             raise NotFoundError(f"Tag '{name}' not found.")
@@ -108,8 +105,7 @@ def register_tags_tools(app_mcp: AppMcp) -> None:
             raise InvalidRequestError("Tag name is required.")
         if not description.strip():
             raise InvalidRequestError("Tag description is required.")
-        factory = get_async_session_factory()
-        async with factory() as session:
+        async with app_mcp.session() as session:
             existing = await _tag_repo.get_tag(session, canonical)
             if existing is not None:
                 raise InvalidRequestError(f"Tag '{canonical}' already exists.")
@@ -120,7 +116,6 @@ def register_tags_tools(app_mcp: AppMcp) -> None:
                 sweep_include_types=sweep_include_types,
                 sweep_include_supertypes=sweep_include_supertypes,
             )
-            await session.commit()
         return tag
 
     @app_mcp.tool(
@@ -143,14 +138,12 @@ def register_tags_tools(app_mcp: AppMcp) -> None:
             Field(description="List of oracle IDs of the cards to tag."),
         ],
     ) -> Literal["ok"]:
-        factory = get_async_session_factory()
-        async with factory() as session:
+        async with app_mcp.session() as session:
             ok = await _tag_service.add_card_tags(
                 session, tag_name, [CardTagEntry(oracle_id=oid) for oid in oracle_ids]
             )
             if not ok:
                 raise NotFoundError(f"Tag '{tag_name}' not found.")
-            await session.commit()
         return "ok"
 
     @app_mcp.tool(
@@ -173,10 +166,8 @@ def register_tags_tools(app_mcp: AppMcp) -> None:
             Field(description="List of oracle IDs of the cards to untag."),
         ],
     ) -> Literal["ok"]:
-        factory = get_async_session_factory()
-        async with factory() as session:
+        async with app_mcp.session() as session:
             ok = await _tag_service.remove_card_tags(session, tag_name, oracle_ids)
             if not ok:
                 raise NotFoundError(f"Tag '{tag_name}' not found.")
-            await session.commit()
         return "ok"

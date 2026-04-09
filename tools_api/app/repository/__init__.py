@@ -1,6 +1,6 @@
 """Repository layer: pure ORM access organized by primary table concern."""
 
-from .batch_repo import BatchRepo
+from .batch_repo import BatchRepo, BatchStatusMeta
 from .canonical import canonical_name
 from .card_keyword_repo import CardKeywordRepo
 from .card_meta_repo import CardMetaRepo
@@ -17,6 +17,7 @@ from .tag_sweep_repo import BatchChunkRecord, TagSweepRepo
 
 __all__ = [
     "BatchChunkRecord",
+    "BatchStatusMeta",
     "canonical_name",
     "BatchRepo",
     "CardKeywordRepo",

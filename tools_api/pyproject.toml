@@ -18,6 +18,8 @@ dependencies = [
     "mcp>=1.2.0",
     "anthropic>=0.40.0",
     "httpx>=0.28.0",
+    "celery[redis]>=5.4.0",
+    "flower>=2.0.0",
 ]
 
 [project.optional-dependencies]
@@ -26,24 +28,22 @@ dev = [
     "mypy>=1.13.0",
     "import-linter>=2.0.0",
     "types-invoke>=2.0.0.10",
+    "celery-types>=0.22.0",
 ]
 
 [dependency-groups]
 dev = [
-    "pytest>=8.0.0",
     "ruff>=0.8.0",
     "mypy>=1.13.0",
     "import-linter>=2.0.0",
     "types-invoke>=2.0.0.10",
+    "celery-types>=0.22.0",
 ]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
 
 [tool.ruff]
 target-version = "py311"
 line-length = 100
-src = [".", "app", "migrations", "tasks", "tests"]
+src = [".", "app", "migrations", "tasks"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]

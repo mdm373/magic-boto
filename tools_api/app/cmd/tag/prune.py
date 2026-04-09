@@ -7,7 +7,7 @@ import sys
 
 from loguru import logger
 
-from app.db import get_async_session_factory
+from app.db import AsyncSqlalchemyResources, sqlalchemy_resources_lifespan
 from app.repository.tag_audit_repo import TagAuditRepo
 from app.repository.tag_repo import TagRepo
 from app.repository.tag_sweep_repo import TagSweepRepo
@@ -21,9 +21,11 @@ def _is_side_tag(name: str) -> bool:
     return name.endswith("_unsure") or name.endswith("_excluded")
 
 
-async def _prune_one(tag_name: str) -> None:
-    session_factory = get_async_session_factory()
-    async with session_factory() as session:
+async def _prune_one(
+    resources: AsyncSqlalchemyResources,
+    tag_name: str,
+) -> None:
+    async with resources.session_scope() as session:
         tag = await _tag_repo.require_tag_model(session, tag_name)
 
         for side_tag in (f"{tag_name}_unsure", f"{tag_name}_excluded"):
@@ -38,26 +40,25 @@ async def _prune_one(tag_name: str) -> None:
         if deleted_batches:
             logger.info("Deleted {} sweep batch(es) for '{}'.", deleted_batches, tag_name)
 
-        await session.commit()
-
 
 async def _run(tag_name: str) -> None:
-    await _prune_one(tag_name)
+    async with sqlalchemy_resources_lifespan() as r:
+        await _prune_one(r, tag_name)
 
 
 async def _run_all() -> None:
-    session_factory = get_async_session_factory()
-    async with session_factory() as session:
-        tags = await _tag_repo.list_tags(session)
+    async with sqlalchemy_resources_lifespan() as r:
+        async with r.session_scope() as session:
+            tags = await _tag_repo.list_tags(session)
 
-    primary = [t for t in tags if not _is_side_tag(t.name)]
-    if not primary:
-        logger.info("No tags to prune.")
-        return
+        primary = [t for t in tags if not _is_side_tag(t.name)]
+        if not primary:
+            logger.info("No tags to prune.")
+            return
 
-    logger.info("Pruning {} tag(s): {}", len(primary), ", ".join(t.name for t in primary))
-    for tag in primary:
-        await _prune_one(tag.name)
+        logger.info("Pruning {} tag(s): {}", len(primary), ", ".join(t.name for t in primary))
+        for tag in primary:
+            await _prune_one(r, tag.name)
 
 
 def main() -> None:

@@ -103,13 +103,12 @@ uv run invoke generate.tags --tag <name>        # sweep with Claude (bulk)
 uv run invoke generate.audit-tags --tag <name>  # audit results with Claude Opus
 ```
 
-### Lint, type-check, test
+### Lint, type-check
 
 ```powershell
 uv run ruff check . --fix
 uv run ruff format .
 uv run mypy app tasks --no-incremental --cache-dir=nul
-uv run pytest
 ```
 
 ---

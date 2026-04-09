@@ -7,7 +7,7 @@ import sys
 
 from sqlalchemy import select
 
-from app.db import get_async_session_factory
+from app.db import sqlalchemy_resources_lifespan
 from app.models import CardModel, InventoryCardModel
 from app.repository import InventoryRepo, canonical_name
 
@@ -33,38 +33,38 @@ def _format_line(
 
 
 async def _run(inventory_name: str) -> None:
-    session_factory = get_async_session_factory()
-    async with session_factory() as session:
-        inv = await _inv_repo.get_by_name(session, inventory_name)
-        if inv is None:
-            canon = canonical_name(inventory_name)
-            print(f"No inventory named {canon!r}.", file=sys.stderr)
-            sys.exit(1)
+    async with sqlalchemy_resources_lifespan() as r:
+        async with r.session_scope() as session:
+            inv = await _inv_repo.get_by_name(session, inventory_name)
+            if inv is None:
+                canon = canonical_name(inventory_name)
+                print(f"No inventory named {canon!r}.", file=sys.stderr)
+                sys.exit(1)
 
-        stmt = (
-            select(
-                InventoryCardModel.count,
-                CardModel.name,
-                CardModel.set_code,
-                CardModel.collector_number,
+            stmt = (
+                select(
+                    InventoryCardModel.count,
+                    CardModel.name,
+                    CardModel.set_code,
+                    CardModel.collector_number,
+                )
+                .join(
+                    CardModel,
+                    InventoryCardModel.card_id == CardModel.card_id,
+                )
+                .where(InventoryCardModel.inventory_id == inv.id)
+                .order_by(
+                    CardModel.name.asc(),
+                    CardModel.set_code.asc(),
+                    CardModel.collector_number.asc().nulls_last(),
+                )
             )
-            .join(
-                CardModel,
-                InventoryCardModel.card_id == CardModel.card_id,
-            )
-            .where(InventoryCardModel.inventory_id == inv.id)
-            .order_by(
-                CardModel.name.asc(),
-                CardModel.set_code.asc(),
-                CardModel.collector_number.asc().nulls_last(),
-            )
-        )
-        result = await session.execute(stmt)
-        rows = result.all()
+            result = await session.execute(stmt)
+            rows = result.all()
 
-    for qty, card_name, set_code, collector_number in rows:
-        line = _format_line(qty, card_name, set_code, collector_number)
-        print(line)
+        for qty, card_name, set_code, collector_number in rows:
+            line = _format_line(qty, card_name, set_code, collector_number)
+            print(line)
 
 
 def main() -> None:

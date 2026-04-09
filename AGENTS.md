@@ -36,6 +36,8 @@ uv run invoke serve.docker   # full Docker stack
 uv run invoke serve.mcp      # MCP streamable HTTP
 ```
 
+Root `docker-compose.yml` also includes **Redis**, **`tools_celery_worker`**, and **Flower** (Celery UI, default host port 5555). Set **`CELERY_REDIS_URL`** (defaults to `redis://localhost:6379/0`; Compose sets `redis://redis:6379/0`) in `.env` for Celery. After tag sweep or audit enqueue submits batches, the CLI enqueues Celery to poll and process; use **`--audit-after`** on sweep enqueue to chain audit after sweep.
+
 ### Lint & type-check
 
 ```powershell
@@ -53,13 +55,6 @@ uv run invoke migrate.create   # prompts for message, creates revision file
 ```
 
 Migration files: `tools_api/migrations/versions/YYYYMMDD_revid_slug.py`. Create files when asked; **do not run migrations without user confirmation**.
-
-### Tests
-
-```powershell
-uv run pytest
-uv run pytest tests/path/to/test_file.py::test_name
-```
 
 ### Other
 
@@ -153,7 +148,9 @@ Apply these principles so new work fits the existing structure.
 
 - **DB access via app injection.** Routes that need the DB use the app’s dependency (session or connection); do not repeat the dependency in each route.
 
-- **tools_api HTTP vs MCP.** The FastAPI app lives under `tools_api/app/http/` (`uvicorn app.http.main:app`). Streamable MCP HTTP matches that pattern: `uvicorn app.mcp.asgi:app` (see `docker-compose.yml` **`tools_mcp`**). Shared wiring for FastMCP lives in `app/mcp/server.py`. **Stdio** MCP hosts (subprocess-only clients): `uv run python -m app.mcp.main`. Shared domain code stays at `tools_api/app/` (`services`, `schema`, `db`, `models`).
+- **tools_api HTTP vs MCP.** The FastAPI app is loaded via `uvicorn app.cmd.serve_http:app` (see `docker-compose.yml` **`tools_api`**). Streamable MCP HTTP matches that pattern: `uvicorn app.mcp.asgi:app` (see **`tools_mcp`**). Shared wiring for FastMCP lives in `app/mcp/server.py`. **Stdio** MCP hosts (subprocess-only clients): `uv run python -m app.mcp.main`. Shared domain code stays at `tools_api/app/` (`services`, `schema`, `db`, `models`).
+
+- **Celery.** The app lives in `app/cmd/serve_celery.py` (`celery_app`, `create_celery_app`). Worker and Flower use `celery -A app.cmd.serve_celery:celery_app` (see **`tools_celery_worker`** / **`flower`**). Task definitions live in `app/worker/tasks.py`. Enqueue work from services/CLIs via `from app.worker import enqueue_process_sweep_run, enqueue_process_tag_audit` (the package barrel is the public API). Task name strings live in `app/worker/pipeline_task_names.py` and must match `name=` on the task decorators—do not import task callables from `tasks.py` outside that module (avoids cycles with code `tasks` already imports).
 
 - **MCP Inspector (Docker).** Root **`docker-compose.yml`** includes **`mcp_inspector`** (`ghcr.io/modelcontextprotocol/inspector:latest`), ports **`MCP_INSPECTOR_CLIENT_PORT` / `MCP_INSPECTOR_SERVER_PORT`** (defaults **6274** / **6277**). Open the UI on the host, then connect with **Streamable HTTP** URL **`http://tools_mcp:8765/mcp`** (use the Compose service name so the proxy reaches `tools_mcp`; `http://localhost:8765/mcp` is wrong from inside the inspector container). Check **`docker compose logs mcp_inspector`** for the proxy auth token if prompted.
 

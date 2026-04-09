@@ -16,7 +16,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp
 
-from app.db import close_async_engine, close_pool, get_async_engine, get_pool
+from app.db import build_async_sqlalchemy_resources, close_pool, get_pool
 
 from .error_middleware import AppMcp
 from .tools import register_tools
@@ -42,16 +42,6 @@ def ensure_mcp_logging() -> None:
     )
     logging.getLogger("uvicorn.access").addFilter(_NoHealthFilter())
     _logging_configured = True
-
-
-@asynccontextmanager
-async def mcp_lifespan(_mcp: FastMCP[dict[str, Any]]) -> AsyncIterator[dict[str, Any]]:
-    """Initialize asyncpg pool and SQLAlchemy engine (mirror HTTP app lifespan)."""
-    await get_pool()
-    get_async_engine()
-    yield {}
-    await close_async_engine()
-    await close_pool()
 
 
 def mcp_cors_origins_from_env() -> list[str]:
@@ -100,6 +90,21 @@ def create_mcp_server(*, streamable_http: bool) -> FastMCP[dict[str, Any]]:
     # restart, ``--reload``, or another worker → HTTP 404 + JSON-RPC "Session not found".
     # Stateless mode handles each POST independently (no session header required).
     stateless_http = streamable_http and _env_flag("TOOLS_MCP_STATELESS_HTTP")
+
+    app_mcp: AppMcp | None = None
+
+    @asynccontextmanager
+    async def mcp_lifespan(_mcp: FastMCP[dict[str, Any]]) -> AsyncIterator[dict[str, Any]]:
+        nonlocal app_mcp
+        await get_pool()
+        assert app_mcp is not None
+        app_mcp.sqlalchemy = build_async_sqlalchemy_resources()
+        yield {}
+        assert app_mcp.sqlalchemy is not None
+        await app_mcp.sqlalchemy.engine.dispose()
+        app_mcp.sqlalchemy = None
+        await close_pool()
+
     mcp = FastMCP(
         "Magic Boto Tools",
         instructions=("MTG card, edition, and inventory name lookup"),

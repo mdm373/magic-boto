@@ -1,6 +1,6 @@
 """Application settings from environment variables. Set env before starting the process."""
 
-from pydantic import Field, field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -72,6 +72,12 @@ class Settings(BaseSettings):
         default=30,
         ge=1,
         description="Seconds between Anthropic batch status polls when --wait is active.",
+    )
+
+    celery_redis_url: str = Field(
+        default="redis://localhost:6379/0",
+        description="Redis URL for Celery (task queue and results; tag sweep/audit pipelines).",
+        validation_alias=AliasChoices("CELERY_REDIS_URL", "CELERY_BROKER_URL"),
     )
 
     db_insert_chunk_size: int = Field(

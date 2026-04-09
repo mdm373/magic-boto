@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from app.api_schema import Edition, EditionsQuery
-from app.db import get_async_session_factory
 from app.errors import NotFoundError
 from app.services import EditionQueryValidator, create_edition_service
 
@@ -22,8 +21,7 @@ def register_editions_tools(app_mcp: AppMcp) -> None:
     )
     async def list_editions(query: EditionsQuery) -> list[Edition]:
         query = _edition_validator.validate_edition_query(query)
-        factory = get_async_session_factory()
-        async with factory() as session:
+        async with app_mcp.session() as session:
             editions = await _edition_service.query_editions(session, query)
             return list(editions)
 
@@ -32,8 +30,7 @@ def register_editions_tools(app_mcp: AppMcp) -> None:
         description="Get one edition (set) by set code.",
     )
     async def get_edition(set_code: str) -> Edition:
-        factory = get_async_session_factory()
-        async with factory() as session:
+        async with app_mcp.session() as session:
             edition = await _edition_service.get_edition(session, set_code)
             if edition is None:
                 raise NotFoundError("Edition not found")

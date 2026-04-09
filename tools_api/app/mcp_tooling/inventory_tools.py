@@ -7,7 +7,6 @@ from typing import Annotated, Literal
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from app.db import get_async_session_factory
 from app.errors import InvalidRequestError, NotFoundError
 from app.repository import InventoryRepo, canonical_name
 from app.services import DEFAULT_INVENTORY_NAME, create_inventory_service
@@ -46,8 +45,7 @@ def register_inventory_tools(app_mcp: AppMcp) -> None:
         ),
     )
     async def list_inventory_names() -> list[str]:
-        factory = get_async_session_factory()
-        async with factory() as session:
+        async with app_mcp.session() as session:
             return await _inv_repo.list_names(session)
 
     @app_mcp.tool(
@@ -85,10 +83,8 @@ def register_inventory_tools(app_mcp: AppMcp) -> None:
             raise InvalidRequestError(
                 "Cannot create the reserved inventory name via MCP; use import for _default."
             )
-        factory = get_async_session_factory()
-        async with factory() as session:
+        async with app_mcp.session() as session:
             inv = await _inv_repo.get_or_create(session, name)
-            await session.commit()
             return inv.name
 
     @app_mcp.tool(
@@ -118,13 +114,11 @@ def register_inventory_tools(app_mcp: AppMcp) -> None:
         ],
     ) -> Literal["ok"]:
         _inventory_name_or_error(inventory_name)
-        factory = get_async_session_factory()
-        async with factory() as session:
+        async with app_mcp.session() as session:
             inv = await _inv_repo.get_by_name(session, inventory_name)
             if inv is None:
                 raise NotFoundError("Inventory not found")
             await _inventory_service.add_cards_by_scryfall_ids(session, inv.id, scryfall_ids)
-            await session.commit()
         return "ok"
 
     @app_mcp.tool(
@@ -155,11 +149,9 @@ def register_inventory_tools(app_mcp: AppMcp) -> None:
         ],
     ) -> Literal["ok"]:
         _inventory_name_or_error(inventory_name)
-        factory = get_async_session_factory()
-        async with factory() as session:
+        async with app_mcp.session() as session:
             inv = await _inv_repo.get_by_name(session, inventory_name)
             if inv is None:
                 raise NotFoundError("Inventory not found")
             await _inventory_service.remove_cards_by_scryfall_ids(session, inv.id, scryfall_ids)
-            await session.commit()
         return "ok"

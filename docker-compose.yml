@@ -18,6 +18,18 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    container_name: magic-boto-tools-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_LOCAL_PORT:-6379}:6379"
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   tools_api:
     build: ./tools_api
     container_name: magic-boto-tools-api
@@ -41,6 +53,49 @@ services:
       start_period: 10s
     depends_on:
       postgres:
+        condition: service_healthy
+
+  tools_celery_worker:
+    build: ./tools_api
+    container_name: magic-boto-tools-celery
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
+      CELERY_REDIS_URL: ${CELERY_REDIS_URL:-redis://redis:6379/0}
+    volumes:
+      - ./tools_api/app:/app/app
+      - ./tools_api/cache:/app/cache
+    command:
+      [
+        "sh",
+        "-c",
+        "uv run celery -A app.cmd.serve_celery:celery_app worker --loglevel=${CELERY_LOG_LEVEL:-INFO}",
+      ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  flower:
+    build: ./tools_api
+    container_name: magic-boto-tools-flower
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      CELERY_REDIS_URL: ${CELERY_REDIS_URL:-redis://redis:6379/0}
+    ports:
+      - "${FLOWER_LOCAL_PORT:-5555}:${FLOWER_PORT:-5555}"
+    command:
+      [
+        "sh",
+        "-c",
+        "uv run celery -A app.cmd.serve_celery:celery_app flower --address=0.0.0.0 --port=${FLOWER_PORT:-5555}",
+      ]
+    depends_on:
+      redis:
         condition: service_healthy
 
   tools_mcp:

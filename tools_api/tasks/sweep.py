@@ -1,75 +1,73 @@
-"""Sweep tasks — invoke wrappers for the batch sweep pipeline."""
+"""Sweep tasks — invoke wrappers for ``app.cmd.tag.sweep.*``."""
 
 from __future__ import annotations
 
 import subprocess
-import webbrowser
 
 from invoke import Collection, Context, Exit, task
 
-from ._import import _read_multiline
 
-_BATCHES_URL = "https://platform.claude.com/workspaces/default/batches"
-
-
-def _prompt_yn(prompt: str, default: bool = False) -> bool:
-    """Prompt the operator for a yes/no answer. Returns True for 'y'."""
-    hint = "[Y/n]" if default else "[y/N]"
-    answer = input(f"{prompt} {hint} ").strip().lower()
-    if not answer:
-        return default
-    return answer in {"y", "yes"}
+def _run_subprocess(
+    c: Context,
+    argv: list[str],
+) -> subprocess.CompletedProcess[str]:
+    kwargs: dict[str, object] = {"check": True, "text": True}
+    if c.cwd:
+        kwargs["cwd"] = c.cwd
+    return subprocess.run(argv, **kwargs)  # type: ignore[call-overload, no-any-return]
 
 
 @task
-def kickoff(
+def enqueue(
     c: Context,
     tag: str = "",
-    limit: int = 0,
+    existing: bool = False,
+    limit: int | None = None,
     reenqueue_failed: bool = False,
+    no_include_unsure: bool = False,
+    no_include_excluded: bool = False,
+    audit_after: bool = False,
+    audit_tagged_sample: int = 20,
+    audit_excluded_sample: int = 40,
+    audit_unsure_sample: int = 10,
 ) -> None:
-    """Submit Anthropic batch requests for cards pending a tag sweep.
+    """Run ``python -m app.cmd.tag.sweep.enqueue``.
 
-    Resumes an existing open run for the tag, or creates a new one.
-    Use --limit N to submit N cards and exit; re-run kickoff to resume.
-    Use --reenqueue-failed to re-submit oracle IDs from failed batches in the open run.
+    When not ``--existing``, prompts for a card limit if ``--limit`` is omitted (blank = no limit).
     """
     if not tag.strip():
-        tag = input("Tag name to sweep: ").strip()
+        tag = input("Tag name: ").strip()
     if not tag:
         raise Exit("Tag name is required.")
 
-    argv = ["uv", "run", "python", "-m", "app.cmd.tag.sweep.kickoff", tag]
+    if limit is None:
+        if not existing:
+            raw = input("Card limit per enqueue run (blank for no limit): ").strip()
+            limit = int(raw) if raw.isdigit() else 0
+        else:
+            limit = 0
+
+    argv = ["uv", "run", "python", "-m", "app.cmd.tag.sweep.enqueue", tag]
+    if existing:
+        argv.append("--existing")
     if limit > 0:
         argv += ["--limit", str(limit)]
     if reenqueue_failed:
-        argv += ["--reenqueue-failed"]
-
-    if c.cwd:
-        subprocess.run(argv, check=True, cwd=c.cwd)
-    else:
-        subprocess.run(argv, check=True)
-    webbrowser.open(_BATCHES_URL)
-
-
-@task
-def poll(
-    c: Context,
-    tag: str = "",
-    wait: bool = False,
-) -> None:
-    """Check and update Anthropic batch statuses for a sweep run.
-
-    With --wait, loops every 30s until all batches reach a terminal state.
-    """
-    if not tag.strip():
-        tag = input("Tag name to poll: ").strip()
-    if not tag:
-        raise Exit("Tag name is required.")
-
-    argv = ["uv", "run", "python", "-m", "app.cmd.tag.sweep.poll", tag]
-    if wait:
-        argv += ["--wait"]
+        argv.append("--reenqueue-failed")
+    if no_include_unsure:
+        argv.append("--no-include-unsure")
+    if no_include_excluded:
+        argv.append("--no-include-excluded")
+    if audit_after:
+        argv.append("--audit-after")
+    argv += [
+        "--audit-tagged-sample",
+        str(audit_tagged_sample),
+        "--audit-excluded-sample",
+        str(audit_excluded_sample),
+        "--audit-unsure-sample",
+        str(audit_unsure_sample),
+    ]
     _run_subprocess(c, argv)
 
 
@@ -77,122 +75,23 @@ def poll(
 def process(
     c: Context,
     tag: str = "",
-    include_unsure: bool | None = None,
-    include_excluded: bool | None = None,
+    include_unsure: bool = False,
+    include_excluded: bool = False,
 ) -> None:
-    """Apply tags from completed batch results for a sweep run.
-
-    All batches must be in a terminal state before running (use sweep.poll --wait).
-    """
+    """Run ``python -m app.cmd.tag.sweep.process``."""
     if not tag.strip():
-        tag = input("Tag name to process: ").strip()
+        tag = input("Tag name: ").strip()
     if not tag:
         raise Exit("Tag name is required.")
-
-    if include_unsure is None:
-        include_unsure = _prompt_yn("Tag uncertain cards with {tag}_unsure?", default=True)
-    if include_excluded is None:
-        include_excluded = _prompt_yn("Tag non-qualifying cards with {tag}_excluded?", default=True)
 
     argv = ["uv", "run", "python", "-m", "app.cmd.tag.sweep.process", tag]
     if include_unsure:
-        argv += ["--include-unsure"]
+        argv.append("--include-unsure")
     if include_excluded:
-        argv += ["--include-excluded"]
-
+        argv.append("--include-excluded")
     _run_subprocess(c, argv)
 
 
-@task
-def run(
-    c: Context,
-    tag: str = "",
-    limit: int = 0,
-) -> None:
-    """Full sweep orchestration: create or select a tag, kick off batches, poll, then process."""
-    if tag.strip():
-        # Tag provided — assume it already exists, skip creation prompt.
-        pass
-    elif _prompt_yn("Use an existing tag?"):
-        tag = input("Tag name to sweep: ").strip()
-        if not tag:
-            raise Exit("Tag name is required.")
-    else:
-        tag = input("Tag name: ").strip()
-        if not tag:
-            raise Exit("Tag name is required.")
-        types_raw = input("Sweep include types: ").strip()
-        supertypes_raw = input("Sweep include supertypes: ").strip()
-        description = _read_multiline("Tag description (two blank lines to finish):")
-        if not description:
-            raise Exit("Tag description is required.")
-        create_argv = ["uv", "run", "python", "-m", "app.cmd.tag.create", tag, description]
-        if types_raw:
-            create_argv += [f"--types={types_raw}"]
-        if supertypes_raw:
-            create_argv += [f"--supertypes={supertypes_raw}"]
-        _run_subprocess(c, create_argv)
-
-    if limit == 0:
-        raw = input("Card limit per kickoff run (blank for no limit): ").strip()
-        if raw.isdigit():
-            limit = int(raw)
-
-    include_unsure = _prompt_yn("Tag uncertain cards with {tag}_unsure?", default=True)
-    include_excluded = _prompt_yn("Tag non-qualifying cards with {tag}_excluded?", default=True)
-    run_audit = _prompt_yn("Run audit automatically when sweep completes?", default=True)
-
-    kickoff_argv = ["uv", "run", "python", "-m", "app.cmd.tag.sweep.kickoff", tag]
-    if limit > 0:
-        kickoff_argv += ["--limit", str(limit)]
-    _run_subprocess(c, kickoff_argv)
-
-    _run_subprocess(c, ["uv", "run", "python", "-m", "app.cmd.tag.sweep.poll", tag, "--wait"])
-    process(c, tag=tag, include_unsure=include_unsure, include_excluded=include_excluded)
-
-    if run_audit:
-        _run_subprocess(c, ["uv", "run", "invoke", "audit", "--tag", tag])
-
-
-@task
-def reset(c: Context, tag: str = "") -> None:
-    """Show or delete the open sweep run for a tag."""
-    if not tag.strip():
-        tag = input("Tag name: ").strip()
-    if not tag:
-        raise Exit("Tag name is required.")
-
-    result = _run_subprocess(
-        c,
-        ["uv", "run", "python", "-m", "app.cmd.tag.sweep.reset", tag],
-        capture_stdout=True,
-    )
-    sweep_id = result.stdout.strip()
-    if not sweep_id:
-        return
-
-    if not _prompt_yn(f"Delete run {sweep_id} and all its batches? Kickoff will start fresh."):
-        return
-
-    _run_subprocess(c, ["uv", "run", "python", "-m", "app.cmd.tag.sweep.reset", tag, "--delete"])
-
-
-def _run_subprocess(
-    c: Context,
-    argv: list[str],
-    capture_stdout: bool = False,
-) -> subprocess.CompletedProcess[str]:
-    kwargs: dict[str, object] = {"check": True, "text": True}
-    if capture_stdout:
-        kwargs["stdout"] = subprocess.PIPE
-    if c.cwd:
-        kwargs["cwd"] = c.cwd
-    return subprocess.run(argv, **kwargs)  # type: ignore[call-overload, no-any-return]
-
-
 ns = Collection("sweep")
-ns.add_task(kickoff)
-ns.add_task(poll)
+ns.add_task(enqueue, default=True)
 ns.add_task(process)
-ns.add_task(run, default=True)
-ns.add_task(reset)

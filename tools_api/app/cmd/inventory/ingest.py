@@ -8,7 +8,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from app.db import get_async_session_factory
+from app.db import sqlalchemy_resources_lifespan
 from app.log import configure_cli_logging
 from app.repository import InventoryRepo
 from app.services import CsvInventoryRowMerger, CsvParser, create_inventory_service
@@ -44,28 +44,26 @@ async def _run(csv_path: Path, inventory_name: str) -> None:
     quantities = {r.scryfall_id: r.count for r in merged_rows}
     ignored: list[str] = []
     max_unknown = get_settings().inventory_import_max_unknown_scryfall_ids
-    session_factory = get_async_session_factory()
-    async with session_factory() as session:
-        inv = await _inv_repo.get_or_create(session, inventory_name)
-        resolved_name = inv.name
-        ignored = await service.add_cards_from_scryfall_quantities(
-            session,
-            inv.id,
-            quantities,
-            skip_unknown_scryfall_ids=True,
-        )
-        if ignored:
-            logger.info("Import: {} Scryfall id(s) not in catalog:", len(ignored))
-            logger.info("{}", ", ".join(ignored))
-        if len(ignored) > max_unknown:
-            logger.error(
-                "Import: too many unknown Scryfall ids ({} > max allowed {}).",
-                len(ignored),
-                max_unknown,
+    async with sqlalchemy_resources_lifespan() as r:
+        async with r.session_scope() as session:
+            inv = await _inv_repo.get_or_create(session, inventory_name)
+            resolved_name = inv.name
+            ignored = await service.add_cards_from_scryfall_quantities(
+                session,
+                inv.id,
+                quantities,
+                skip_unknown_scryfall_ids=True,
             )
-            await session.rollback()
-            sys.exit(1)
-        await session.commit()
+            if ignored:
+                logger.info("Import: {} Scryfall id(s) not in catalog:", len(ignored))
+                logger.info("{}", ", ".join(ignored))
+            if len(ignored) > max_unknown:
+                logger.error(
+                    "Import: too many unknown Scryfall ids ({} > max allowed {}).",
+                    len(ignored),
+                    max_unknown,
+                )
+                sys.exit(1)
 
     skipped_copies = sum(quantities.get(sid, 0) for sid in ignored)
     saved_copies = total_copies - skipped_copies
