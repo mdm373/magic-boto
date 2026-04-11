@@ -52,6 +52,14 @@ Copy-Item .env.example .env
 docker compose up
 ```
 
+After changing `tools_api/Dockerfile`, `tools_api/pyproject.toml`, or other image inputs, rebuild every service that uses that image (HTTP API, Celery worker, Flower, MCP):
+
+```powershell
+docker compose build tools_api tools_celery_worker tools_mcp
+docker compose build --no-cache tools_api tools_celery_worker tools_mcp
+
+```
+
 Services:
 | Service | URL |
 |---|---|

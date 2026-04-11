@@ -11,6 +11,7 @@ from enum import StrEnum
 class PipelineTaskName(StrEnum):
     """Full Celery task names (``app.worker.tasks.<function>``)."""
 
+    MATERIALIZE_SWEEP_BATCHES = "app.worker.tasks.materialize_sweep_batches"
     POLL_PIPELINE = "app.worker.tasks.poll_pipeline"
     PROCESS_SWEEP_RUN = "app.worker.tasks.process_sweep_run"
     INIT_TAG_AUDIT = "app.worker.tasks.init_tag_audit"

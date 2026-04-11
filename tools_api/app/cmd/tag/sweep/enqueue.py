@@ -13,16 +13,16 @@ from app.services.tag_sweep_initializer import (
 )
 from app.services.tag_sweep_service import create_tag_sweep_service
 from app.worker import (
-    PipelineTaskName,
+    enqueue_materialize_sweep_batches,
     enqueue_process_sweep_polling,
-    enqueue_submit_batches,
 )
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Submit sweep batches for a tag and enqueue Celery (default), or enqueue Celery only."
+            "Open sweep + pipeline in DB, enqueue Celery to build outbox batches then submit/poll "
+            "(default), or enqueue Celery poll-only for existing batches (--existing)."
         )
     )
     parser.add_argument("tag", help="Tag name (must exist).")
@@ -83,14 +83,11 @@ def main() -> None:
         enqueue_process_sweep_polling(batch_ids)
         return
 
-    async def body() -> list[str]:
+    async def body() -> str:
         async with cli_session_scope() as session:
             init = create_tag_sweep_initializer()
-            sweep_service = create_tag_sweep_service()
             request = SweepKickoffRequest(
                 tag_name=args.tag,
-                limit=args.limit,
-                reenqueue_failed=args.reenqueue_failed,
                 include_unsure=not args.no_include_unsure,
                 include_excluded=not args.no_include_excluded,
                 audit_after=args.audit_after,
@@ -99,13 +96,15 @@ def main() -> None:
                 audit_unsure_sample=args.audit_unsure_sample,
             )
             sweep = await init.init_sweep(session, request)
-            batch_ids = await sweep_service.get_pending_batch_ids_for_sweep(session, sweep)
-            if not batch_ids:
-                raise ValueError(f"No pending batches for sweep {sweep.id}.")
-            return list(batch_ids)
+            return str(sweep.id)
 
-    batch_ids = asyncio.run(body())
-    enqueue_submit_batches(batch_ids, PipelineTaskName.PROCESS_SWEEP_RUN)
+    sweep_id = asyncio.run(body())
+    enqueue_materialize_sweep_batches(
+        sweep_id,
+        args.tag,
+        limit=args.limit,
+        reenqueue_failed=args.reenqueue_failed,
+    )
 
 
 if __name__ == "__main__":

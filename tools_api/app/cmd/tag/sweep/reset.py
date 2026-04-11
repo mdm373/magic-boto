@@ -39,12 +39,21 @@ async def _run(tag_name: str) -> None:
             b.batch.status,
         )
 
+    logger.info(
+        "Dry run: no rows were deleted. To remove this open run and all linked batches, "
+        "run again with --delete (Invoke: sweep.reset --delete)."
+    )
     print(run.id, flush=True)
 
 
 def main() -> None:
     configure_cli_logging()
-    parser = argparse.ArgumentParser(description="Reset the open sweep run for a tag.")
+    parser = argparse.ArgumentParser(
+        description=(
+            "Inspect the open sweep run for a tag (default). "
+            "Pass --delete to remove that run and all linked batches."
+        )
+    )
     parser.add_argument("tag", help="Tag name.")
     parser.add_argument(
         "--delete",

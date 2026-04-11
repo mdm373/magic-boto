@@ -1,7 +1,8 @@
-"""Queue tag sweep batch work and configure the poll/process pipeline before Celery enqueue.
+"""Tag sweep kickoff: open run + pipeline options in-DB; heavy batch build runs in Celery.
 
-Celery ``submit_batch`` sends chunks to Anthropic; ``process_sweep_run`` polls and applies.
-Pass one :class:`~sqlalchemy.ext.asyncio.AsyncSession` into :meth:`TagSweepInitializer.kickoff`
+Celery ``materialize_sweep_batches`` builds pending rows and payloads, then enqueues
+``submit_batch`` → Anthropic → ``poll_pipeline`` → ``process_sweep_run``.
+Pass one :class:`~sqlalchemy.ext.asyncio.AsyncSession` into :meth:`TagSweepInitializer.init_sweep`
 with a :class:`SweepKickoffRequest` (same scope as commit).
 """
 
@@ -44,11 +45,12 @@ __all__ = [
 
 @dataclass(frozen=True, slots=True)
 class SweepKickoffRequest:
-    """Parameters for :meth:`TagSweepInitializer.kickoff` (pending batch + pipeline options)."""
+    """Sweep DB kickoff: tag + pipeline flags (optional audit-after).
+
+    Card scope (``limit`` / ``reenqueue_failed``) is only for Celery materialize, not this struct.
+    """
 
     tag_name: str
-    limit: int
-    reenqueue_failed: bool
     include_unsure: bool = True
     include_excluded: bool = True
     audit_after: bool = False
@@ -58,7 +60,7 @@ class SweepKickoffRequest:
 
 
 class TagSweepInitializer:
-    """Create or resume a sweep run, persist pending batches, and set pipeline process options."""
+    """Open sweep + pipeline in DB; pending batches are built in Celery (see materialize)."""
 
     def __init__(
         self,
@@ -76,18 +78,37 @@ class TagSweepInitializer:
     async def init_sweep(
         self, session: AsyncSession, request: SweepKickoffRequest
     ) -> TagSweepModel:
-        """Open or resume a run, create pending batch(es), set pipeline options."""
-        settings = get_settings()
+        """Open or resume a run and persist pipeline options (no pending batches yet)."""
         tag = await self._tag_repo.require_tag_model(session, request.tag_name)
         sweep = await self._ensure_sweep_run(session, tag)
         sweep_id = sweep.id
-        reenqueue_failed = request.reenqueue_failed
-        limit = request.limit
         logger.info("Sweep ID: {}", sweep.id)
-        logger.info("Using model: {}", settings.tag_sweep_model)
-        await self._create_new_batches(session, sweep_id, tag, reenqueue_failed, limit)
         await self._configure_pipeline(session, tag, sweep_id, request)
         return sweep
+
+    async def materialize_sweep_batches(
+        self,
+        session: AsyncSession,
+        sweep_id: uuid.UUID,
+        *,
+        tag_name: str,
+        limit: int,
+        reenqueue_failed: bool,
+    ) -> None:
+        """Build chunk rows, outbox payloads, and pending ``batches`` rows for an open sweep."""
+        tag = await self._tag_repo.require_tag_model(session, tag_name)
+        run = await self._sweep_repo.get_open_sweep(session, tag.id)
+        if run is None or run.id != sweep_id:
+            raise ValueError(
+                f"Sweep {sweep_id} is not the open sweep for tag {tag_name!r} (or no open sweep)."
+            )
+        settings = get_settings()
+        logger.info(
+            "Materializing batches for sweep {} (model: {}).",
+            sweep_id,
+            settings.tag_sweep_model,
+        )
+        await self._create_new_batches(session, sweep_id, tag, reenqueue_failed, limit)
 
     async def _ensure_sweep_run(self, session: AsyncSession, tag: TagModel) -> TagSweepModel:
         run = await self._sweep_repo.get_open_sweep(session, tag.id)

@@ -5,6 +5,7 @@ Celery wiring live in sibling modules (``tasks``, ``poll_pipeline``, ``submit_ba
 """
 
 from .init_tag_audit import enqueue_init_tag_audit
+from .materialize_sweep_batches import enqueue_materialize_sweep_batches
 from .pipeline_task_names import PipelineTaskName
 from .poll_pipeline import enqueue_poll_pipeline
 from .process_sweep_run import enqueue_process_sweep_polling
@@ -16,6 +17,7 @@ __all__ = [
     "enqueue_process_sweep_polling",
     "enqueue_process_audit_polling",
     "enqueue_init_tag_audit",
+    "enqueue_materialize_sweep_batches",
     "enqueue_submit_batches",
     "PipelineTaskName",
 ]
