@@ -6,10 +6,14 @@ import argparse
 import asyncio
 import uuid
 
-from app.db import sqlalchemy_resources_lifespan
+from app.db import cli_session_scope
 from app.log import configure_cli_logging
-from app.services.tag_audit_initializer import create_tag_audit_initializer
-from app.worker import enqueue_process_tag_audit
+from app.services import create_tag_audit_init_service
+from app.worker import (
+    PipelineTaskName,
+    enqueue_process_audit_polling,
+    enqueue_submit_batches,
+)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -44,21 +48,23 @@ def main() -> None:
     configure_cli_logging()
     if args.audit_id is not None:
         audit_uuid = uuid.UUID(args.audit_id)
-        enqueue_process_tag_audit(str(audit_uuid))
+        enqueue_process_audit_polling(str(audit_uuid))
         return
 
     async def _kickoff() -> uuid.UUID:
-        async with sqlalchemy_resources_lifespan() as r:
-            async with r.session_scope() as session:
-                audit_id = await create_tag_audit_initializer().init_audit(
-                    session,
-                    args.tag,
-                    args.tagged_sample,
-                    args.excluded_sample,
-                    args.unsure_sample,
-                )
-            enqueue_process_tag_audit(str(audit_id))
-            return audit_id
+        async with cli_session_scope() as session:
+            kickoff = await create_tag_audit_init_service().init_audit(
+                session,
+                args.tag,
+                args.tagged_sample,
+                args.excluded_sample,
+                args.unsure_sample,
+            )
+        enqueue_submit_batches(
+            [str(kickoff.batch_id)],
+            PipelineTaskName.PROCESS_TAG_AUDIT,
+        )
+        return kickoff.audit_id
 
     audit_id = asyncio.run(_kickoff())
     print(audit_id, flush=True)

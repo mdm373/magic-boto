@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, ForeignKey, Text, Uuid
+from sqlalchemy import DateTime, ForeignKey, Integer, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
@@ -41,5 +41,8 @@ class TagAuditModel(Base):
     )
     report: Mapped[str | None] = mapped_column(Text, nullable=True)
     suggestion: Mapped[str | None] = mapped_column(Text, nullable=True)
+    audit_tagged_sample: Mapped[int] = mapped_column(Integer, nullable=False, default=20)
+    audit_excluded_sample: Mapped[int] = mapped_column(Integer, nullable=False, default=40)
+    audit_unsure_sample: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
 
     batch: Mapped[BatchModel | None] = relationship("BatchModel", lazy="selectin")

@@ -4,12 +4,19 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import uuid
 
-from app.db import sqlalchemy_resources_lifespan
+from app.db import cli_session_scope
 from app.log import configure_cli_logging
-from app.services.tag_sweep_initializer import create_tag_sweep_initializer
-from app.worker import enqueue_process_sweep_run
+from app.services.tag_sweep_initializer import (
+    SweepKickoffRequest,
+    create_tag_sweep_initializer,
+)
+from app.services.tag_sweep_service import create_tag_sweep_service
+from app.worker import (
+    PipelineTaskName,
+    enqueue_process_sweep_polling,
+    enqueue_submit_batches,
+)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -41,19 +48,19 @@ def _build_parser() -> argparse.ArgumentParser:
         "--no-include-unsure",
         action="store_true",
         default=False,
-        help="With --existing: do not tag uncertain cards with {tag}_unsure during process.",
+        help="Default path: do not tag uncertain cards with {tag}_unsure during process.",
     )
     parser.add_argument(
         "--no-include-excluded",
         action="store_true",
         default=False,
-        help="With --existing: skip {tag}_excluded during process.",
+        help="Default path: skip {tag}_excluded during process.",
     )
     parser.add_argument(
         "--audit-after",
         action="store_true",
         default=False,
-        help="After sweep process, run audit enqueue and its Celery pipeline.",
+        help="Default path: after sweep process, run audit enqueue and its Celery pipeline.",
     )
     parser.add_argument("--audit-tagged-sample", type=int, default=20, metavar="N")
     parser.add_argument("--audit-excluded-sample", type=int, default=40, metavar="N")
@@ -61,46 +68,44 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+async def _existing_poll_batch_ids(tag_name: str) -> list[str]:
+    sweep_service = create_tag_sweep_service()
+    async with cli_session_scope() as session:
+        return await sweep_service.get_open_sweep_batch_ids(session, tag_name)
+
+
 def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
     configure_cli_logging()
     if args.existing:
-        enqueue_process_sweep_run(
-            args.tag,
-            include_unsure=not args.no_include_unsure,
-            include_excluded=not args.no_include_excluded,
-            audit_after=args.audit_after,
-            audit_tagged_sample=args.audit_tagged_sample,
-            audit_excluded_sample=args.audit_excluded_sample,
-            audit_unsure_sample=args.audit_unsure_sample,
-        )
+        batch_ids = asyncio.run(_existing_poll_batch_ids(args.tag))
+        enqueue_process_sweep_polling(batch_ids)
         return
 
-    async def _kickoff() -> uuid.UUID | None:
-        async with sqlalchemy_resources_lifespan() as r:
-            async with r.session_scope() as session:
-                result = await create_tag_sweep_initializer().kickoff(
-                    session,
-                    args.tag,
-                    args.limit,
-                    args.reenqueue_failed,
-                )
-            if result.batch_submitted:
-                enqueue_process_sweep_run(
-                    args.tag,
-                    include_unsure=True,
-                    include_excluded=True,
-                    audit_after=args.audit_after,
-                    audit_tagged_sample=args.audit_tagged_sample,
-                    audit_excluded_sample=args.audit_excluded_sample,
-                    audit_unsure_sample=args.audit_unsure_sample,
-                )
-            return result.run_id
+    async def body() -> list[str]:
+        async with cli_session_scope() as session:
+            init = create_tag_sweep_initializer()
+            sweep_service = create_tag_sweep_service()
+            request = SweepKickoffRequest(
+                tag_name=args.tag,
+                limit=args.limit,
+                reenqueue_failed=args.reenqueue_failed,
+                include_unsure=not args.no_include_unsure,
+                include_excluded=not args.no_include_excluded,
+                audit_after=args.audit_after,
+                audit_tagged_sample=args.audit_tagged_sample,
+                audit_excluded_sample=args.audit_excluded_sample,
+                audit_unsure_sample=args.audit_unsure_sample,
+            )
+            sweep = await init.init_sweep(session, request)
+            batch_ids = await sweep_service.get_pending_batch_ids_for_sweep(session, sweep)
+            if not batch_ids:
+                raise ValueError(f"No pending batches for sweep {sweep.id}.")
+            return list(batch_ids)
 
-    run_id = asyncio.run(_kickoff())
-    if run_id is not None:
-        print(run_id, flush=True)
+    batch_ids = asyncio.run(body())
+    enqueue_submit_batches(batch_ids, PipelineTaskName.PROCESS_SWEEP_RUN)
 
 
 if __name__ == "__main__":

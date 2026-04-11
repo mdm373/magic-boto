@@ -40,6 +40,25 @@ def delete_inventory(c: Context) -> None:
 
 
 @task
+def delete_batches(c: Context, status: str = "pending_submit") -> None:
+    """Delete batches at or before a pipeline status (default: pending_submit)."""
+
+    argv = [
+        "uv",
+        "run",
+        "python",
+        "-m",
+        "app.cmd.batches.delete",
+        "--status",
+        status,
+    ]
+    if c.cwd:
+        subprocess.run(argv, check=True, cwd=c.cwd)
+    else:
+        subprocess.run(argv, check=True)
+
+
+@task
 def delete_tag(c: Context) -> None:
     """Prompt for a tag name and delete it (and all its card associations)."""
 
@@ -60,4 +79,5 @@ def delete_tag(c: Context) -> None:
 
 ns = Collection("delete")
 ns.add_task(delete_inventory, name="inventory")
+ns.add_task(delete_batches, name="batches")
 ns.add_task(delete_tag, name="tag")

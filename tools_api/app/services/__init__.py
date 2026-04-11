@@ -25,16 +25,18 @@ from .sweep_audit_poll_providers import (
     create_audit_poll_provider,
     create_sweep_poll_provider,
 )
-from .tag_audit_processor import (
-    TagAuditProcessor,
-    create_tag_audit_processor,
-    process_tag_audit,
+from .tag_audit_init_service import TagAuditInitService, create_tag_audit_init_service
+from .tag_audit_processing_service import (
+    TagAuditProcessingService,
+    create_tag_audit_processing_service,
 )
+from .tag_audit_service import TagAuditService, create_tag_audit_service
 from .tag_service import TagService
 from .tag_sweep_processor import (
     TagSweepProcessor,
     create_tag_sweep_processor,
 )
+from .tag_sweep_service import TagSweepService, create_tag_sweep_service
 
 
 def create_card_service() -> CardService:
@@ -58,6 +60,8 @@ def create_tag_service() -> TagService:
 
 
 __all__ = [
+    "TagAuditInitService",
+    "TagSweepService",
     "ApiBatchStatus",
     "BatchApiClient",
     "AuditPollProvider",
@@ -78,7 +82,8 @@ __all__ = [
     "InventoryService",
     "Request",
     "SweepPollProvider",
-    "TagAuditProcessor",
+    "TagAuditProcessingService",
+    "TagAuditService",
     "TagService",
     "TagSweepProcessor",
     "Verdict",
@@ -92,8 +97,10 @@ __all__ = [
     "create_card_service",
     "create_edition_service",
     "create_inventory_service",
-    "create_tag_audit_processor",
+    "create_tag_audit_processing_service",
+    "create_tag_audit_service",
     "create_tag_service",
     "create_tag_sweep_processor",
-    "process_tag_audit",
+    "create_tag_audit_init_service",
+    "create_tag_sweep_service",
 ]

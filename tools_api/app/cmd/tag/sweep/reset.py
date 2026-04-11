@@ -8,7 +8,7 @@ import sys
 
 from loguru import logger
 
-from app.db import sqlalchemy_resources_lifespan
+from app.db import cli_session_scope
 from app.log import configure_cli_logging
 from app.repository import TagRepo, TagSweepRepo
 
@@ -17,30 +17,29 @@ _tag_repo = TagRepo()
 
 
 async def _run(tag_name: str) -> None:
-    async with sqlalchemy_resources_lifespan() as r:
-        async with r.session_scope() as session:
-            tag = await _tag_repo.require_tag_model(session, tag_name)
-            run = await _sweep_repo.get_open_sweep(session, tag.id)
+    async with cli_session_scope() as session:
+        tag = await _tag_repo.require_tag_model(session, tag_name)
+        run = await _sweep_repo.get_open_sweep(session, tag.id)
 
-            if run is None:
-                logger.info("No open sweep run found for tag '{}'.", tag_name)
-                return
+        if run is None:
+            logger.info("No open sweep run found for tag '{}'.", tag_name)
+            return
 
-            batches = await _sweep_repo.get_batches(session, run.id)
-            submitted_ids = await _sweep_repo.get_submitted_oracle_ids_for_sweep(session, run.id)
+        batches = await _sweep_repo.get_batches(session, run.id)
+        submitted_ids = await _sweep_repo.get_submitted_oracle_ids_for_sweep(session, run.id)
 
-        logger.info("Open run: {}", run.id)
-        logger.info("  submitted cards: {}", len(submitted_ids))
-        logger.info("  batches: {}", len(batches))
-        for b in batches:
-            logger.info(
-                "    {} — {} cards — {}",
-                b.batch.anthropic_batch_id[:28],
-                b.card_count,
-                b.batch.status,
-            )
+    logger.info("Open run: {}", run.id)
+    logger.info("  submitted cards: {}", len(submitted_ids))
+    logger.info("  batches: {}", len(batches))
+    for b in batches:
+        logger.info(
+            "    {} — {} cards — {}",
+            (b.batch.anthropic_batch_id or "")[:28],
+            b.card_count,
+            b.batch.status,
+        )
 
-        print(run.id, flush=True)
+    print(run.id, flush=True)
 
 
 def main() -> None:
@@ -61,15 +60,14 @@ def main() -> None:
 
 
 async def _delete(tag_name: str) -> None:
-    async with sqlalchemy_resources_lifespan() as r:
-        async with r.session_scope() as session:
-            tag = await _tag_repo.require_tag_model(session, tag_name)
-            deleted_id = await _sweep_repo.delete_open_sweep(session, tag.id)
-            if deleted_id is None:
-                logger.info("No open sweep run found for tag '{}'.", tag_name)
-                sys.exit(0)
+    async with cli_session_scope() as session:
+        tag = await _tag_repo.require_tag_model(session, tag_name)
+        deleted_id = await _sweep_repo.delete_open_sweep(session, tag.id)
+        if deleted_id is None:
+            logger.info("No open sweep run found for tag '{}'.", tag_name)
+            sys.exit(0)
 
-        logger.info("Deleted run {} for tag '{}'.", deleted_id, tag_name)
+    logger.info("Deleted run {} for tag '{}'.", deleted_id, tag_name)
 
 
 if __name__ == "__main__":

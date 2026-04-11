@@ -16,7 +16,7 @@ from loguru import logger
 from sqlalchemy import select as _select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import BatchModel, TagModel, TagSweepBatchModel
+from app.models import BatchModel, BatchStatus, TagModel, TagSweepBatchModel
 from app.repository import BatchRepo, CardTagEntry, TagRepo, TagSweepRepo
 
 from .batch_client import BatchApiClient, create_batch_client
@@ -71,6 +71,12 @@ class TagSweepProcessor:
         await self._ensure_side_tags(session, tag.name, include_unsure, include_excluded)
         not_terminal = await self._sweep_repo.get_non_terminal_batches(session, sweep_id)
         if not_terminal:
+            n_pending = sum(1 for b in not_terminal if b.batch.status == BatchStatus.PENDING_SUBMIT)
+            if n_pending:
+                raise RuntimeError(
+                    f"{n_pending} sweep batch(es) still pending_submit (outbox, not at Anthropic). "
+                    "Run submit_batch / poll first."
+                )
             raise RuntimeError(f"{len(not_terminal)} batch(es) are not yet in a terminal state.")
 
         processable = await self._sweep_repo.get_processable_batches(session, sweep_id)
@@ -95,7 +101,9 @@ class TagSweepProcessor:
             total_cache_creation += cls.cache_creation_tokens
             cacheable = cls.input_tokens + cls.cache_read_tokens
             hit_pct = (cls.cache_read_tokens / cacheable * 100) if cacheable else 0.0
-            batch_prefix = batch.batch.anthropic_batch_id[:20]
+            anthropic_id = batch.batch.anthropic_batch_id
+            assert anthropic_id is not None
+            batch_prefix = anthropic_id[:20]
             logger.info(
                 "Batch {} — tagged: {} | unsure: {} | excluded: {} | failed: {}",
                 batch_prefix,
@@ -180,6 +188,7 @@ class TagSweepProcessor:
         failed_ids: list[str] = []
         input_tokens = output_tokens = cache_read_tokens = cache_creation_tokens = 0
         anthropic_batch_id = sweep_batch.batch.anthropic_batch_id
+        assert anthropic_batch_id is not None
         for result in self._batch_api_client.get_results(anthropic_batch_id):
             chunk_custom_id: str = result.custom_id
             if result.result.type != "succeeded":
@@ -271,7 +280,7 @@ class TagSweepProcessor:
             _select(BatchModel).where(BatchModel.id == sweep_batch.batch_id)
         )
         if batch is not None:
-            self._batch_repo.mark_batch_processed(batch)
+            await self._batch_repo.mark_batch_processed(session, batch)
 
     async def _maybe_complete_sweep(
         self, session: AsyncSession, sweep_id: uuid.UUID, tag: TagModel

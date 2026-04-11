@@ -15,7 +15,8 @@ from typing import Protocol
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.repository import BatchStatusMeta, BatchRepo
+from app.models import BatchStatus
+from app.repository import BatchRepo, BatchStatusMeta
 
 from .batch_client import BatchApiClient, create_batch_client
 
@@ -58,12 +59,25 @@ class BatchPoller:
         self._batch_repo = batch_repo
 
     async def sync_with_anthropic(self, session: AsyncSession) -> BatchPollResult:
-        """Fetch remote status for non-terminal batches, apply updates via repo, return outcome."""
+        """Fetch remote status for non-terminal batches, apply updates via repo, return outcome.
+
+        Skips Anthropic entirely while any row is ``pending_submit`` (nothing to poll yet).
+        """
         batch_ids = await self._provider.fetch_batch_ids(session)
 
         if not batch_ids:
             logger.info("No batches found for this run.")
             return BatchPollResult(BatchPollOutcome.NO_BATCH_IDS, ())
+
+        rows = await self._batch_repo.get_batches_by_ids(session, batch_ids)
+        found = {r.id for r in rows}
+        missing = set(batch_ids) - found
+        if missing:
+            raise ValueError(f"Batch id(s) not found: {missing!r}")
+
+        if any(r.status == BatchStatus.PENDING_SUBMIT for r in rows):
+            logger.info("Batch(es) still pending_submit; defer poll.")
+            return BatchPollResult(BatchPollOutcome.IN_PROGRESS, ())
 
         batches = await self._batch_repo.get_non_terminal_batches_by_ids(session, batch_ids)
         if not batches:
@@ -72,7 +86,9 @@ class BatchPoller:
 
         metas: list[BatchStatusMeta] = []
         for batch in batches:
-            api = self._batch_client.get_batch_status(batch.anthropic_batch_id)
+            anthropic_id = batch.anthropic_batch_id
+            assert anthropic_id is not None  # get_non_terminal_batches_by_ids filters nulls
+            api = self._batch_client.get_batch_status(anthropic_id)
             metas.append(BatchStatusMeta(batch.id, api.processing_status, api.ended_at))
         await self._batch_repo.update_batch_status_meta(session, metas)
         still = await self._batch_repo.get_non_terminal_batches_by_ids(session, batch_ids)

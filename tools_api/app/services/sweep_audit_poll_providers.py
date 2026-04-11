@@ -12,6 +12,16 @@ from app.repository.tag_repo import TagRepo
 from app.repository.tag_sweep_repo import TagSweepRepo
 
 
+class FixedBatchIdsPollProvider:
+    """Poll a fixed set of ``batches`` rows (IDs carried on the Celery message)."""
+
+    def __init__(self, batch_ids: Sequence[uuid.UUID]) -> None:
+        self._batch_ids = tuple(batch_ids)
+
+    async def fetch_batch_ids(self, session: AsyncSession) -> Sequence[uuid.UUID]:
+        return self._batch_ids
+
+
 class SweepPollProvider:
     """Resolve batch IDs for the open sweep for a tag."""
 
@@ -64,3 +74,10 @@ def create_sweep_poll_provider(tag_name: str) -> SweepPollProvider:
 def create_audit_poll_provider(audit_id: uuid.UUID) -> AuditPollProvider:
     """Build an audit poll provider with the default repo."""
     return AuditPollProvider(audit_id, audit_repo=TagAuditRepo())
+
+
+def create_fixed_batch_ids_poll_provider(
+    batch_ids: Sequence[uuid.UUID],
+) -> FixedBatchIdsPollProvider:
+    """Build a provider that always returns the given batch IDs."""
+    return FixedBatchIdsPollProvider(batch_ids)

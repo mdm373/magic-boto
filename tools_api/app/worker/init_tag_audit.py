@@ -1,48 +1,42 @@
-"""Celery task: submit audit batch after sweep, then enqueue audit poll/process pipeline."""
+"""Celery task: submit audit batch for a pre-created audit row, then enqueue audit poll."""
 
 from __future__ import annotations
 
 import asyncio
+import uuid
 from typing import Any
 
 from loguru import logger
 
 from app.cmd.serve_celery import celery_app
-from app.db import build_async_sqlalchemy_resources
+from app.db import worker_session_scope
 from app.log import configure_celery_worker_logging
-from app.services.tag_audit_initializer import create_tag_audit_initializer
+from app.services import create_tag_audit_init_service
 
-from .pipeline_enqueue import enqueue_process_tag_audit
-from .pipeline_task_names import INIT_TAG_AUDIT
+from .pipeline_task_names import PipelineTaskName
+from .submit_batch import enqueue_submit_batches
 
 
-@celery_app.task(bind=True, name=INIT_TAG_AUDIT)
-def init_tag_audit_worker(
-    self: Any,
-    tag: str,
-    audit_tagged_sample: int = 20,
-    audit_excluded_sample: int = 40,
-    audit_unsure_sample: int = 10,
-) -> None:
+def enqueue_init_tag_audit(audit_id: str) -> None:
+    """Queue audit batch kickoff for a pre-created audit row (outbox + submit → poll pipeline)."""
+    celery_app.send_task(
+        PipelineTaskName.INIT_TAG_AUDIT,
+        kwargs={"audit_id": audit_id},
+    )
+    logger.info("Enqueued Celery init_tag_audit for audit {}.", audit_id)
+
+
+@celery_app.task(bind=True, name=PipelineTaskName.INIT_TAG_AUDIT)
+def init_tag_audit_worker(self: Any, audit_id: str) -> None:
     configure_celery_worker_logging()
 
     async def _body() -> None:
-        resources = build_async_sqlalchemy_resources()
-        async with resources.worker_session() as session:
-            audit_id = await create_tag_audit_initializer().init_audit(
-                session,
-                tag,
-                audit_tagged_sample,
-                audit_excluded_sample,
-                audit_unsure_sample,
-            )
-        enqueue_process_tag_audit(str(audit_id))
+        init = create_tag_audit_init_service()
+        async with worker_session_scope() as session:
+            audit = await init.create_audit_batches(session, uuid.UUID(audit_id))
+        enqueue_submit_batches([str(audit.batch_id)], PipelineTaskName.PROCESS_TAG_AUDIT)
 
-    try:
-        asyncio.run(_body())
-    except ValueError as e:
-        logger.error("Sweep audit kickoff failed: {}", e)
-        raise
+    asyncio.run(_body())
 
 
-__all__ = ["init_tag_audit_worker"]
+__all__ = ["enqueue_init_tag_audit", "init_tag_audit_worker"]

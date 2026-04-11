@@ -8,7 +8,7 @@ import sys
 
 from loguru import logger
 
-from app.db import sqlalchemy_resources_lifespan
+from app.db import cli_session_scope
 from app.log import configure_cli_logging
 from app.services import create_tag_sweep_processor
 
@@ -34,10 +34,9 @@ def _parse_args() -> argparse.Namespace:
 
 
 async def _run(tag: str, include_unsure: bool, include_excluded: bool) -> None:
-    async with sqlalchemy_resources_lifespan() as r:
-        processor = create_tag_sweep_processor()
-        async with r.session_scope() as session:
-            await processor.run(session, tag, include_unsure, include_excluded)
+    processor = create_tag_sweep_processor()
+    async with cli_session_scope() as session:
+        await processor.run(session, tag, include_unsure, include_excluded)
 
 
 def main() -> None:

@@ -7,7 +7,7 @@ import sys
 
 from loguru import logger
 
-from app.db import sqlalchemy_resources_lifespan
+from app.db import cli_session_scope
 from app.errors import NotFoundError
 from app.repository.tag_repo import TagRepo
 
@@ -15,14 +15,13 @@ _tag_repo = TagRepo()
 
 
 async def _run(tag_name: str) -> None:
-    async with sqlalchemy_resources_lifespan() as r:
-        async with r.session_scope() as session:
-            deleted = await _tag_repo.delete_tag(session, tag_name)
-            if not deleted:
-                raise NotFoundError(f"Tag '{tag_name}' not found.")
-            for side_tag in (f"{tag_name}_unsure", f"{tag_name}_excluded"):
-                if await _tag_repo.delete_tag(session, side_tag):
-                    logger.info("Deleted side tag '{}'.", side_tag)
+    async with cli_session_scope() as session:
+        deleted = await _tag_repo.delete_tag(session, tag_name)
+        if not deleted:
+            raise NotFoundError(f"Tag '{tag_name}' not found.")
+        for side_tag in (f"{tag_name}_unsure", f"{tag_name}_excluded"):
+            if await _tag_repo.delete_tag(session, side_tag):
+                logger.info("Deleted side tag '{}'.", side_tag)
     logger.info("Deleted tag '{}'.", tag_name)
 
 

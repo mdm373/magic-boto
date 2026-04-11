@@ -8,9 +8,9 @@ import sys
 
 from loguru import logger
 
-from app.db import sqlalchemy_resources_lifespan
+from app.db import cli_session_scope
 from app.log import configure_cli_logging
-from app.services import process_tag_audit
+from app.services import create_tag_audit_processing_service
 
 
 def _parse_args() -> argparse.Namespace:
@@ -20,9 +20,9 @@ def _parse_args() -> argparse.Namespace:
 
 
 async def _run(audit_id: str) -> None:
-    async with sqlalchemy_resources_lifespan() as r:
-        async with r.session_scope() as session:
-            await process_tag_audit(session, audit_id)
+    proc = create_tag_audit_processing_service()
+    async with cli_session_scope() as session:
+        await proc.run(session, audit_id)
 
 
 def main() -> None:

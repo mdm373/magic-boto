@@ -70,7 +70,7 @@ class BatchApiClient:
         payload: list[BatchRequest] = []
         for req in requests:
             output_schema: dict[str, object] | None = (
-                json.loads(req.output_schema_path.read_text())
+                json.loads(req.output_schema_path.read_text(encoding="utf-8"))
                 if req.output_schema_path is not None
                 else None
             )

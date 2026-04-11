@@ -1,75 +1,62 @@
-"""Celery task: poll sweep batches, apply sweep; optionally enqueue post-sweep audit kickoff."""
+"""Sweep pipeline: enqueue poll-only runs and Celery task to apply batch results."""
 
 from __future__ import annotations
 
 import asyncio
+import uuid
+from collections.abc import Sequence
 from typing import Any
 
 from loguru import logger
 
 from app.cmd.serve_celery import celery_app
-from app.db import build_async_sqlalchemy_resources
+from app.db import worker_session_scope
 from app.log import configure_celery_worker_logging
-from app.services import (
-    BatchPollOutcome,
-    create_batch_poller,
-    create_tag_sweep_processor,
-)
-from app.services.sweep_audit_poll_providers import create_sweep_poll_provider
-from settings import get_settings
+from app.repository import TagRepo
+from app.services import create_tag_sweep_processor, create_tag_sweep_service
 
-from .pipeline_enqueue import enqueue_init_tag_audit, enqueue_process_sweep_run
-from .pipeline_task_names import PROCESS_SWEEP_RUN
+from .init_tag_audit import enqueue_init_tag_audit
+from .pipeline_task_names import PipelineTaskName
+from .poll_pipeline import enqueue_poll_pipeline
 
 
-@celery_app.task(bind=True, name=PROCESS_SWEEP_RUN)
-def process_sweep_run_worker(
-    self: Any,
-    tag: str,
-    include_unsure: bool = True,
-    include_excluded: bool = True,
-    audit_after: bool = False,
-    audit_tagged_sample: int = 20,
-    audit_excluded_sample: int = 40,
-    audit_unsure_sample: int = 10,
+def enqueue_process_sweep_polling(
+    batch_ids: Sequence[str],
+    *,
+    countdown: int | None = None,
 ) -> None:
+    """Queue poll until batches are terminal, then ``process_sweep_run_worker``."""
+    if not batch_ids:
+        raise ValueError("batch_ids must be non-empty.")
+
+    if countdown is not None:
+        enqueue_poll_pipeline(PipelineTaskName.PROCESS_SWEEP_RUN, batch_ids, countdown=countdown)
+    else:
+        enqueue_poll_pipeline(PipelineTaskName.PROCESS_SWEEP_RUN, batch_ids)
+    logger.info("Enqueued sweep poll for {} in {}s).", len(batch_ids), countdown or 0)
+
+
+@celery_app.task(bind=True, name=PipelineTaskName.PROCESS_SWEEP_RUN)
+def process_sweep_run_worker(self: Any, batch_ids: list[str]) -> None:
     configure_celery_worker_logging()
+    if not batch_ids:
+        raise ValueError("batch_ids must be non-empty.")
 
     async def _body() -> None:
-        resources = build_async_sqlalchemy_resources()
-        reschedule_poll = False
-        sweep_applied = False
-        async with resources.worker_session() as session:
-            poller = create_batch_poller(create_sweep_poll_provider(tag))
-            poll = await poller.sync_with_anthropic(session)
-            if poll.outcome == BatchPollOutcome.NO_BATCH_IDS:
-                logger.info("Sweep pipeline: no batches for tag {!r} — nothing to process.", tag)
-                return
-
-            if poll.outcome == BatchPollOutcome.IN_PROGRESS:
-                reschedule_poll = True
-                return
-            processor = create_tag_sweep_processor()
-            await processor.run(session, tag, include_unsure, include_excluded)
-            sweep_applied = True
-        if reschedule_poll:
-            enqueue_process_sweep_run(
-                tag,
-                include_unsure=include_unsure,
-                include_excluded=include_excluded,
-                audit_after=audit_after,
-                audit_tagged_sample=audit_tagged_sample,
-                audit_excluded_sample=audit_excluded_sample,
-                audit_unsure_sample=audit_unsure_sample,
-                countdown=get_settings().batch_poll_interval_seconds,
-            )
-        if audit_after and sweep_applied:
-            enqueue_init_tag_audit(
-                tag,
-                audit_tagged_sample=audit_tagged_sample,
-                audit_excluded_sample=audit_excluded_sample,
-                audit_unsure_sample=audit_unsure_sample,
-            )
+        uuids = [uuid.UUID(b) for b in batch_ids]
+        sweep_service = create_tag_sweep_service()
+        tag_repo = TagRepo()
+        processor = create_tag_sweep_processor()
+        async with worker_session_scope() as session:
+            sweep = await sweep_service.require_open_sweep_for_batch_ids(session, uuids)
+            tag_row = await tag_repo.require_tag_model_by_id(session, sweep.tag_id)
+            tag_name = tag_row.name
+            include_unsure = sweep.pipeline_include_unsure
+            include_excluded = sweep.pipeline_include_excluded
+            post_audit_id = sweep.post_sweep_audit_id
+            await processor.run(session, tag_name, include_unsure, include_excluded)
+        if post_audit_id is not None:
+            enqueue_init_tag_audit(str(post_audit_id))
 
     try:
         asyncio.run(_body())
@@ -78,4 +65,4 @@ def process_sweep_run_worker(
         raise
 
 
-__all__ = ["process_sweep_run_worker"]
+__all__ = ["enqueue_process_sweep_polling", "process_sweep_run_worker"]

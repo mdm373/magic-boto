@@ -33,7 +33,7 @@ class AsyncSqlalchemyResources:
         """One unit of work: commit on success, rollback on error. Callers do not commit.
 
         Use for CLI, MCP, and other app code. Does not dispose the engine (unlike
-        :meth:`worker_session`).
+        :meth:`worker_session`). For one-shot CLIs, prefer :func:`cli_session_scope`.
         """
         async with self.session_factory() as session:
             try:
@@ -48,6 +48,7 @@ class AsyncSqlalchemyResources:
         """Celery worker unit: :meth:`session_scope` then dispose engine.
 
         Enqueue follow-up Celery work *after* exiting this context so commits are visible first.
+        Prefer :func:`worker_session_scope` at call sites to avoid nesting.
         """
         try:
             async with self.session_scope() as session:
@@ -80,6 +81,29 @@ async def sqlalchemy_resources_lifespan() -> AsyncIterator[AsyncSqlalchemyResour
         yield resources
     finally:
         await resources.engine.dispose()
+
+
+@asynccontextmanager
+async def cli_session_scope() -> AsyncIterator[AsyncSession]:
+    """CLI one-shot: engine + one committing session, then dispose.
+
+    Same as nesting ``sqlalchemy_resources_lifespan`` and ``session_scope``. Prefer
+    :func:`sqlalchemy_resources_lifespan` when you need several sessions on one engine.
+    """
+    async with sqlalchemy_resources_lifespan() as r:
+        async with r.session_scope() as session:
+            yield session
+
+
+@asynccontextmanager
+async def worker_session_scope() -> AsyncIterator[AsyncSession]:
+    """Celery task body: :meth:`AsyncSqlalchemyResources.worker_session` (commit + dispose engine).
+
+    Prefer this over ``build_async_sqlalchemy_resources()`` + ``worker_session()`` nesting.
+    """
+    resources = build_async_sqlalchemy_resources()
+    async with resources.worker_session() as session:
+        yield session
 
 
 def get_database_url() -> str:

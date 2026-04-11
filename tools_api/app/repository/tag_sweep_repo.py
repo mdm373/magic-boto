@@ -29,9 +29,11 @@ from app.models import (
     TagSweepModel,
 )
 
+from .batch_repo import BatchRepo
+
 
 @dataclass(frozen=True, slots=True)
-class BatchChunkRecord:
+class SweepBatchRecord:
     """The oracle_id manifest for a submitted batch chunk — used to record cards in the DB."""
 
     custom_id: str
@@ -96,6 +98,24 @@ class TagSweepRepo:
             .values(status=SweepRunStatus.FAILED)
         )
 
+    async def set_sweep_pipeline_process_options(
+        self,
+        session: AsyncSession,
+        sweep_id: uuid.UUID,
+        *,
+        include_unsure: bool,
+        include_excluded: bool,
+        post_sweep_audit_id: uuid.UUID | None,
+    ) -> None:
+        """Persist Celery process options and optional reserved audit row. Caller must commit."""
+        sweep = await self.get_sweep(session, sweep_id)
+        if sweep is None:
+            raise ValueError(f"Sweep {sweep_id} not found.")
+        sweep.pipeline_include_unsure = include_unsure
+        sweep.pipeline_include_excluded = include_excluded
+        sweep.post_sweep_audit_id = post_sweep_audit_id
+        await session.flush()
+
     async def delete_sweep_batch_history_for_tag(
         self, session: AsyncSession, tag_id: uuid.UUID
     ) -> int:
@@ -109,15 +129,14 @@ class TagSweepRepo:
 
         Returns the number of batch rows deleted.
         """
-        batch_id_subq = (
+        sweep_batch_ids = (
             select(TagSweepBatchModel.batch_id)
             .join(TagSweepModel, TagSweepBatchModel.tag_sweep_id == TagSweepModel.id)
             .where(TagSweepModel.tag_id == tag_id)
-            .scalar_subquery()
         )
         result = cast(
             CursorResult[tuple[()]],
-            await session.execute(delete(BatchModel).where(BatchModel.id.in_(batch_id_subq))),
+            await session.execute(delete(BatchModel).where(BatchModel.id.in_(sweep_batch_ids))),
         )
         return result.rowcount or 0
 
@@ -133,7 +152,11 @@ class TagSweepRepo:
         )
 
     async def delete_open_sweep(self, session: AsyncSession, tag_id: uuid.UUID) -> uuid.UUID | None:
-        """Delete the open sweep for a tag. Returns deleted sweep ID or None."""
+        """Delete the open sweep for a tag. Returns deleted sweep ID or None.
+
+        Deletes linked ``batches`` rows first (same session) so outbox payloads are
+        removed; FK CASCADE then drops ``tag_sweep_batches`` / ``tag_sweep_batch_cards``.
+        """
         row = await session.scalar(
             select(TagSweepModel).where(
                 TagSweepModel.tag_id == tag_id,
@@ -143,6 +166,10 @@ class TagSweepRepo:
         if row is None:
             return None
         sweep_id = row.id
+        sweep_batch_ids = select(TagSweepBatchModel.batch_id).where(
+            TagSweepBatchModel.tag_sweep_id == sweep_id,
+        )
+        await session.execute(delete(BatchModel).where(BatchModel.id.in_(sweep_batch_ids)))
         await session.execute(delete(TagSweepModel).where(TagSweepModel.id == sweep_id))
         return sweep_id
 
@@ -150,17 +177,14 @@ class TagSweepRepo:
     # Batch management
     # ------------------------------------------------------------------
 
-    async def record_batch_with_cards(
+    async def record_pending_batch_with_cards(
         self,
         session: AsyncSession,
         sweep_id: uuid.UUID,
-        anthropic_batch_id: str,
-        chunks: Sequence[BatchChunkRecord],
+        chunks: Sequence[SweepBatchRecord],
     ) -> BatchModel:
-        """Insert a batches row, a tag_sweep_batches row, and all tag_sweep_batch_cards rows."""
-        batch = BatchModel(anthropic_batch_id=anthropic_batch_id)
-        session.add(batch)
-        await session.flush()
+        """Insert pending ``batches`` row, ``tag_sweep_batches``, and chunk card rows."""
+        batch = await BatchRepo().create_pending_batch(session)
 
         total_cards = sum(len(chunk.oracle_ids) for chunk in chunks)
         sweep_batch = TagSweepBatchModel(
@@ -184,6 +208,17 @@ class TagSweepRepo:
         await session.flush()
         return batch
 
+    async def get_tag_sweep_batch_by_batch_id(
+        self, session: AsyncSession, batch_id: uuid.UUID
+    ) -> TagSweepBatchModel | None:
+        """Return the ``tag_sweep_batches`` row for ``magic_boto.batches.id``, or None."""
+        return cast(
+            TagSweepBatchModel | None,
+            await session.scalar(
+                select(TagSweepBatchModel).where(TagSweepBatchModel.batch_id == batch_id).limit(1)
+            ),
+        )
+
     async def get_batches(
         self, session: AsyncSession, sweep_id: uuid.UUID
     ) -> Sequence[TagSweepBatchModel]:
@@ -192,7 +227,7 @@ class TagSweepRepo:
             select(TagSweepBatchModel)
             .join(BatchModel, TagSweepBatchModel.batch_id == BatchModel.id)
             .where(TagSweepBatchModel.tag_sweep_id == sweep_id)
-            .order_by(BatchModel.submitted_at)
+            .order_by(BatchModel.created_at)
             .options(selectinload(TagSweepBatchModel.batch))
         )
         return list(result.scalars().all())
@@ -200,7 +235,7 @@ class TagSweepRepo:
     async def get_non_terminal_batches(
         self, session: AsyncSession, sweep_id: uuid.UUID
     ) -> Sequence[TagSweepBatchModel]:
-        """Return batches for a sweep whose underlying batch is not yet in a terminal state."""
+        """Return sweep batches whose ``batches.status`` is not terminal."""
         result = await session.execute(
             select(TagSweepBatchModel)
             .join(BatchModel, TagSweepBatchModel.batch_id == BatchModel.id)
@@ -208,7 +243,7 @@ class TagSweepRepo:
                 TagSweepBatchModel.tag_sweep_id == sweep_id,
                 BatchModel.status.not_in(TERMINAL_BATCH_STATUSES),
             )
-            .order_by(BatchModel.submitted_at)
+            .order_by(BatchModel.created_at)
             .options(selectinload(TagSweepBatchModel.batch))
         )
         return list(result.scalars().all())
@@ -224,7 +259,23 @@ class TagSweepRepo:
                 TagSweepBatchModel.tag_sweep_id == sweep_id,
                 BatchModel.status.in_(PROCESSABLE_BATCH_STATUSES),
             )
-            .order_by(BatchModel.submitted_at)
+            .order_by(BatchModel.created_at)
+            .options(selectinload(TagSweepBatchModel.batch))
+        )
+        return list(result.scalars().all())
+
+    async def get_batches_pending_submit(
+        self, session: AsyncSession, sweep_id: uuid.UUID
+    ) -> Sequence[TagSweepBatchModel]:
+        """Return sweep batches still in outbox (not yet accepted by Anthropic Batch API)."""
+        result = await session.execute(
+            select(TagSweepBatchModel)
+            .join(BatchModel, TagSweepBatchModel.batch_id == BatchModel.id)
+            .where(
+                TagSweepBatchModel.tag_sweep_id == sweep_id,
+                BatchModel.status == BatchStatus.PENDING_SUBMIT,
+            )
+            .order_by(BatchModel.created_at)
             .options(selectinload(TagSweepBatchModel.batch))
         )
         return list(result.scalars().all())

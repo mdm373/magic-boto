@@ -1,13 +1,37 @@
-"""Celery task name strings for tag pipelines.
+"""Registered Celery task name strings — must match ``name=`` on task decorators.
 
-These must match the ``name=`` argument on the corresponding ``@celery_app.task``
-decorators (defined on modules re-exported from ``app.worker.tasks``).
+Use :class:`PipelineTaskName` members with ``send_task`` and ``@celery_app.task``.
 """
 
 from __future__ import annotations
 
-PROCESS_SWEEP_RUN = "app.worker.tasks.process_sweep_run"
-INIT_TAG_AUDIT = "app.worker.tasks.init_tag_audit"
-PROCESS_TAG_AUDIT = "app.worker.tasks.process_tag_audit"
+from enum import StrEnum
 
-__all__ = ["PROCESS_SWEEP_RUN", "INIT_TAG_AUDIT", "PROCESS_TAG_AUDIT"]
+
+class PipelineTaskName(StrEnum):
+    """Full Celery task names (``app.worker.tasks.<function>``)."""
+
+    POLL_PIPELINE = "app.worker.tasks.poll_pipeline"
+    PROCESS_SWEEP_RUN = "app.worker.tasks.process_sweep_run"
+    INIT_TAG_AUDIT = "app.worker.tasks.init_tag_audit"
+    PROCESS_TAG_AUDIT = "app.worker.tasks.process_tag_audit"
+    SUBMIT_BATCH = "app.worker.tasks.submit_batch"
+
+
+_AFTER_POLL_TARGETS: frozenset[PipelineTaskName] = frozenset(
+    {
+        PipelineTaskName.PROCESS_SWEEP_RUN,
+        PipelineTaskName.PROCESS_TAG_AUDIT,
+    },
+)
+
+
+def is_after_poll_target(name: PipelineTaskName) -> bool:
+    """Return True if ``name`` is a valid ``after_poll`` for :func:`poll_pipeline_worker`."""
+    return name in _AFTER_POLL_TARGETS
+
+
+__all__ = [
+    "PipelineTaskName",
+    "is_after_poll_target",
+]

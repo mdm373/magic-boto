@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, ForeignKey, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base
@@ -19,6 +19,9 @@ class TagSweepModel(Base):
     It becomes 'complete' once all batches are processed and no eligible cards remain.
     ``completed_at`` is set when status transitions to COMPLETE and acts as the epoch
     gate: the next kickoff will only consider cards created after this timestamp.
+
+    ``post_sweep_audit_id`` optionally references a pre-created ``tag_audit`` row (audit-after).
+    After sweep processing, that audit is kicked off if the id is set.
     """
 
     __tablename__ = "tag_sweep"
@@ -39,3 +42,10 @@ class TagSweepModel(Base):
         nullable=True,
     )
     status: Mapped[str] = mapped_column(Text, nullable=False, default=SweepRunStatus.OPEN)
+    pipeline_include_unsure: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    pipeline_include_excluded: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    post_sweep_audit_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("magic_boto.tag_audit.id", ondelete="SET NULL"),
+        nullable=True,
+    )

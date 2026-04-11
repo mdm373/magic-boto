@@ -13,10 +13,10 @@ from .edition_repo import EditionRepo
 from .inventory_repo import InventoryRepo
 from .tag_audit_repo import TagAuditRepo
 from .tag_repo import TagRepo, tag_from_model
-from .tag_sweep_repo import BatchChunkRecord, TagSweepRepo
+from .tag_sweep_repo import SweepBatchRecord, TagSweepRepo
 
 __all__ = [
-    "BatchChunkRecord",
+    "SweepBatchRecord",
     "BatchStatusMeta",
     "canonical_name",
     "BatchRepo",
