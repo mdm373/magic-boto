@@ -2,3 +2,4 @@
 debug/
 .mtg_json/
 cache/card_images
+pg_dump/

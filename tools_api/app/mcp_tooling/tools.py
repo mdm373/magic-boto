@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .audit_tools import register_audit_tools
 from .cards_tools import register_cards_tools
 from .editions_tools import register_editions_tools
 from .error_middleware import AppMcp
@@ -12,6 +13,7 @@ from .tags_tools import register_tags_tools
 
 def register_tools(app_mcp: AppMcp) -> None:
     """Register all MCP tools."""
+    register_audit_tools(app_mcp)
     register_cards_tools(app_mcp)
     register_editions_tools(app_mcp)
     register_inventory_tools(app_mcp)
@@ -21,6 +23,7 @@ def register_tools(app_mcp: AppMcp) -> None:
 
 __all__ = [
     "AppMcp",
+    "register_audit_tools",
     "register_tools",
     "register_cards_tools",
     "register_editions_tools",

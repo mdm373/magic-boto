@@ -1,5 +1,6 @@
 """Pydantic response/request schemas."""
 
+from .audit_schema import ApplyAuditResult, AuditResponse, AuditStatus, AuditStatusValue
 from .card_schema import (
     Card,
     CardsListMetadata,
@@ -11,8 +12,6 @@ from .card_search import CardSearchFilters, CardSearchPagination, CardSearchQuer
 from .descriptions import allowed_values_description
 from .edition_schema import Edition, EditionsQuery
 from .sweep_schema import (
-    AuditStatus,
-    AuditStatusValue,
     BatchCounts,
     SweepEnqueueResult,
     SweepStatusResponse,
@@ -20,6 +19,8 @@ from .sweep_schema import (
 )
 
 __all__ = [
+    "ApplyAuditResult",
+    "AuditResponse",
     "AuditStatus",
     "AuditStatusValue",
     "BatchCounts",

@@ -6,7 +6,8 @@ from typing import Literal, TypeAlias
 
 from pydantic import BaseModel
 
-AuditStatusValue: TypeAlias = Literal["pending", "in_progress", "complete", "failed"]
+from .audit_schema import AuditStatus
+
 SweepStatusValue: TypeAlias = Literal["pending", "open", "auditing", "complete", "failed"]
 
 
@@ -20,12 +21,6 @@ class BatchCounts(BaseModel):
     submitted: int
     complete: int
     failed: int
-
-
-class AuditStatus(BaseModel):
-    audit_id: str
-    status: AuditStatusValue
-    report: str | None
 
 
 class SweepStatusResponse(BaseModel):

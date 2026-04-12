@@ -18,6 +18,9 @@ from app.models import CardModel
 
 from .pg_bulk_upsert import bulk_insert_on_conflict_do_nothing, orm_columns_dict
 
+# asyncpg rejects queries whose total bind parameters exceed 32767; chunk IN lists.
+_IN_CLAUSE_BATCH = 500
+
 
 def _apply_ordering(
     stmt: Select[tuple[CardModel]], *, distinct_oracle: bool
@@ -72,13 +75,21 @@ class CardRepo:
         """Return one representative card per oracle_id, preserving input order."""
         if not oracle_ids:
             return []
-        rows = await session.execute(
-            select(CardModel)
-            .where(CardModel.oracle_id.in_(oracle_ids))
-            .distinct(CardModel.oracle_id)
-            .order_by(CardModel.oracle_id, CardModel.card_id)
-        )
-        by_oracle_id = {card.oracle_id: card for card in rows.scalars()}
+        ids = list(oracle_ids)
+        by_oracle_id: dict[str, CardModel] = {}
+        for i in range(0, len(ids), _IN_CLAUSE_BATCH):
+            chunk = ids[i : i + _IN_CLAUSE_BATCH]
+            if not chunk:
+                continue
+            unique_chunk = list(dict.fromkeys(chunk))
+            rows = await session.execute(
+                select(CardModel)
+                .where(CardModel.oracle_id.in_(unique_chunk))
+                .distinct(CardModel.oracle_id)
+                .order_by(CardModel.oracle_id, CardModel.card_id)
+            )
+            for card in rows.scalars():
+                by_oracle_id[card.oracle_id] = card
         return [by_oracle_id[oid] for oid in oracle_ids if oid in by_oracle_id]
 
     async def get_by_id(
@@ -107,10 +118,18 @@ class CardRepo:
         oracle_ids: Sequence[str],
     ) -> frozenset[str]:
         """Return the subset of oracle_ids that exist in ``magic_boto.cards``."""
-        result = await session.execute(
-            select(CardModel.oracle_id).where(CardModel.oracle_id.in_(list(oracle_ids)))
-        )
-        return frozenset(result.scalars().all())
+        ids = list(oracle_ids)
+        known: set[str] = set()
+        for i in range(0, len(ids), _IN_CLAUSE_BATCH):
+            chunk = ids[i : i + _IN_CLAUSE_BATCH]
+            if not chunk:
+                continue
+            unique_chunk = list(dict.fromkeys(chunk))
+            result = await session.execute(
+                select(CardModel.oracle_id).where(CardModel.oracle_id.in_(unique_chunk))
+            )
+            known.update(result.scalars().all())
+        return frozenset(known)
 
     async def resolve_scryfall_ids(
         self,
@@ -118,11 +137,10 @@ class CardRepo:
         scryfall_ids: Sequence[str],
     ) -> dict[str, str]:
         """Return a mapping of scryfall_id → card_id for known IDs."""
-        _batch = 500
         out: dict[str, str] = {}
         ids = list(scryfall_ids)
-        for i in range(0, len(ids), _batch):
-            chunk = ids[i : i + _batch]
+        for i in range(0, len(ids), _IN_CLAUSE_BATCH):
+            chunk = ids[i : i + _IN_CLAUSE_BATCH]
             rows = (
                 await session.execute(
                     select(CardModel.scryfall_id, CardModel.card_id).where(

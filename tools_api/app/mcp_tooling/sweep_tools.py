@@ -11,9 +11,8 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api_schema.audit_schema import AuditStatus, AuditStatusValue
 from app.api_schema.sweep_schema import (
-    AuditStatus,
-    AuditStatusValue,
     BatchCounts,
     SweepEnqueueResult,
     SweepStatusResponse,

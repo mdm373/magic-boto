@@ -1,43 +1,19 @@
 import { useApp, useHostStyles } from "@modelcontextprotocol/ext-apps/react";
 import { useCallback, useEffect, useState } from "react";
 import type { McpUiHostContext } from "@modelcontextprotocol/ext-apps";
-import Markdown from "react-markdown";
+import { AuditSection } from "../components/AuditSection";
 import { usePoll } from "../hooks/usePoll";
+import { useApplyAudit, useGetSweepStatus } from "../hooks/useMcpTools";
+import type {
+  ApplyAuditResult,
+  SweepStatusResponse,
+  SweepStatusValue,
+} from "../hooks/useMcpTools";
 import type { ReadonlyRecord } from "../types/utils";
+import { createOnToolResult } from "../utils/mcpToolResultTextJson";
+import { shouldContinuePollingSweepView } from "../utils/sweepPollPolicy";
 
 // ── Types ────────────────────────────────────────────────────────────────────
-
-type BatchCounts = Readonly<{
-  total: number;
-  pending: number;
-  submitted: number;
-  complete: number;
-  failed: number;
-}>;
-
-const AuditStatusValues = ["pending", "in_progress", "complete", "failed"] as const;
-type AuditStatusValue = (typeof AuditStatusValues)[number];
-
-const SweepStatusValues = ["pending", "open", "auditing", "complete", "failed"] as const;
-type SweepStatusValue = (typeof SweepStatusValues)[number];
-
-type AuditStatus = Readonly<{
-  audit_id: string;
-  status: AuditStatusValue;
-  report: string | null;
-}>;
-
-type SweepStatusResponse = Readonly<{
-  sweep_id: string;
-  tag_name: string;
-  status: SweepStatusValue;
-  triggered_at: string;
-  completed_at: string | null;
-  batch_counts: BatchCounts;
-  audit: AuditStatus | null;
-}>;
-
-type TextToolContentPart = Readonly<{ type: string; text?: string }>;
 
 type SweepCreateResultPayload = Readonly<{ sweep_id: string }>;
 
@@ -68,13 +44,6 @@ const STATUS_LABELS: ReadonlyRecord<SweepStatusValue, string> = {
   failed: "Failed",
 };
 
-const AUDIT_STATUS_LABELS: ReadonlyRecord<AuditStatusValue, string> = {
-  pending: "Pending",
-  in_progress: "Running…",
-  complete: "Complete",
-  failed: "Failed",
-};
-
 // ── Component ────────────────────────────────────────────────────────────────
 
 export function SweepApp() {
@@ -82,23 +51,19 @@ export function SweepApp() {
   const [sweepId, setSweepId] = useState<string | null>(null);
   const [status, setStatus] = useState<SweepStatusResponse | null>(null);
   const [appError, setAppError] = useState<string | null>(null);
+  /** True while `apply_audit` is in flight — stops polling so a deleted sweep is not re-fetched. */
+  const [applyingAudit, setApplyingAudit] = useState(false);
+  /** After apply removed the open sweep; show completion UI and keep polling off. */
+  const [sweepEndedAfterApply, setSweepEndedAfterApply] = useState(false);
 
   const { app, isConnected, error } = useApp({
     appInfo: { name: "SweepApp", version: "1.0.0" },
     capabilities: {},
     onAppCreated: (app) => {
-      app.ontoolresult = async (result) => {
-        try {
-          const textBlock = (result.content as readonly TextToolContentPart[]).find(
-            (c) => c.type === "text",
-          );
-          if (!textBlock?.text) return;
-          const data = JSON.parse(textBlock.text) as SweepCreateResultPayload;
-          setSweepId(data.sweep_id);
-        } catch {
-          setAppError("Could not parse sweep result.");
-        }
-      };
+      app.ontoolresult = createOnToolResult<SweepCreateResultPayload>(
+        (data) => setSweepId(data.sweep_id),
+        setAppError,
+      );
       app.onteardown = async () => ({});
       app.onerror = (e) => setAppError(String(e));
       app.onhostcontextchanged = (ctx) => setHostContext((prev) => ({ ...prev, ...ctx }));
@@ -111,31 +76,43 @@ export function SweepApp() {
 
   useHostStyles(app, app?.getHostContext());
 
+  const getSweepStatus = useGetSweepStatus(app);
+  const applyAudit = useApplyAudit(app);
+
   const pollSweepStatus = useCallback(async (): Promise<boolean> => {
-    if (!app || !sweepId) return false;
+    if (!sweepId) return false;
     try {
-      const result = await app.callServerTool({
-        name: "get_sweep_status",
-        arguments: { sweep_id: sweepId },
-      });
-      const textBlock = (result.content as readonly TextToolContentPart[]).find(
-        (c) => c.type === "text",
-      );
-      if (!textBlock?.text) return false;
-      const data = JSON.parse(textBlock.text) as SweepStatusResponse;
+      const data = await getSweepStatus(sweepId);
       setStatus(data);
-      return data.status !== "complete" && data.status !== "failed";
+      return shouldContinuePollingSweepView(data);
     } catch (e) {
       setAppError(`Poll failed: ${String(e)}`);
       return false;
     }
-  }, [app, sweepId]);
+  }, [sweepId, getSweepStatus]);
 
   usePoll({
-    enabled: Boolean(app && sweepId),
+    enabled: Boolean(app && sweepId && !applyingAudit && !sweepEndedAfterApply),
     intervalMs: 4000,
     tick: pollSweepStatus,
   });
+
+  const handleApplyAudit = useCallback(async (): Promise<
+    Readonly<{ cards_cleared: number; sweep_reset: boolean }>
+  > => {
+    if (!status) throw new Error("No sweep loaded.");
+    setApplyingAudit(true);
+    setAppError(null);
+    try {
+      const result: ApplyAuditResult = await applyAudit(status.tag_name);
+      if (result.sweep_reset) {
+        setSweepEndedAfterApply(true);
+      }
+      return { cards_cleared: result.cards_cleared, sweep_reset: result.sweep_reset };
+    } finally {
+      setApplyingAudit(false);
+    }
+  }, [status, applyAudit]);
 
   const insets = hostContext?.safeAreaInsets;
   const pageStyle: React.CSSProperties = insets
@@ -155,6 +132,29 @@ export function SweepApp() {
 
   if (!isConnected || !sweepId) {
     return <div style={pageStyle}>Connecting…</div>;
+  }
+
+  if (sweepEndedAfterApply && status) {
+    return (
+      <div style={pageStyle}>
+        <div style={{ fontSize: "0.75rem", color: "var(--color-text-tertiary)", marginBottom: 4 }}>
+          Tag sweep
+        </div>
+        <div style={{ fontWeight: 600, fontSize: "1.1rem", marginBottom: "0.75rem" }}>
+          {status.tag_name}
+        </div>
+        <p
+          style={{
+            fontSize: "0.85rem",
+            lineHeight: 1.5,
+            color: "var(--color-text-secondary)",
+            margin: 0,
+          }}
+        >
+          The open sweep for this tag was removed after applying the audit.
+        </p>
+      </div>
+    );
   }
 
   if (!status) {
@@ -246,47 +246,7 @@ export function SweepApp() {
       )}
 
       {/* Audit section */}
-      {audit && (
-        <div
-          style={{
-            borderTop: "1px solid var(--color-border, #e5e7eb)",
-            paddingTop: "1rem",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "0.5rem",
-              marginBottom: "0.75rem",
-            }}
-          >
-            <span style={{ fontWeight: 600 }}>Audit</span>
-            <span
-              style={{
-                backgroundColor:
-                  audit.status === "complete"
-                    ? STATUS_COLORS.complete
-                    : audit.status === "failed"
-                      ? STATUS_COLORS.failed
-                      : STATUS_COLORS.auditing,
-                color: "#fff",
-                borderRadius: "0.25rem",
-                padding: "0 0.4rem",
-                fontSize: "0.75rem",
-                fontWeight: 500,
-              }}
-            >
-              {AUDIT_STATUS_LABELS[audit.status]}
-            </span>
-          </div>
-          {audit.report && (
-            <div className="prose prose-sm prose-sweep-report max-w-none dark:prose-invert">
-              <Markdown>{audit.report}</Markdown>
-            </div>
-          )}
-        </div>
-      )}
+      {audit && <AuditSection audit={audit} onApplyAudit={handleApplyAudit} />}
     </div>
   );
 }
