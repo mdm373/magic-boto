@@ -4,20 +4,26 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "build": "vite build",
+    "build": "npm run build:card && npm run build:sweep",
+    "build:card": "cross-env VITE_BUILD_TARGET=card vite build",
+    "build:sweep": "cross-env VITE_BUILD_TARGET=sweep vite build",
     "dev": "vite"
   },
   "dependencies": {
     "@modelcontextprotocol/ext-apps": "^1.5.0",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react-dom": "^19.2.4",
+    "react-markdown": "^9.0.0"
   },
   "devDependencies": {
     "@mcp-ui/client": "^7.0.0",
+    "@tailwindcss/typography": "^0.5.19",
+    "@types/node": "^25.6.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
     "autoprefixer": "^10.4.27",
+    "cross-env": "^7.0.3",
     "postcss": "^8.5.8",
     "tailwindcss": "^3.4.19",
     "typescript": "^6.0.2",

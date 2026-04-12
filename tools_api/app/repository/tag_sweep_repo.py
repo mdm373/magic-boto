@@ -51,6 +51,15 @@ class TagSweepRepo:
         """Return a sweep by ID, or None."""
         return await session.get(TagSweepModel, sweep_id)
 
+    async def get_sweep_for_tag(
+        self, session: AsyncSession, tag_id: uuid.UUID
+    ) -> TagSweepModel | None:
+        """Return the sweep row for this tag (at most one per tag), or None."""
+        return cast(
+            TagSweepModel | None,
+            await session.scalar(select(TagSweepModel).where(TagSweepModel.tag_id == tag_id)),
+        )
+
     async def get_open_sweep(
         self, session: AsyncSession, tag_id: uuid.UUID
     ) -> TagSweepModel | None:

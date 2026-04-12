@@ -3,6 +3,7 @@
     "tasks": true,
     "tools_api": true,
     "docs": true,
+    "tools-ui": true,
   },
   "sqltools.connections": [
     {

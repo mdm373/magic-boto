@@ -2,10 +2,16 @@ import { useApp, useHostStyles } from "@modelcontextprotocol/ext-apps/react";
 import { useEffect, useState } from "react";
 import type { McpUiHostContext } from "@modelcontextprotocol/ext-apps";
 
-interface CardState {
+const CardAppStatusValues = ["idle", "loading", "ready", "error"] as const;
+type CardAppStatusValue = (typeof CardAppStatusValues)[number];
+
+type CardState = Readonly<{
   imageDataUrl: string | null;
-  status: "idle" | "loading" | "ready" | "error";
-}
+  status: CardAppStatusValue;
+}>;
+
+type ImageToolContentPart = Readonly<{ type: string; data?: string; mimeType?: string }>;
+type TextToolContentPart = Readonly<{ type: string; text?: string }>;
 
 const PAGE_STYLE: React.CSSProperties = {
   display: "flex",
@@ -29,16 +35,45 @@ export function CardApp() {
       };
 
       app.ontoolresult = async (result) => {
-        const imageBlock = (result.content as Array<{ type: string; data?: string; mimeType?: string }>)
-          ?.find((c) => c.type === "image");
+        const content = result.content as readonly (ImageToolContentPart & TextToolContentPart)[];
+
+        // Direct image result (from show_card_image)
+        const imageBlock = content.find((c) => c.type === "image");
         if (imageBlock?.data && imageBlock.mimeType) {
           setCard({
             imageDataUrl: `data:${imageBlock.mimeType};base64,${imageBlock.data}`,
             status: "ready",
           });
-        } else {
-          setCard((c) => ({ ...c, status: "error" }));
+          return;
         }
+
+        // Card JSON result (from get_card) — extract scryfall_id, fetch image via callServerTool
+        const textBlock = content.find((c) => c.type === "text");
+        if (textBlock?.text) {
+          try {
+            const data = JSON.parse(textBlock.text) as { scryfall_id?: string };
+            if (data.scryfall_id) {
+              setCard({ imageDataUrl: null, status: "loading" });
+              const imgResult = await app.callServerTool({
+                name: "get_card_image",
+                arguments: { scryfall_id: data.scryfall_id },
+              });
+              const imgContent = imgResult.content as readonly ImageToolContentPart[];
+              const img = imgContent.find((c) => c.type === "image");
+              if (img?.data && img.mimeType) {
+                setCard({
+                  imageDataUrl: `data:${img.mimeType};base64,${img.data}`,
+                  status: "ready",
+                });
+                return;
+              }
+            }
+          } catch {
+            // fall through to error
+          }
+        }
+
+        setCard((c) => ({ ...c, status: "error" }));
       };
 
       app.onteardown = async () => ({});

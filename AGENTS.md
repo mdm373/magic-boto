@@ -156,6 +156,13 @@ Apply these principles so new work fits the existing structure.
 
 - **LLM / orchestration.** There is **no in-repo agent or chat UI**. Use an external MCP-capable client (Cursor, Claude Desktop, etc.) pointed at **`http://<host>:<port>/mcp`** (see **`TOOLS_MCP_PORT`**). Put **system prompts and task instructions in Markdown** under **`tasks/`** (or `docs/`) and reference them from your workflow or client rules (e.g. `tasks/deck-building/AGENTS.md`). For **deck building and inventory/deck edits**, follow **`tasks/deck-building/AGENTS.md`**: **MCP-only** for those flows—**do not** answer by running ad-hoc Python or SQL against Postgres instead of MCP tools.
 
+## TypeScript (`tools-ui/`)
+
+- **Prefer `type` over `interface`** for object shapes and unions (clearer equivalence with structural typing, no declaration merging surprises).
+- **Read-only object shapes** at type boundaries: `type Foo = Readonly<{ a: string; b: number }>` (and `readonly T[]` for homogeneous lists). Runtime values may still come from `JSON.parse`; the types document intent and catch accidental mutation in code.
+- **Finite string unions (“enums”):** define a const tuple and derive the union, e.g. `const FooValues = ["a", "b"] as const` and `type FooValue = (typeof FooValues)[number]`, then use `FooValue` in `Readonly<{ ... }>`. Keeps a single source of truth and a runtime array when you need iteration or guards.
+- **Keyed lookup tables:** use `ReadonlyRecord<K, V>` from `tools-ui/src/types/utils.ts` instead of bare `Record<K, V>` when defining fixed key maps (same as `Readonly<Record<K, V>>`).
+
 ## Platform
 
 - **Windows / PowerShell.** Scripts and docs use PowerShell; avoid bash or Unix-only commands.

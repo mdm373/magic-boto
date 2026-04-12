@@ -6,25 +6,17 @@ from collections.abc import Sequence
 from typing import Annotated, Literal
 
 from mcp.types import ToolAnnotations
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from app.api_schema.tag_schema import Tag
 from app.errors import InvalidRequestError, NotFoundError
 from app.repository import CardTagEntry, TagRepo
 from app.services import create_tag_service
-from app.services.tag_sweep_initializer import SweepKickoffRequest, create_tag_sweep_initializer
-from app.worker import enqueue_materialize_sweep_batches
 
 from .error_middleware import AppMcp
 
-
-class SweepEnqueueResult(BaseModel):
-    sweep_id: str
-
-
 _tag_service = create_tag_service()
 _tag_repo = TagRepo()
-_sweep_initializer = create_tag_sweep_initializer()
 
 
 def register_tags_tools(app_mcp: AppMcp) -> None:
@@ -127,6 +119,40 @@ def register_tags_tools(app_mcp: AppMcp) -> None:
         return tag
 
     @app_mcp.tool(
+        name="update_tag",
+        description=(
+            "Update an existing tag's description. "
+            "Tag name is matched case-insensitively; the tag must already exist."
+        ),
+        annotations=ToolAnnotations(
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
+    async def update_tag(
+        name: Annotated[
+            str,
+            Field(description="Tag name to update (case-insensitive)."),
+        ],
+        description: Annotated[
+            str,
+            Field(description="New description of the tag's intent for agents and sweeps."),
+        ],
+    ) -> Tag:
+        if not description.strip():
+            raise InvalidRequestError("Tag description is required.")
+        async with app_mcp.session() as session:
+            ok = await _tag_repo.update_description(session, name, description)
+            if not ok:
+                raise NotFoundError(f"Tag '{name}' not found.")
+            updated = await _tag_repo.get_tag(session, name)
+        if updated is None:
+            raise NotFoundError(f"Tag '{name}' not found.")
+        return updated
+
+    @app_mcp.tool(
         name="tag_cards",
         description=(
             "Apply a tag to one or more cards by oracle ID. "
@@ -179,54 +205,3 @@ def register_tags_tools(app_mcp: AppMcp) -> None:
             if not ok:
                 raise NotFoundError(f"Tag '{tag_name}' not found.")
         return "ok"
-
-    @app_mcp.tool(
-        name="enqueue_tag_sweep",
-        description=(
-            "Trigger an async sweep that evaluates eligible cards against the tag description "
-            "and applies the tag to matches. "
-            "Always ask the user how many cards to sweep (limit) before calling this tool — "
-            "do not assume or infer a value."
-        ),
-        annotations=ToolAnnotations(
-            readOnlyHint=False,
-            destructiveHint=False,
-            idempotentHint=False,
-            openWorldHint=False,
-        ),
-    )
-    async def enqueue_tag_sweep(
-        tag_name: Annotated[str, Field(description="Tag name to sweep (must exist).")],
-        limit: Annotated[
-            int,
-            Field(
-                description=(
-                    "Number of cards to sweep. Must be explicitly provided by the user — "
-                    "do not default or infer this value. "
-                    "0 means the entire eligible catalog (can be tens of thousands of cards)."
-                ),
-                ge=0,
-            ),
-        ],
-        audit_after: Annotated[
-            bool,
-            Field(description="Run an audit sweep automatically after processing completes."),
-        ] = True,
-    ) -> SweepEnqueueResult:
-        request = SweepKickoffRequest(
-            tag_name=tag_name,
-            include_unsure=True,
-            include_excluded=True,
-            audit_after=audit_after,
-        )
-        async with app_mcp.session() as session:
-            sweep = await _sweep_initializer.init_sweep(session, request)
-            sweep_id = sweep.id
-
-        enqueue_materialize_sweep_batches(
-            str(sweep_id),
-            tag_name,
-            limit=limit,
-            reenqueue_failed=False,
-        )
-        return SweepEnqueueResult(sweep_id=str(sweep_id))

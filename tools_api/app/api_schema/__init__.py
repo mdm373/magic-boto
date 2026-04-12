@@ -10,8 +10,22 @@ from .card_schema import (
 from .card_search import CardSearchFilters, CardSearchPagination, CardSearchQuery
 from .descriptions import allowed_values_description
 from .edition_schema import Edition, EditionsQuery
+from .sweep_schema import (
+    AuditStatus,
+    AuditStatusValue,
+    BatchCounts,
+    SweepEnqueueResult,
+    SweepStatusResponse,
+    SweepStatusValue,
+)
 
 __all__ = [
+    "AuditStatus",
+    "AuditStatusValue",
+    "BatchCounts",
+    "SweepEnqueueResult",
+    "SweepStatusResponse",
+    "SweepStatusValue",
     "allowed_values_description",
     "CardSearchFilters",
     "CardSearchPagination",
