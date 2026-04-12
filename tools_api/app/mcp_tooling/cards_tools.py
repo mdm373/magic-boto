@@ -23,6 +23,7 @@ from app.services import create_card_service
 from .error_middleware import AppMcp
 
 CARD_RESOURCE_URI = "ui://magic-boto/card"
+CARD_CAROUSEL_RESOURCE_URI = "ui://magic-boto/card-carousel"
 
 _UI_DIST = Path(__file__).parent / "ui_dist"
 _UI_MIME_TYPE = "text/html;profile=mcp-app"
@@ -62,6 +63,14 @@ def register_cards_tools(app_mcp: AppMcp) -> None:
     def card_ui() -> str:
         return _read_ui("pages/card.html")
 
+    @app_mcp.mcp.resource(
+        CARD_CAROUSEL_RESOURCE_URI,
+        name="card_carousel_ui",
+        mime_type=_UI_MIME_TYPE,
+    )
+    def card_carousel_ui() -> str:
+        return _read_ui("pages/card-carousel.html")
+
     @app_mcp.tool(
         name="search_cards",
         description=(
@@ -74,6 +83,7 @@ def register_cards_tools(app_mcp: AppMcp) -> None:
             idempotentHint=True,
             openWorldHint=False,
         ),
+        meta={"ui": {"resourceUri": CARD_CAROUSEL_RESOURCE_URI}},
     )
     async def search_cards(
         filters: CardSearchFilters = CardSearchFilters(),

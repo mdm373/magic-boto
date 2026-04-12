@@ -66,7 +66,7 @@ class InventoryService:
         scryfall_ids: Sequence[str],
     ) -> None:
         """Add one copy per list element. Caller must commit."""
-        counts = Counter(s for s in (x.strip() for x in scryfall_ids) if s)
+        counts = Counter(s.strip().lower() for x in scryfall_ids if (s := x.strip()))
         if not counts:
             return
         _ = await self.add_cards_from_scryfall_quantities(session, inventory_id, dict(counts))
@@ -78,7 +78,7 @@ class InventoryService:
         scryfall_ids: Sequence[str],
     ) -> None:
         """Decrement counts; rows reaching zero are removed. Caller must commit."""
-        counts = Counter(s for s in (x.strip() for x in scryfall_ids) if s)
+        counts = Counter(s.strip().lower() for x in scryfall_ids if (s := x.strip()))
         if not counts:
             return
         await self._ensure_exists(session, inventory_id)
@@ -103,7 +103,7 @@ class InventoryService:
     def _clean_quantities(raw: Mapping[str, int]) -> dict[str, int]:
         cleaned: dict[str, int] = {}
         for scryfall_id, count in raw.items():
-            sid = scryfall_id.strip()
+            sid = scryfall_id.strip().lower()
             if not sid or count <= 0:
                 continue
             cleaned[sid] = cleaned.get(sid, 0) + count

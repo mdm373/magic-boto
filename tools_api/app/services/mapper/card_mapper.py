@@ -16,9 +16,7 @@ class CardMapper:
     """Map ORM card model to API response schema."""
 
     def to_response(self, card: CardModel) -> Card:
-        scryfall_id = (card.scryfall_id or "").strip()
-        if not scryfall_id:
-            raise InternalError("catalog printing has no Scryfall id; cannot map to API response")
+        scryfall_id = card.scryfall_id.strip()
         oracle_id = (card.oracle_id or "").strip()
         sc = (card.set_code or "").strip()
         card_types_list = [CardType(ct.card_type) for ct in card.card_types]

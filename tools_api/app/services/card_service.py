@@ -7,7 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api_schema import Card
 from app.api_schema.card_search import CardSearchQuery
-from app.models.card_model import CardModel
 from app.repository import CardRepo
 from app.services.card_search_query_builder import CardSearchQueryBuilder
 from app.services.mapper import CardMapper
@@ -31,7 +30,6 @@ class CardService:
     ) -> AbstractPage[Card]:
         """List cards."""
         filters = [
-            CardModel.scryfall_id.isnot(None),
             *self._query_builder.build_predicates(query.filters),
         ]
         page = await self._repo.search_cards(
@@ -40,6 +38,7 @@ class CardService:
             distinct_oracle=query.filters.distinct_oracle,
             page_number=query.pagination.page_number,
             page_size=query.pagination.page_size,
+            inventory_name=query.filters.inventory_name,
         )
         page.items = [self._mapper.to_response(card) for card in page.items]  # type: ignore[attr-defined]
         return cast(AbstractPage[Card], page)

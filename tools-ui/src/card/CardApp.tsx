@@ -115,7 +115,7 @@ export function CardApp() {
         src={card.imageDataUrl}
         alt="Magic card"
         style={{
-          width: 240,
+          width: 260,
           borderRadius: "var(--border-radius-md)",
           alignSelf: "flex-start",
           margin: "0.5rem 0",

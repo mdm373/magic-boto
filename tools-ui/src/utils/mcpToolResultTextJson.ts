@@ -23,7 +23,10 @@ export function createOnToolResult<T>(
       const textBlock = (result.content as readonly TextToolContentPart[]).find(
         (c) => c.type === "text",
       );
-      if (!textBlock?.text) return;
+      if (!textBlock?.text) {
+        onError(TOOL_RESULT_JSON_PARSE_ERROR);
+        return;
+      }
       const data = JSON.parse(textBlock.text) as T;
       await onResult(data);
     } catch {

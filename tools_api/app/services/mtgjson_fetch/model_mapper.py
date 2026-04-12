@@ -71,7 +71,12 @@ class MtgJsonModelMapper:
                     f"(expected one of: {allowed})"
                 ) from err
 
-            sid = (card.identifiers.scryfall_id or "").strip() or None
+            sid_raw = (card.identifiers.scryfall_id or "").strip()
+            if not sid_raw:
+                raise ValueError(
+                    f"{path.name}: data.cards[{i}].identifiers.scryfallId missing or empty"
+                )
+            sid = sid_raw.lower()
 
             cards.append(
                 CardModel(

@@ -35,7 +35,7 @@ class CsvParser:
 
             rows: list[CsvInventoryRow] = []
             for index, row in enumerate(reader, start=2):
-                scryfall_id = (row.get(scryfall_key) or "").strip()
+                scryfall_id = (row.get(scryfall_key) or "").strip().lower()
                 count_text = (row.get(count_key) or "").strip()
                 if not scryfall_id:
                     continue

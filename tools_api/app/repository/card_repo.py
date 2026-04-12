@@ -8,13 +8,13 @@ from typing import cast
 from fastapi_pagination import Params
 from fastapi_pagination.bases import AbstractPage
 from fastapi_pagination.ext.sqlalchemy import paginate
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql import Select
 from sqlalchemy.sql.elements import ColumnElement
 
-from app.models import CardModel
+from app.models import CardModel, InventoryCardModel, InventoryModel
 
 from .pg_bulk_upsert import bulk_insert_on_conflict_do_nothing, orm_columns_dict
 
@@ -44,19 +44,28 @@ class CardRepo:
         distinct_oracle: bool,
         page_number: int,
         page_size: int,
+        inventory_name: str | None = None,
     ) -> AbstractPage[CardModel]:
         """Paginated card search. Returns a page of CardModel instances."""
-        base = (
-            select(CardModel)
-            .options(
-                selectinload(CardModel.card_types),
-                selectinload(CardModel.subtypes),
-                selectinload(CardModel.keywords),
-                selectinload(CardModel.supertypes),
-                selectinload(CardModel.meta),
-            )
-            .where(and_(*filters))
+        base = select(CardModel).options(
+            selectinload(CardModel.card_types),
+            selectinload(CardModel.subtypes),
+            selectinload(CardModel.keywords),
+            selectinload(CardModel.supertypes),
+            selectinload(CardModel.meta),
         )
+        if inventory_name is not None:
+            base = base.join(
+                InventoryCardModel,
+                CardModel.card_id == InventoryCardModel.card_id,
+            ).join(
+                InventoryModel,
+                and_(
+                    InventoryModel.id == InventoryCardModel.inventory_id,
+                    InventoryModel.name == inventory_name,
+                ),
+            )
+        base = base.where(and_(*filters) if filters else true())
         stmt = _apply_ordering(base, distinct_oracle=distinct_oracle)
         return cast(
             AbstractPage[CardModel],
@@ -136,22 +145,32 @@ class CardRepo:
         session: AsyncSession,
         scryfall_ids: Sequence[str],
     ) -> dict[str, str]:
-        """Return a mapping of scryfall_id → card_id for known IDs."""
+        """Return a mapping of printing Scryfall id → ``card_id`` for known ids.
+
+        Keys are ``strip().lower()`` so callers can match case-insensitively.
+        ``cards.scryfall_id`` is unique and non-null; ``DISTINCT ON`` still folds
+        rare legacy rows that differ only by ASCII case until data is normalized.
+        """
         out: dict[str, str] = {}
         ids = list(scryfall_ids)
         for i in range(0, len(ids), _IN_CLAUSE_BATCH):
             chunk = ids[i : i + _IN_CLAUSE_BATCH]
+            chunk_norm = list(dict.fromkeys(s.strip().lower() for s in chunk if s and s.strip()))
+            if not chunk_norm:
+                continue
+            sid_lower = func.lower(CardModel.scryfall_id)
             rows = (
                 await session.execute(
                     select(CardModel.scryfall_id, CardModel.card_id).where(
-                        CardModel.scryfall_id.in_(chunk),
-                        CardModel.scryfall_id.is_not(None),
+                        sid_lower.in_(chunk_norm),
                     )
+                    .distinct(sid_lower)
+                    .order_by(sid_lower, CardModel.card_id)
                 )
             ).all()
             for row in rows:
                 assert row.scryfall_id is not None and row.card_id is not None
-                out[row.scryfall_id] = row.card_id
+                out[row.scryfall_id.strip().lower()] = row.card_id
         return out
 
     async def insert_many(

@@ -41,7 +41,7 @@ class CardModel(Base):
     toughness: Mapped[str | None] = mapped_column(String)
     oracle_text: Mapped[str | None] = mapped_column(String)
     rarity: Mapped[str] = mapped_column(String, nullable=False)
-    scryfall_id: Mapped[str | None] = mapped_column(String)
+    scryfall_id: Mapped[str] = mapped_column(String, nullable=False)
     # Canonical WUBRG-ordered string (e.g. "BG", "R", ""); CHECK in DB.
     color_identity: Mapped[str] = mapped_column(String, nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(

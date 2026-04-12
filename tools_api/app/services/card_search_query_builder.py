@@ -16,8 +16,6 @@ from app.models import (
     CardSupertypeModel,
     CardTagModel,
     CardTypeModel,
-    InventoryCardModel,
-    InventoryModel,
     TagModel,
 )
 
@@ -31,7 +29,6 @@ class CardSearchQueryBuilder:
             *_build_name_filters(filters),
             *_build_text_like_filters(filters),
             *_build_identifier_filters(filters),
-            *_build_inventory_filters(filters),
             *_build_rarity_filters(filters),
             *_build_subtype_filters(filters),
             *_build_keyword_filters(filters),
@@ -112,25 +109,6 @@ def _build_identifier_filters(filters: CardSearchFilters) -> Sequence[ColumnElem
     if filters.oracle_id is not None:
         out.append(CardModel.oracle_id == str(filters.oracle_id))
     return out
-
-
-def _build_inventory_filters(filters: CardSearchFilters) -> Sequence[ColumnElement[bool]]:
-    if filters.inventory_name is None:
-        return ()
-    return (
-        exists(
-            select(1)
-            .select_from(InventoryCardModel)
-            .join(
-                InventoryModel,
-                InventoryCardModel.inventory_id == InventoryModel.id,
-            )
-            .where(
-                InventoryCardModel.card_id == CardModel.card_id,
-                InventoryModel.name == filters.inventory_name,
-            )
-        ),
-    )
 
 
 def _build_rarity_filters(filters: CardSearchFilters) -> Sequence[ColumnElement[bool]]:
