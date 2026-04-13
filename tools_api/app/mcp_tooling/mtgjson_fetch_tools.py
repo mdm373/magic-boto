@@ -30,9 +30,12 @@ def register_mtgjson_fetch_tools(app_mcp: AppMcp) -> None:
     @app_mcp.tool(
         name="mtgjson_fetch",
         description=(
-            "Download and ingest new MTGJSON sets into the catalog"
-            "Optional ``always_refresh_set_codes`` re-imports provided set codes always"
-            "Returns ``sets_downloaded``: set codes that where imported"
+            "Download and ingest new MTGJSON sets into the catalog. "
+            "Optional ``always_refresh_set_codes`` forces a fresh per-set download and "
+            "re-imports card rows for those codes even when the edition already exists. "
+            "Include ``SLD`` by default (Secret Lair is updated frequently; same idea as "
+            "``invoke fetch.all-sets`` with ``bust_sld``). Returns ``sets_downloaded``: set "
+            "codes fetched from the network."
         ),
         annotations=ToolAnnotations(
             readOnlyHint=False,
@@ -46,8 +49,9 @@ def register_mtgjson_fetch_tools(app_mcp: AppMcp) -> None:
             str,
             Field(
                 description=(
-                    "Optional comma-separated MTGJSON set codes to always re-download "
-                    "(cache bust), e.g. ``SLD,MOM``. Empty means use cache when present."
+                    "Comma-separated MTGJSON set codes to always re-download (cache bust) "
+                    "and re-import; should normally include ``SLD``. Examples: ``SLD``, "
+                    "``SLD,MOM``. Leave empty only if you want no cache bust for listed codes."
                 ),
             ),
         ] = "",

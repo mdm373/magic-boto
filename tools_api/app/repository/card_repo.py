@@ -148,8 +148,9 @@ class CardRepo:
         """Return a mapping of printing Scryfall id → ``card_id`` for known ids.
 
         Keys are ``strip().lower()`` so callers can match case-insensitively.
-        ``cards.scryfall_id`` is unique and non-null; ``DISTINCT ON`` still folds
-        rare legacy rows that differ only by ASCII case until data is normalized.
+        ``cards.scryfall_id`` is non-null; ``DISTINCT ON`` picks one row per id when
+        several share a printing id (e.g. double-faced ``a`` / ``b`` rows). Prefer
+        ``(scryfall_id, side)`` when you need a specific catalog row.
         """
         out: dict[str, str] = {}
         ids = list(scryfall_ids)
@@ -181,11 +182,11 @@ class CardRepo:
         *,
         batch_size: int,
     ) -> None:
-        """Bulk-insert cards, ignoring conflicts on ``scryfall_id``."""
+        """Bulk-insert cards, ignoring conflicts on ``(scryfall_id, side)``."""
         await bulk_insert_on_conflict_do_nothing(
             session,
             batch_size=batch_size,
             model=CardModel,
-            index_elements=("scryfall_id",),
+            index_elements=("scryfall_id", "side"),
             param_rows=[orm_columns_dict(row) for row in rows],
         )

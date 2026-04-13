@@ -43,6 +43,8 @@ class MtgJsonSchema:
         subtypes: Sequence[str] = Field(default_factory=list)
         supertypes: Sequence[str] = Field(default_factory=list)
         color_identity: list[str] = Field(default_factory=list, alias="colorIdentity")
+        # ``a`` / ``b`` for multi-face printings; omitted on single-faced cards.
+        side: str | None = None
 
     class SetData(BaseModel):
         cards: Sequence[MtgJsonSchema.Card] = Field(default_factory=list)

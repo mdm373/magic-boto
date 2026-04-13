@@ -15,6 +15,15 @@ class SweepEnqueueResult(BaseModel):
     sweep_id: str
 
 
+class CleanTagSweepResetResult(BaseModel):
+    """Result of a full tag sweep clean reset (assignments + sweep state)."""
+
+    tag_name: str
+    deleted_sweep_id: str | None
+    cards_cleared: int
+    batches_deleted: int
+
+
 class BatchCounts(BaseModel):
     total: int
     pending: int

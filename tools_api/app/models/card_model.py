@@ -5,11 +5,14 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+import sqlalchemy as sa
 from sqlalchemy import DateTime, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
+from .card_side import CardSide
 from .edition_model import EditionModel
+from .text_enum import text_enum
 
 if TYPE_CHECKING:
     from .card_keyword_model import CardKeywordModel
@@ -42,10 +45,20 @@ class CardModel(Base):
     oracle_text: Mapped[str | None] = mapped_column(String)
     rarity: Mapped[str] = mapped_column(String, nullable=False)
     scryfall_id: Mapped[str] = mapped_column(String, nullable=False)
+    # Single-faced cards use ``a``; MTGJSON ``side`` ``b`` for the companion row. CHECK in DB.
+    side: Mapped[CardSide] = mapped_column(
+        text_enum(CardSide),
+        nullable=False,
+        default=CardSide.A,
+        server_default=sa.text("'a'"),
+    )
     # Canonical WUBRG-ordered string (e.g. "BG", "R", ""); CHECK in DB.
     color_identity: Mapped[str] = mapped_column(String, nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        insert_default=func.now(),
     )
 
     edition: Mapped[EditionModel] = relationship(

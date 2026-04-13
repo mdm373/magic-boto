@@ -6,6 +6,7 @@ from fastapi_pagination.customization import CustomizedPage, UseParams
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.card_rarity import CardRarity
+from app.models.card_side import CardSide
 from app.models.card_supertype import CardSupertype
 from app.models.card_type import CardType
 from app.models.color_identity import ColorIdentity
@@ -22,9 +23,7 @@ class Card(BaseModel):
 
     model_config = ConfigDict(title="Card")
 
-    card_id: str = Field(
-        ..., description="Internal catalog id (primary key; unique per printing and face)."
-    )
+    card_id: str = Field(..., description="Internal catalog id")
     name: str = Field(..., description="Card name")
     mana_cost: str | None = Field(None, description="Mana cost (e.g. {2}{U}{U})")
     mana_value: int = Field(..., description="Mana value (formerly CMC).")
@@ -33,7 +32,11 @@ class Card(BaseModel):
     scryfall_id: str = Field(
         ...,
         min_length=1,
-        description="Scryfall printing id (UUID) for this face / printing.",
+        description="Scryfall printing id (UUID) for this cardboard slip.",
+    )
+    side: CardSide = Field(
+        ...,
+        description="Printing side: ``a`` (primary / single-faced) or ``b`` (companion row).",
     )
     oracle_id: str = Field(
         ..., min_length=1, description="Card Definition (Cross Printing) Identifier"

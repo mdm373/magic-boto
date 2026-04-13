@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api_schema.audit_schema import AuditStatus, AuditStatusValue
 from app.api_schema.sweep_schema import (
     BatchCounts,
+    CleanTagSweepResetResult,
     SweepEnqueueResult,
     SweepStatusResponse,
     SweepStatusValue,
@@ -21,6 +22,7 @@ from app.api_schema.sweep_schema import (
 from app.errors import InvalidRequestError, NotFoundError
 from app.models import FAILED_BATCH_STATUSES, BatchStatus, SweepRunStatus, TagModel, TagSweepModel
 from app.repository import TagAuditRepo, TagRepo, TagSweepRepo
+from app.services import create_tag_sweep_reset_service
 from app.services.tag_sweep_initializer import SweepKickoffRequest, create_tag_sweep_initializer
 from app.worker import enqueue_materialize_sweep_batches
 
@@ -39,6 +41,7 @@ _sweep_repo = TagSweepRepo()
 _audit_repo = TagAuditRepo()
 _tag_repo = TagRepo()
 _sweep_initializer = create_tag_sweep_initializer()
+_sweep_reset_service = create_tag_sweep_reset_service()
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,6 +143,37 @@ def register_sweep_tools(app_mcp: AppMcp) -> None:
             reenqueue_failed=False,
         )
         return SweepEnqueueResult(sweep_id=str(sweep_id))
+
+    @app_mcp.tool(
+        name="clean_reset_tag_sweep",
+        description=(
+            "Full reset before a new sweep for a tag: removes all ``card_tags`` for the tag "
+            "and its ``_unsure`` / ``_excluded`` side tags (then deletes those side tag rows), "
+            "deletes sweep batch history, clears the sweep epoch gate, and removes any open "
+            "sweep run. Does not change the main tag description. Then call enqueue_tag_sweep."
+        ),
+        annotations=ToolAnnotations(
+            readOnlyHint=False,
+            destructiveHint=True,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
+    async def clean_reset_tag_sweep(
+        tag_name: Annotated[
+            str,
+            Field(description="Tag name to clean (main tag must exist)."),
+        ],
+    ) -> CleanTagSweepResetResult:
+        name = tag_name.strip()
+        async with app_mcp.session() as session:
+            result = await _sweep_reset_service.clean_reset_for_new_sweep(session, name)
+        return CleanTagSweepResetResult(
+            tag_name=name,
+            deleted_sweep_id=result.deleted_sweep_id,
+            cards_cleared=result.cards_cleared,
+            batches_deleted=result.batches_deleted,
+        )
 
     @app_mcp.tool(
         name="get_sweep_status",

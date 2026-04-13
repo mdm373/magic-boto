@@ -42,6 +42,7 @@ from .tag_sweep_processor import (
     create_tag_sweep_processor,
 )
 from .tag_sweep_reset_service import (
+    CleanSweepResetResult,
     SweepDeleteResult,
     TagSweepResetService,
     create_tag_sweep_reset_service,
@@ -116,6 +117,7 @@ __all__ = [
     "AuditApplyResult",
     "TagAuditApplyService",
     "create_tag_audit_apply_service",
+    "CleanSweepResetResult",
     "SweepDeleteResult",
     "TagSweepResetService",
     "create_tag_sweep_reset_service",

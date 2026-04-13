@@ -7,11 +7,14 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from loguru import logger
+
 from app.models import (
     CardKeywordModel,
     CardMetaModel,
     CardModel,
     CardRarity,
+    CardSide,
     CardSubtypeModel,
     CardSupertype,
     CardSupertypeModel,
@@ -78,6 +81,23 @@ class MtgJsonModelMapper:
                 )
             sid = sid_raw.lower()
 
+            side_token = (card.side or "").strip().lower()
+            if side_token in ("", "a"):
+                card_side = CardSide.A
+            elif side_token == "b":
+                card_side = CardSide.B
+            else:
+                logger.warning(
+                    "{}: skipping data.cards[{}] (name={!r}, uuid={!r}): side {!r} not supported "
+                    "(only single-face / ``a`` / ``b`` are ingested)",
+                    path.name,
+                    i,
+                    card.name,
+                    card.uuid,
+                    card.side,
+                )
+                continue
+
             cards.append(
                 CardModel(
                     card_id=card.uuid,
@@ -92,6 +112,7 @@ class MtgJsonModelMapper:
                     oracle_text=card.text,
                     rarity=rarity_value,
                     scryfall_id=sid,
+                    side=card_side,
                     color_identity=normalize_color_identity_string(card.color_identity),
                 )
             )

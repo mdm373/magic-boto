@@ -26,7 +26,8 @@ def _parse_args() -> argparse.Namespace:
         metavar="CODES",
         help=(
             "Optional comma-separated set codes whose MTGJSON files are always re-downloaded "
-            "(cache bust). Omit to use cached per-set JSON when present."
+            "(cache bust) and whose cards are re-imported even if the edition already exists. "
+            "Omit to use cached per-set JSON when present."
         ),
     )
     return parser.parse_args()

@@ -5,6 +5,7 @@ from .card_keyword_model import CardKeywordModel
 from .card_meta_model import CardMetaModel
 from .card_model import CardModel
 from .card_rarity import CardRarity
+from .card_side import CardSide
 from .card_subtype_model import CardSubtypeModel
 from .card_supertype import CardSupertype
 from .card_supertype_model import CardSupertypeModel
@@ -46,6 +47,7 @@ __all__ = [
     "CardMetaModel",
     "CardModel",
     "CardRarity",
+    "CardSide",
     "CardSubtypeModel",
     "CardSupertype",
     "CardSupertypeModel",

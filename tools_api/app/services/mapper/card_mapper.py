@@ -37,6 +37,7 @@ class CardMapper:
             set_code=sc,
             number=card.collector_number,
             scryfall_id=scryfall_id,
+            side=card.side,
             oracle_id=oracle_id,
             type=card.type_line,
             power=card.power,

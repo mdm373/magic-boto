@@ -13,6 +13,7 @@ from .descriptions import allowed_values_description
 from .edition_schema import Edition, EditionsQuery
 from .sweep_schema import (
     BatchCounts,
+    CleanTagSweepResetResult,
     SweepEnqueueResult,
     SweepStatusResponse,
     SweepStatusValue,
@@ -24,6 +25,7 @@ __all__ = [
     "AuditStatus",
     "AuditStatusValue",
     "BatchCounts",
+    "CleanTagSweepResetResult",
     "SweepEnqueueResult",
     "SweepStatusResponse",
     "SweepStatusValue",

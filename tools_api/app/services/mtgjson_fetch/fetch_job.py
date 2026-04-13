@@ -52,24 +52,39 @@ class MtgJsonFetchJob:
         self._always_refresh_set_codes = always_refresh_set_codes
 
     async def run(self) -> list[str]:
-        """Ingest pending sets; return set codes whose per-set JSON was fetched from the network."""
+        """Ingest new sets and optionally re-ingest cache-busted sets.
+
+        Returns set codes whose per-set JSON was fetched from the network (not a local cache hit).
+        """
         existing_codes = await self._editions.select_existing_set_codes(self._session)
         await self._session.commit()
 
-        if self._always_refresh_set_codes:
+        refresh = self._always_refresh_set_codes
+        if refresh:
             logger.info(
                 "MTGJSON cache bust before download for: {}",
-                ", ".join(sorted(self._always_refresh_set_codes)),
+                ", ".join(sorted(refresh)),
             )
 
         set_list_path, _ = self._file_client.ensure_cached_json(_SET_LIST_REL)
         editions = sorted(self._mapper.map_editions(set_list_path), key=lambda r: r.set_code)
-        pending = [row for row in editions if row.set_code not in existing_codes]
+        pending = [
+            row for row in editions if row.set_code not in existing_codes or row.set_code in refresh
+        ]
+        reingest = sorted(
+            {
+                row.set_code
+                for row in pending
+                if row.set_code in refresh and row.set_code in existing_codes
+            }
+        )
+        if reingest:
+            logger.info("Re-importing cards for editions already in DB: {}", ", ".join(reingest))
         total = len(pending)
         sets_downloaded: list[str] = []
         for i, edition in enumerate(pending, start=1):
             rel = f"api/v5/{edition.set_code}.json.gz"
-            bust = edition.set_code in self._always_refresh_set_codes
+            bust = edition.set_code in refresh
             set_path, did_download = self._file_client.ensure_cached_json(
                 rel, check_freshness=False, bust_cache=bust
             )

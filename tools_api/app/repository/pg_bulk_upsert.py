@@ -11,11 +11,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 
 def orm_columns_dict(instance: object) -> dict[str, object]:
-    """Column names and values for a mapped instance (for Core ``INSERT``)."""
+    """Column names and values for a mapped instance (for Core ``INSERT``).
+
+    Omits ``None`` for non-nullable columns that define ``server_default`` so the
+    database default applies (explicit ``NULL`` in bulk ``INSERT`` would otherwise
+    violate ``NOT NULL``).
+    """
     insp = sa_inspect(instance)
     if insp is None:
         raise TypeError(f"Expected a SQLAlchemy mapped instance, got {type(instance).__name__}")
-    return {attr.key: getattr(instance, attr.key) for attr in insp.mapper.column_attrs}
+    out: dict[str, object] = {}
+    for attr in insp.mapper.column_attrs:
+        key = attr.key
+        val = getattr(instance, key)
+        if val is None:
+            col = next(iter(attr.columns))
+            if col.nullable is False and col.server_default is not None:
+                continue
+        out[key] = val
+    return out
 
 
 async def bulk_insert_on_conflict_do_nothing(

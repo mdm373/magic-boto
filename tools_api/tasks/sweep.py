@@ -96,17 +96,14 @@ def process(
 def reset(
     c: Context,
     tag: str = "",
-    delete: bool = False,
 ) -> None:
-    """Run ``python -m app.cmd.tag.sweep.reset`` (inspect open sweep; ``--delete`` removes it)."""
+    """Run ``python -m app.cmd.tag.sweep.reset`` (full clean reset)."""
     if not tag.strip():
         tag = input("Tag name: ").strip()
     if not tag:
         raise Exit("Tag name is required.")
 
     argv = ["uv", "run", "python", "-m", "app.cmd.tag.sweep.reset", tag]
-    if delete:
-        argv.append("--delete")
     _run_subprocess(c, argv)
 
 
