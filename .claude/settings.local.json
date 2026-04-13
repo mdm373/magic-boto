@@ -21,7 +21,8 @@
       "Bash(node -e ':*)",
       "Bash(xargs grep:*)",
       "Bash(grep -r \"from mcp\\\\|import mcp\" /f/Projects/magic-boto/tools_api/app/mcp_tooling/*.py)",
-      "Bash(grep -r \"get_sweep\\\\|get_audit\\\\|status\" /f/Projects/magic-boto/tools_api/app/services/tag_sweep*.py)"
+      "Bash(grep -r \"get_sweep\\\\|get_audit\\\\|status\" /f/Projects/magic-boto/tools_api/app/services/tag_sweep*.py)",
+      "Bash(grep:*)"
     ]
   }
 }

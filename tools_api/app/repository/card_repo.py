@@ -161,7 +161,8 @@ class CardRepo:
             sid_lower = func.lower(CardModel.scryfall_id)
             rows = (
                 await session.execute(
-                    select(CardModel.scryfall_id, CardModel.card_id).where(
+                    select(CardModel.scryfall_id, CardModel.card_id)
+                    .where(
                         sid_lower.in_(chunk_norm),
                     )
                     .distinct(sid_lower)
@@ -180,11 +181,11 @@ class CardRepo:
         *,
         batch_size: int,
     ) -> None:
-        """Bulk-insert cards, ignoring conflicts on ``card_id``."""
+        """Bulk-insert cards, ignoring conflicts on ``scryfall_id``."""
         await bulk_insert_on_conflict_do_nothing(
             session,
             batch_size=batch_size,
             model=CardModel,
-            index_elements=("card_id",),
+            index_elements=("scryfall_id",),
             param_rows=[orm_columns_dict(row) for row in rows],
         )

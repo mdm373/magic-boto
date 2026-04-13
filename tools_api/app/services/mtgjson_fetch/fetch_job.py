@@ -36,6 +36,7 @@ class MtgJsonFetchJob:
         card_keywords: CardKeywordRepo,
         card_meta: CardMetaRepo,
         batch_size: int,
+        always_refresh_set_codes: frozenset[str],
     ) -> None:
         self._session = session
         self._file_client = file_client
@@ -48,18 +49,32 @@ class MtgJsonFetchJob:
         self._card_keywords = card_keywords
         self._card_meta = card_meta
         self._batch_size = batch_size
+        self._always_refresh_set_codes = always_refresh_set_codes
 
-    async def run(self) -> None:
+    async def run(self) -> list[str]:
+        """Ingest pending sets; return set codes whose per-set JSON was fetched from the network."""
         existing_codes = await self._editions.select_existing_set_codes(self._session)
         await self._session.commit()
+
+        if self._always_refresh_set_codes:
+            logger.info(
+                "MTGJSON cache bust before download for: {}",
+                ", ".join(sorted(self._always_refresh_set_codes)),
+            )
 
         set_list_path, _ = self._file_client.ensure_cached_json(_SET_LIST_REL)
         editions = sorted(self._mapper.map_editions(set_list_path), key=lambda r: r.set_code)
         pending = [row for row in editions if row.set_code not in existing_codes]
         total = len(pending)
+        sets_downloaded: list[str] = []
         for i, edition in enumerate(pending, start=1):
             rel = f"api/v5/{edition.set_code}.json.gz"
-            set_path, _ = self._file_client.ensure_cached_json(rel, check_freshness=False)
+            bust = edition.set_code in self._always_refresh_set_codes
+            set_path, did_download = self._file_client.ensure_cached_json(
+                rel, check_freshness=False, bust_cache=bust
+            )
+            if did_download:
+                sets_downloaded.append(edition.set_code)
             payload = self._mapper.map_set_payload(path=set_path, set_code=edition.set_code)
             async with self._session.begin():
                 await self._editions.insert(self._session, edition)
@@ -83,8 +98,15 @@ class MtgJsonFetchJob:
                 )
             logger.info("[{}/{}] {}", i, total, edition.set_code)
 
+        return sets_downloaded
 
-def create_mtgjson_fetch_job(*, session: AsyncSession, settings: Settings) -> MtgJsonFetchJob:
+
+def create_mtgjson_fetch_job(
+    *,
+    session: AsyncSession,
+    settings: Settings,
+    always_refresh_set_codes: frozenset[str],
+) -> MtgJsonFetchJob:
     """Wire default file client, mapper, and repos for ``MtgJsonFetchJob``."""
     return MtgJsonFetchJob(
         session=session,
@@ -98,4 +120,5 @@ def create_mtgjson_fetch_job(*, session: AsyncSession, settings: Settings) -> Mt
         card_keywords=CardKeywordRepo(),
         card_meta=CardMetaRepo(),
         batch_size=settings.mtgjson_insert_batch_size,
+        always_refresh_set_codes=always_refresh_set_codes,
     )

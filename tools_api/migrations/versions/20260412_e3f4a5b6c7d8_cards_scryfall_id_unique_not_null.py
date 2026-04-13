@@ -1,7 +1,9 @@
-"""``cards.scryfall_id`` NOT NULL + unique index.
+"""``cards.scryfall_id`` NOT NULL + non-unique btree index.
 
-Replaces non-unique ``ix_cards_scryfall_id`` with ``uq_cards_scryfall_id``.
-Requires no NULL ``scryfall_id`` rows and no duplicate non-null values.
+Drops ``ix_cards_scryfall_id``, sets ``scryfall_id`` NOT NULL, recreates ``ix_cards_scryfall_id``
+(non-unique) for lookup performance.
+
+Requires no NULL ``scryfall_id`` rows before upgrade.
 
 Revision ID: e3f4a5b6c7d8
 Revises: f0a1b2c3d4e5
@@ -20,12 +22,11 @@ depends_on: str | Sequence[str] | None = None
 
 _SCHEMA = "magic_boto"
 _TABLE = "cards"
-_OLD_INDEX = "ix_cards_scryfall_id"
-_UNIQUE_INDEX = "uq_cards_scryfall_id"
+_INDEX = "ix_cards_scryfall_id"
 
 
 def upgrade() -> None:
-    op.drop_index(_OLD_INDEX, table_name=_TABLE, schema=_SCHEMA)
+    op.drop_index(_INDEX, table_name=_TABLE, schema=_SCHEMA)
     op.alter_column(
         _TABLE,
         "scryfall_id",
@@ -34,16 +35,16 @@ def upgrade() -> None:
         schema=_SCHEMA,
     )
     op.create_index(
-        _UNIQUE_INDEX,
+        _INDEX,
         _TABLE,
         ["scryfall_id"],
-        unique=True,
+        unique=False,
         schema=_SCHEMA,
     )
 
 
 def downgrade() -> None:
-    op.drop_index(_UNIQUE_INDEX, table_name=_TABLE, schema=_SCHEMA)
+    op.drop_index(_INDEX, table_name=_TABLE, schema=_SCHEMA)
     op.alter_column(
         _TABLE,
         "scryfall_id",
@@ -52,7 +53,7 @@ def downgrade() -> None:
         schema=_SCHEMA,
     )
     op.create_index(
-        _OLD_INDEX,
+        _INDEX,
         _TABLE,
         ["scryfall_id"],
         unique=False,

@@ -90,8 +90,9 @@ class Settings(BaseSettings):
         default=100,
         ge=0,
         description=(
-            "CSV inventory import: abort (after rollback) if more than this many distinct "
-            "Scryfall ids are missing from the catalog. Missing ids are always logged first."
+            "CSV inventory import (MCP ``import_inventory_csv`` and ``app.cmd.inventory.ingest``): "
+            "abort (after rollback) if more than this many distinct Scryfall ids are missing "
+            "from the catalog. Missing ids are always logged first."
         ),
     )
 

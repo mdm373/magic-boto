@@ -4,7 +4,8 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "build": "npm run build:card && npm run build:card-carousel && npm run build:sweep && npm run build:audit",
+    "build": "npm run build:card && npm run build:card-carousel && npm run build:sweep && npm run build:audit && npm run build:inventory-import",
+    "build:inventory-import": "cross-env VITE_BUILD_TARGET=inventory-import vite build",
     "build:card": "cross-env VITE_BUILD_TARGET=card vite build",
     "build:card-carousel": "cross-env VITE_BUILD_TARGET=card-carousel vite build",
     "build:sweep": "cross-env VITE_BUILD_TARGET=sweep vite build",

@@ -1,4 +1,4 @@
-"""CLI: import inventory rows from CSV (scryfall id + count)."""
+"""CLI: import inventory rows from CSV (Scryfall id column; optional count/quantity, default 1)."""
 
 from __future__ import annotations
 

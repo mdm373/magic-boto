@@ -26,18 +26,25 @@ class MtgJsonFileClient:
         api_relative_path: str,
         *,
         check_freshness: bool = True,
+        bust_cache: bool = False,
     ) -> tuple[Path, bool]:
         """Return cached JSON path and whether a network download occurred.
 
         ``check_freshness=True`` (SetList): reuse cache only if the file exists and is
         younger than ``mtgjson_cache_max_age_days``. ``check_freshness=False`` (per-set
         JSON): reuse whenever the decompressed ``.json`` file exists.
+
+        ``bust_cache=True``: delete an existing cached ``.json`` file first so the next step
+        is always a download (used for volatile sets such as ``SLD``).
         """
         cache_dir = self._resolve_cache_dir()
         rel = api_relative_path.lstrip("/")
         gz_name = Path(rel).name
         dest_json = cache_dir / gz_name.removesuffix(".gz")
         url = f"{self._settings.mtgjson_base_url}/{rel}"
+        if bust_cache and dest_json.is_file():
+            dest_json.unlink()
+            logger.info("Removed cached {} to force re-download.", dest_json.name)
         if self._cache_hit(dest_json, check_freshness=check_freshness):
             return dest_json, False
 
