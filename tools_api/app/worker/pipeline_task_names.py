@@ -16,6 +16,7 @@ class PipelineTaskName(StrEnum):
     PROCESS_SWEEP_RUN = "app.worker.tasks.process_sweep_run"
     INIT_TAG_AUDIT = "app.worker.tasks.init_tag_audit"
     PROCESS_TAG_AUDIT = "app.worker.tasks.process_tag_audit"
+    PROCESS_MTGJSON_FETCH_JOB = "app.worker.tasks.process_mtgjson_fetch_job"
     SUBMIT_BATCH = "app.worker.tasks.submit_batch"
 
 

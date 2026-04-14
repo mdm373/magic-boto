@@ -83,7 +83,7 @@ const PAGE_STYLE: React.CSSProperties = {
   flexDirection: "column",
   minHeight: "100%",
   padding: "1.5rem",
-  gap: "1rem",
+  gap: "1.5rem",
   backgroundColor: "var(--color-background-tertiary)",
   color: "var(--color-text-tertiary)",
 };
@@ -97,6 +97,7 @@ const CARD_AREA_STYLE: React.CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
   minHeight: CARD_AREA_HEIGHT,
+  paddingBottom: "1.25rem",
 };
 
 // alignItems:"center" so sibling cards vertically center on the selected card
@@ -122,6 +123,8 @@ const NAV_ROW_STYLE: React.CSSProperties = {
   justifyContent: "center",
   gap: "1.25rem",
   flexShrink: 0,
+  paddingTop: "0.25rem",
+  paddingBottom: "1.25rem",
 };
 
 const NAV_BUTTON_BASE: React.CSSProperties = {
@@ -353,7 +356,11 @@ export function CardCarouselApp() {
   const pageStyle: React.CSSProperties = insets
     ? {
         ...PAGE_STYLE,
-        padding: `${insets.top}px ${insets.right}px ${insets.bottom}px ${insets.left}px`,
+        padding: undefined,
+        paddingTop: `max(1.5rem, ${insets.top}px)`,
+        paddingRight: `max(1.5rem, ${insets.right}px)`,
+        paddingBottom: `max(1.5rem, ${insets.bottom}px)`,
+        paddingLeft: `max(1.5rem, ${insets.left}px)`,
       }
     : PAGE_STYLE;
 

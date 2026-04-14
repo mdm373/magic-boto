@@ -4,12 +4,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import sys
 
 from loguru import logger
 
 from app.db import cli_session_scope
-from app.errors import InvalidRequestError, NotFoundError
 from app.log import configure_cli_logging
 from app.services import create_tag_audit_apply_service, create_tag_sweep_reset_service
 

@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.card_meta_model import CardMetaModel
 
-from .pg_bulk_upsert import bulk_insert_on_conflict_do_nothing, orm_columns_dict
+from .pg_bulk_upsert import bulk_insert_on_conflict_do_update, orm_columns_dict
 
 
 class CardMetaRepo:
@@ -21,7 +21,7 @@ class CardMetaRepo:
         *,
         batch_size: int,
     ) -> None:
-        await bulk_insert_on_conflict_do_nothing(
+        await bulk_insert_on_conflict_do_update(
             session,
             batch_size=batch_size,
             model=CardMetaModel,

@@ -24,13 +24,14 @@ class EditionRepo:
         return {str(code) for (code,) in rows.all() if code}
 
     async def insert(self, session: AsyncSession, row: EditionModel) -> None:
-        """Insert an edition row, ignoring conflicts on ``set_code``."""
-        stmt = (
-            pg_insert(EditionModel)
-            .values(orm_columns_dict(row))
-            .on_conflict_do_nothing(index_elements=["set_code"])
+        """Insert or update an edition row on ``set_code`` (overwrite ``name``)."""
+        ins = pg_insert(EditionModel).values(orm_columns_dict(row))
+        await session.execute(
+            ins.on_conflict_do_update(
+                index_elements=["set_code"],
+                set_={"name": ins.excluded.name},
+            )
         )
-        await session.execute(stmt)
 
     async def search(
         self,

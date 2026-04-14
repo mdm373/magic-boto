@@ -51,6 +51,25 @@ export type ApplyAuditResult = Readonly<{
   sweep_reset: boolean;
 }>;
 
+const MtgjsonFetchEditionStates = ["requested", "inprogress", "done"] as const;
+export type MtgjsonFetchEditionState = (typeof MtgjsonFetchEditionStates)[number];
+
+export type MtgjsonFetchEditionRow = Readonly<{
+  set_code: string;
+  state: MtgjsonFetchEditionState;
+  started_at: string | null;
+  ended_at: string | null;
+  updated_cards_count: number;
+}>;
+
+export type MtgjsonFetchJobStatus = Readonly<{
+  job_id: string;
+  started_at: string | null;
+  ended_at: string | null;
+  error_message: string | null;
+  editions: readonly MtgjsonFetchEditionRow[];
+}>;
+
 // ── Named tool hooks ─────────────────────────────────────────────────────────
 
 export function useGetSweepStatus(app: App | null) {
@@ -79,6 +98,25 @@ export function useApplyAudit(app: App | null) {
         delete_tagged: opts?.deleteTagged ?? true,
         delete_side_tags: opts?.deleteSideTags ?? true,
       }),
+    [callTool],
+  );
+}
+
+export function useEnqueueMtgjsonFetch(app: App | null) {
+  const callTool = useServerTool(app);
+  return useCallback(
+    (requested_set_codes: string) =>
+      callTool<Readonly<{ job_id: string; status: string }>>("enqueue_ui_triggered_mtgjson_fetch", {
+        requested_set_codes: requested_set_codes,
+      }),
+    [callTool],
+  );
+}
+
+export function useGetMtgjsonFetchJob(app: App | null) {
+  const callTool = useServerTool(app);
+  return useCallback(
+    (jobId: string) => callTool<MtgjsonFetchJobStatus>("get_mtgjson_fetch_job", { job_id: jobId }),
     [callTool],
   );
 }

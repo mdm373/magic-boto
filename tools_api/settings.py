@@ -15,10 +15,9 @@ class Settings(BaseSettings):
     postgres_password: str = "magicboto"
     postgres_db: str = "magicboto"
     mtgjson_base_url: str = Field(default="https://mtgjson.com")
-    mtgjson_cache_dir: str = Field(default=".mtg_json")
-    mtgjson_cache_max_age_days: float = Field(
-        default=1.0,
-        description="TTL for SetList.json cache only; per-set JSON files use existence-only cache.",
+    mtgjson_cache_dir: str = Field(
+        default="cache/mtgjson",
+        description="Decompressed MTGJSON cache directory (relative paths use process CWD).",
     )
     mtgjson_fetch_user_agent: str = Field(default="magic-boto-tools-api/0.1 (MTGJSON fetch task)")
     mtgjson_fetch_sleep_seconds: float = Field(default=1.0)

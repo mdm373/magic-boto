@@ -67,9 +67,7 @@ class TagSweepResetService:
         for suffix in ("_unsure", "_excluded"):
             await self._tag_repo.delete_tag(session, f"{tag_name}{suffix}")
 
-        batches_deleted = await self._sweep_repo.delete_sweep_batch_history_for_tag(
-            session, tag.id
-        )
+        batches_deleted = await self._sweep_repo.delete_sweep_batch_history_for_tag(session, tag.id)
         await self._sweep_repo.reset_epoch_for_tag(session, tag.id)
         deleted_id = await self._sweep_repo.delete_open_sweep(session, tag.id)
 

@@ -4,12 +4,13 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "build": "npm run build:card && npm run build:card-carousel && npm run build:sweep && npm run build:audit && npm run build:inventory-import",
+    "build": "npm run build:card && npm run build:card-carousel && npm run build:sweep && npm run build:audit && npm run build:inventory-import && npm run build:mtgjson-fetch",
     "build:inventory-import": "cross-env VITE_BUILD_TARGET=inventory-import vite build",
     "build:card": "cross-env VITE_BUILD_TARGET=card vite build",
     "build:card-carousel": "cross-env VITE_BUILD_TARGET=card-carousel vite build",
     "build:sweep": "cross-env VITE_BUILD_TARGET=sweep vite build",
     "build:audit": "cross-env VITE_BUILD_TARGET=audit vite build",
+    "build:mtgjson-fetch": "cross-env VITE_BUILD_TARGET=mtgjson-fetch vite build",
     "dev": "vite"
   },
   "dependencies": {

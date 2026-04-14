@@ -7,7 +7,6 @@ import shutil
 import tempfile
 import time
 import urllib.request
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from loguru import logger
@@ -21,33 +20,37 @@ class MtgJsonFileClient:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
 
+    def _dest_json_path(self, api_relative_path: str) -> Path:
+        cache_dir = self._resolve_cache_dir()
+        rel = api_relative_path.lstrip("/")
+        gz_name = Path(rel).name
+        return cache_dir / gz_name.removesuffix(".gz")
+
+    def delete_cached_json(self, api_relative_path: str) -> None:
+        """Remove the cached decompressed JSON for this asset if it exists."""
+        dest_json = self._dest_json_path(api_relative_path)
+        if dest_json.is_file():
+            dest_json.unlink()
+            logger.info("Removed cached {} to force re-download.", dest_json.name)
+
     def ensure_cached_json(
         self,
         api_relative_path: str,
         *,
-        check_freshness: bool = True,
         bust_cache: bool = False,
     ) -> tuple[Path, bool]:
-        """Return cached JSON path and whether a network download occurred.
-
-        ``check_freshness=True`` (SetList): reuse cache only if the file exists and is
-        younger than ``mtgjson_cache_max_age_days``. ``check_freshness=False`` (per-set
-        JSON): reuse whenever the decompressed ``.json`` file exists.
-
-        ``bust_cache=True``: delete an existing cached ``.json`` file first so the next step
-        is always a download (used for volatile sets such as ``SLD``).
-        """
-        cache_dir = self._resolve_cache_dir()
-        rel = api_relative_path.lstrip("/")
-        gz_name = Path(rel).name
-        dest_json = cache_dir / gz_name.removesuffix(".gz")
-        url = f"{self._settings.mtgjson_base_url}/{rel}"
+        """Return cached JSON path and whether a network download occurred."""
+        dest_json = self._dest_json_path(api_relative_path)
+        url = f"{self._settings.mtgjson_base_url}/{api_relative_path.lstrip('/')}"
         if bust_cache and dest_json.is_file():
             dest_json.unlink()
             logger.info("Removed cached {} to force re-download.", dest_json.name)
-        if self._cache_hit(dest_json, check_freshness=check_freshness):
+        if dest_json.is_file():
             return dest_json, False
 
+        cache_dir = self._resolve_cache_dir()
+        rel = api_relative_path.lstrip("/")
+        gz_name = Path(rel).name
         cache_dir.mkdir(parents=True, exist_ok=True)
         part = dest_json.with_name(dest_json.name + ".part")
         request = urllib.request.Request(
@@ -77,15 +80,6 @@ class MtgJsonFileClient:
         if raw.is_absolute():
             return raw
         return Path.cwd().resolve() / raw
-
-    def _cache_hit(self, path: Path, *, check_freshness: bool) -> bool:
-        if not path.is_file():
-            return False
-        if not check_freshness:
-            return True
-        mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
-        max_age = timedelta(days=self._settings.mtgjson_cache_max_age_days)
-        return datetime.now(UTC) - mtime < max_age
 
 
 def _download(request: urllib.request.Request, dest: Path) -> None:

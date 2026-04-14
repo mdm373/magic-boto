@@ -15,6 +15,9 @@ from .card_type_model import CardTypeModel
 from .color_identity import ColorIdentity
 from .edition_model import EditionModel
 from .inventory_model import InventoryCardModel, InventoryModel
+from .mtgjson_fetch_edition_state import MtgjsonFetchEditionState
+from .mtgjson_fetch_job_edition_model import MtgjsonFetchJobEditionModel
+from .mtgjson_fetch_job_model import MtgjsonFetchJobModel
 from .sweep_run_batch_card_model import TagSweepBatchCardModel
 from .sweep_run_batch_model import TagSweepBatchModel
 from .sweep_run_model import TagSweepModel
@@ -58,6 +61,9 @@ __all__ = [
     "EditionModel",
     "InventoryCardModel",
     "InventoryModel",
+    "MtgjsonFetchEditionState",
+    "MtgjsonFetchJobEditionModel",
+    "MtgjsonFetchJobModel",
     "TagAuditModel",
     "TagModel",
     "TagSupertypeModel",

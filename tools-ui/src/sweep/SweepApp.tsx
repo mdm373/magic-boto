@@ -44,6 +44,15 @@ const STATUS_LABELS: ReadonlyRecord<SweepStatusValue, string> = {
   failed: "Failed",
 };
 
+/** Inset sweep / audit blocks so they do not hug the panel edges or each other */
+const SWEEP_SECTION_BOX: React.CSSProperties = {
+  padding: "1rem 1.25rem",
+  marginBottom: "0.75rem",
+  borderRadius: 8,
+  border: "1px solid var(--color-border-subtle, rgba(148, 163, 184, 0.25))",
+  backgroundColor: "var(--color-background-secondary, rgba(255, 255, 255, 0.04))",
+};
+
 // ── Component ────────────────────────────────────────────────────────────────
 
 export function SweepApp() {
@@ -167,86 +176,92 @@ export function SweepApp() {
 
   return (
     <div style={pageStyle}>
-      {/* Header */}
-      <div style={{ marginBottom: "1rem" }}>
-        <div style={{ fontSize: "0.75rem", color: "var(--color-text-tertiary)", marginBottom: 2 }}>
-          Tag sweep
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          <span style={{ fontWeight: 600, fontSize: "1.1rem" }}>{tag_name}</span>
-          <span
-            style={{
-              backgroundColor: color,
-              color: "#fff",
-              borderRadius: "0.25rem",
-              padding: "0 0.4rem",
-              fontSize: "0.75rem",
-              fontWeight: 500,
-            }}
-          >
-            {STATUS_LABELS[status.status]}
-          </span>
-        </div>
-        <div style={{ fontSize: "0.7rem", color: "var(--color-text-tertiary)", marginTop: 2 }}>
-          {status.sweep_id}
-        </div>
-      </div>
-
-      {/* Progress bar */}
-      {bc.total > 0 && (
-        <div style={{ marginBottom: "1rem" }}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              fontSize: "0.75rem",
-              marginBottom: 4,
-              color: "var(--color-text-secondary)",
-            }}
-          >
-            <span>Batches</span>
-            <span>
-              {bc.complete} / {bc.total} ({progressPct}%)
+      <div style={SWEEP_SECTION_BOX}>
+        {/* Header */}
+        <div style={{ marginBottom: bc.total > 0 ? "1rem" : 0 }}>
+          <div style={{ fontSize: "0.75rem", color: "var(--color-text-tertiary)", marginBottom: 2 }}>
+            Tag sweep
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <span style={{ fontWeight: 600, fontSize: "1.1rem" }}>{tag_name}</span>
+            <span
+              style={{
+                backgroundColor: color,
+                color: "#fff",
+                borderRadius: "0.25rem",
+                padding: "0 0.4rem",
+                fontSize: "0.75rem",
+                fontWeight: 500,
+              }}
+            >
+              {STATUS_LABELS[status.status]}
             </span>
           </div>
-          <div
-            style={{
-              height: 6,
-              borderRadius: 3,
-              backgroundColor: "var(--color-background-secondary, #e5e7eb)",
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                height: "100%",
-                width: `${progressPct}%`,
-                backgroundColor: color,
-                transition: "width 0.4s ease",
-              }}
-            />
-          </div>
-          <div
-            style={{
-              display: "flex",
-              gap: "1rem",
-              fontSize: "0.7rem",
-              marginTop: 6,
-              color: "var(--color-text-tertiary)",
-            }}
-          >
-            {bc.pending > 0 && <span>Pending: {bc.pending}</span>}
-            {bc.submitted > 0 && <span>Submitted: {bc.submitted}</span>}
-            {bc.complete > 0 && <span>Complete: {bc.complete}</span>}
-            {bc.failed > 0 && (
-              <span style={{ color: STATUS_COLORS.failed }}>Failed: {bc.failed}</span>
-            )}
+          <div style={{ fontSize: "0.7rem", color: "var(--color-text-tertiary)", marginTop: 2 }}>
+            {status.sweep_id}
           </div>
         </div>
-      )}
+
+        {/* Progress bar */}
+        {bc.total > 0 && (
+          <div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: "0.75rem",
+                marginBottom: 4,
+                color: "var(--color-text-secondary)",
+              }}
+            >
+              <span>Batches</span>
+              <span>
+                {bc.complete} / {bc.total} ({progressPct}%)
+              </span>
+            </div>
+            <div
+              style={{
+                height: 6,
+                borderRadius: 3,
+                backgroundColor: "var(--color-background-secondary, #e5e7eb)",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  height: "100%",
+                  width: `${progressPct}%`,
+                  backgroundColor: color,
+                  transition: "width 0.4s ease",
+                }}
+              />
+            </div>
+            <div
+              style={{
+                display: "flex",
+                gap: "1rem",
+                fontSize: "0.7rem",
+                marginTop: 6,
+                color: "var(--color-text-tertiary)",
+              }}
+            >
+              {bc.pending > 0 && <span>Pending: {bc.pending}</span>}
+              {bc.submitted > 0 && <span>Submitted: {bc.submitted}</span>}
+              {bc.complete > 0 && <span>Complete: {bc.complete}</span>}
+              {bc.failed > 0 && (
+                <span style={{ color: STATUS_COLORS.failed }}>Failed: {bc.failed}</span>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Audit section */}
-      {audit && <AuditSection audit={audit} onApplyAudit={handleApplyAudit} />}
+      {audit && (
+        <div style={SWEEP_SECTION_BOX}>
+          <AuditSection audit={audit} embedded onApplyAudit={handleApplyAudit} />
+        </div>
+      )}
     </div>
   );
 }

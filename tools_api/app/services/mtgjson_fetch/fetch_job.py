@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models import EditionModel
 from app.repository.card_keyword_repo import CardKeywordRepo
 from app.repository.card_meta_repo import CardMetaRepo
 from app.repository.card_repo import CardRepo
@@ -51,6 +54,36 @@ class MtgJsonFetchJob:
         self._batch_size = batch_size
         self._always_refresh_set_codes = always_refresh_set_codes
 
+    @property
+    def file_client(self) -> MtgJsonFileClient:
+        """Expose the file client for orchestrators that delete cache outside ``run``."""
+        return self._file_client
+
+    async def ingest_edition_from_json_path(
+        self, edition: EditionModel, set_json_path: Path
+    ) -> int:
+        """Parse one set JSON and upsert edition + related rows; returns inserted card count."""
+        payload = self._mapper.map_set_payload(path=set_json_path, set_code=edition.set_code)
+        async with self._session.begin():
+            await self._editions.insert(self._session, edition)
+            await self._cards.insert_many(self._session, payload.cards, batch_size=self._batch_size)
+            await self._card_types.insert_many(
+                self._session, payload.card_types, batch_size=self._batch_size
+            )
+            await self._card_subtypes.insert_many(
+                self._session, payload.card_subtypes, batch_size=self._batch_size
+            )
+            await self._card_supertypes.insert_many(
+                self._session, payload.card_supertypes, batch_size=self._batch_size
+            )
+            await self._card_keywords.insert_many(
+                self._session, payload.card_keywords, batch_size=self._batch_size
+            )
+            await self._card_meta.insert_many(
+                self._session, payload.card_meta, batch_size=self._batch_size
+            )
+        return len(payload.cards)
+
     async def run(self) -> list[str]:
         """Ingest new sets and optionally re-ingest cache-busted sets.
 
@@ -66,6 +99,7 @@ class MtgJsonFetchJob:
                 ", ".join(sorted(refresh)),
             )
 
+        self._file_client.delete_cached_json(_SET_LIST_REL)
         set_list_path, _ = self._file_client.ensure_cached_json(_SET_LIST_REL)
         editions = sorted(self._mapper.map_editions(set_list_path), key=lambda r: r.set_code)
         pending = [
@@ -85,32 +119,10 @@ class MtgJsonFetchJob:
         for i, edition in enumerate(pending, start=1):
             rel = f"api/v5/{edition.set_code}.json.gz"
             bust = edition.set_code in refresh
-            set_path, did_download = self._file_client.ensure_cached_json(
-                rel, check_freshness=False, bust_cache=bust
-            )
+            set_path, did_download = self._file_client.ensure_cached_json(rel, bust_cache=bust)
             if did_download:
                 sets_downloaded.append(edition.set_code)
-            payload = self._mapper.map_set_payload(path=set_path, set_code=edition.set_code)
-            async with self._session.begin():
-                await self._editions.insert(self._session, edition)
-                await self._cards.insert_many(
-                    self._session, payload.cards, batch_size=self._batch_size
-                )
-                await self._card_types.insert_many(
-                    self._session, payload.card_types, batch_size=self._batch_size
-                )
-                await self._card_subtypes.insert_many(
-                    self._session, payload.card_subtypes, batch_size=self._batch_size
-                )
-                await self._card_supertypes.insert_many(
-                    self._session, payload.card_supertypes, batch_size=self._batch_size
-                )
-                await self._card_keywords.insert_many(
-                    self._session, payload.card_keywords, batch_size=self._batch_size
-                )
-                await self._card_meta.insert_many(
-                    self._session, payload.card_meta, batch_size=self._batch_size
-                )
+            await self.ingest_edition_from_json_path(edition, set_path)
             logger.info("[{}/{}] {}", i, total, edition.set_code)
 
         return sets_downloaded

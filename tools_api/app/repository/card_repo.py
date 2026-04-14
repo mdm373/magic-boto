@@ -16,7 +16,7 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from app.models import CardModel, InventoryCardModel, InventoryModel
 
-from .pg_bulk_upsert import bulk_insert_on_conflict_do_nothing, orm_columns_dict
+from .pg_bulk_upsert import bulk_insert_on_conflict_do_update, orm_columns_dict
 
 # asyncpg rejects queries whose total bind parameters exceed 32767; chunk IN lists.
 _IN_CLAUSE_BATCH = 500
@@ -182,8 +182,8 @@ class CardRepo:
         *,
         batch_size: int,
     ) -> None:
-        """Bulk-insert cards, ignoring conflicts on ``(scryfall_id, side)``."""
-        await bulk_insert_on_conflict_do_nothing(
+        """Bulk-insert cards; on ``(scryfall_id, side)`` conflict, overwrite the row."""
+        await bulk_insert_on_conflict_do_update(
             session,
             batch_size=batch_size,
             model=CardModel,

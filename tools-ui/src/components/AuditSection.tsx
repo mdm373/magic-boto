@@ -35,9 +35,11 @@ interface AuditSectionProps {
   audit: AuditSectionData;
   /** When provided, an Apply Audit action is shown once the audit is complete. */
   onApplyAudit?: () => Promise<ApplyResult>;
+  /** When true, no outer chrome — parent supplies padding/border (e.g. sweep UI card). */
+  embedded?: boolean;
 }
 
-export function AuditSection({ audit, onApplyAudit }: AuditSectionProps) {
+export function AuditSection({ audit, onApplyAudit, embedded = false }: AuditSectionProps) {
   const [confirmState, setConfirmState] = useState<ConfirmState>("idle");
   const [applyMessage, setApplyMessage] = useState<string | null>(null);
 
@@ -59,13 +61,15 @@ export function AuditSection({ audit, onApplyAudit }: AuditSectionProps) {
   const showApply =
     onApplyAudit && audit.status === "complete" && confirmState !== "done";
 
-  return (
-    <div
-      style={{
+  const rootChrome: React.CSSProperties = embedded
+    ? { padding: 0 }
+    : {
         borderTop: "1px solid var(--color-border, #e5e7eb)",
-        paddingTop: "1rem",
-      }}
-    >
+        padding: "1.25rem 0 0",
+      };
+
+  return (
+    <div style={rootChrome}>
       {/* Header row */}
       <div
         style={{

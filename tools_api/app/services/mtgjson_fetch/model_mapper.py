@@ -117,6 +117,7 @@ class MtgJsonModelMapper:
                 )
             )
 
+            seen_types: set[str] = set()
             for t in card.types:
                 token = t.strip().lower()
                 if not token:
@@ -125,11 +126,18 @@ class MtgJsonModelMapper:
                     type_value = CardType(token).value
                 except ValueError:
                     continue
+                if type_value in seen_types:
+                    continue
+                seen_types.add(type_value)
                 types.append(CardTypeModel(card_id=card.uuid, card_type=type_value))
+            seen_subtypes: set[str] = set()
             for st in card.subtypes:
                 token = st.strip().lower()
-                if token:
-                    subtypes.append(CardSubtypeModel(card_id=card.uuid, card_subtype=token))
+                if not token or token in seen_subtypes:
+                    continue
+                seen_subtypes.add(token)
+                subtypes.append(CardSubtypeModel(card_id=card.uuid, card_subtype=token))
+            seen_supertypes: set[str] = set()
             for st in card.supertypes:
                 token = st.strip().lower()
                 if not token:
@@ -138,6 +146,9 @@ class MtgJsonModelMapper:
                     supertype_value = CardSupertype(token).value
                 except ValueError:
                     continue
+                if supertype_value in seen_supertypes:
+                    continue
+                seen_supertypes.add(supertype_value)
                 supertypes.append(
                     CardSupertypeModel(
                         card_id=card.uuid,
@@ -209,7 +220,10 @@ class MtgJsonModelMapper:
 
 
 def _keyword_tokens(raw: list[str] | None) -> list[str]:
-    """Lowercase keyword phrases from MTGJSON ``keywords`` for storage."""
+    """Lowercase keyword phrases from MTGJSON ``keywords`` for storage (unique per card).
+
+    MTGJSON may repeat the same keyword; ``card_keywords`` PK is ``(card_id, card_keyword)``.
+    """
     if raw is None:
         return []
     out: list[str] = []
@@ -217,4 +231,4 @@ def _keyword_tokens(raw: list[str] | None) -> list[str]:
         token = str(item).strip().lower()
         if token:
             out.append(token)
-    return out
+    return list(dict.fromkeys(out))
