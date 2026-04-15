@@ -7,15 +7,21 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated
 
+from loguru import logger
 from mcp.types import ToolAnnotations
 from pydantic import Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api_schema.audit_schema import AuditStatus, AuditStatusValue
 from app.api_schema.sweep_schema import (
     BatchCounts,
     CleanTagSweepResetResult,
+    GlobalSweepCatchupResult,
+    GlobalSweepCatchupTagResult,
     SweepEnqueueResult,
+    SweepListResponse,
+    SweepListRow,
     SweepStatusResponse,
     SweepStatusValue,
 )
@@ -36,6 +42,9 @@ _FALLBACK_HTML = (
     "<code>tools-ui/</code>.</p></body></html>"
 )
 _SWEEP_RESOURCE_URI = "ui://magic-boto/sweep"
+_SWEEP_CATCHUP_RESOURCE_URI = "ui://magic-boto/sweep-catchup"
+# Same semantics as ``enqueue_tag_sweep``: 0 = all incremental-eligible cards per tag.
+_GLOBAL_SWEEP_CATCHUP_CARD_LIMIT = 0
 
 _sweep_repo = TagSweepRepo()
 _audit_repo = TagAuditRepo()
@@ -80,6 +89,76 @@ async def _resolve_sweep_for_status_query(
     return ResolvedSweepForStatus(sweep=sweep, tag_name=tag_model.name)
 
 
+async def _build_sweep_status_response(
+    session: AsyncSession,
+    *,
+    sweep: TagSweepModel,
+    tag_name: str,
+) -> SweepStatusResponse:
+    """Batch counts, audit slice, and overall status for one sweep (shared list/get)."""
+    batches = await _sweep_repo.get_batches(session, sweep.id)
+    audit_model = None
+    if sweep.post_sweep_audit_id is not None:
+        audit_model = await _audit_repo.get_audit(session, sweep.post_sweep_audit_id)
+
+    pending = sum(1 for b in batches if b.batch.status == BatchStatus.PENDING_SUBMIT)
+    submitted = sum(
+        1
+        for b in batches
+        if b.batch.status in {BatchStatus.SUBMITTED, BatchStatus.IN_PROGRESS, BatchStatus.CANCELING}
+    )
+    complete = sum(
+        1 for b in batches if b.batch.status in {BatchStatus.ENDED, BatchStatus.PROCESSED}
+    )
+    failed_batches = sum(1 for b in batches if b.batch.status in FAILED_BATCH_STATUSES)
+
+    audit: AuditStatus | None = None
+    audit_status: AuditStatusValue | None = None
+    if audit_model is not None:
+        if audit_model.batch_id is None:
+            audit_status = "pending"
+        elif audit_model.report is not None:
+            audit_status = "complete"
+        elif audit_model.batch is not None and audit_model.batch.status in FAILED_BATCH_STATUSES:
+            audit_status = "failed"
+        else:
+            audit_status = "in_progress"
+        audit = AuditStatus(
+            audit_id=str(audit_model.id),
+            status=audit_status,
+            report=audit_model.report,
+        )
+
+    overall: SweepStatusValue
+    if sweep.status == SweepRunStatus.FAILED:
+        overall = "failed"
+    elif sweep.status == SweepRunStatus.OPEN:
+        overall = "pending" if (pending + submitted) > 0 else "open"
+    else:
+        if audit is None or audit_status == "complete":
+            overall = "complete"
+        elif audit_status == "failed":
+            overall = "failed"
+        else:
+            overall = "auditing"
+
+    return SweepStatusResponse(
+        sweep_id=str(sweep.id),
+        tag_name=tag_name,
+        status=overall,
+        triggered_at=sweep.triggered_at.isoformat(),
+        completed_at=sweep.completed_at.isoformat() if sweep.completed_at else None,
+        batch_counts=BatchCounts(
+            total=len(batches),
+            pending=pending,
+            submitted=submitted,
+            complete=complete,
+            failed=failed_batches,
+        ),
+        audit=audit,
+    )
+
+
 def _read_ui(filename: str) -> str:
     path = _UI_DIST / filename
     return path.read_text(encoding="utf-8") if path.exists() else _FALLBACK_HTML
@@ -91,6 +170,12 @@ def register_sweep_tools(app_mcp: AppMcp) -> None:
     @app_mcp.mcp.resource(_SWEEP_RESOURCE_URI, name="sweep_ui", mime_type=_UI_MIME_TYPE)
     def sweep_ui() -> str:
         return _read_ui("pages/sweep.html")
+
+    @app_mcp.mcp.resource(
+        _SWEEP_CATCHUP_RESOURCE_URI, name="sweep_catchup_ui", mime_type=_UI_MIME_TYPE
+    )
+    def sweep_catchup_ui() -> str:
+        return _read_ui("pages/sweep-catchup.html")
 
     @app_mcp.tool(
         name="enqueue_tag_sweep",
@@ -149,6 +234,7 @@ def register_sweep_tools(app_mcp: AppMcp) -> None:
         description=(
             "Full reset before a new sweep for a tag: removes all ``card_tags`` for the tag "
             "and its ``_unsure`` / ``_excluded`` side tags (then deletes those side tag rows), "
+            "deletes all ``tag_audit`` rows for the tag (and their linked batches), "
             "deletes sweep batch history, clears the sweep epoch gate, and removes any open "
             "sweep run. Does not change the main tag description. Then call enqueue_tag_sweep."
         ),
@@ -221,73 +307,124 @@ def register_sweep_tools(app_mcp: AppMcp) -> None:
                 sweep_id_str=sweep_id_str,
                 tag_name_str=tag_name_str,
             )
-            sweep = resolved.sweep
-            resolved_tag_name = resolved.tag_name
-            batches = await _sweep_repo.get_batches(session, sweep.id)
-            audit_model = None
-            if sweep.post_sweep_audit_id is not None:
-                audit_model = await _audit_repo.get_audit(session, sweep.post_sweep_audit_id)
-
-        # Batch count bucketing
-        pending = sum(1 for b in batches if b.batch.status == BatchStatus.PENDING_SUBMIT)
-        submitted = sum(
-            1
-            for b in batches
-            if b.batch.status
-            in {BatchStatus.SUBMITTED, BatchStatus.IN_PROGRESS, BatchStatus.CANCELING}
-        )
-        complete = sum(
-            1 for b in batches if b.batch.status in {BatchStatus.ENDED, BatchStatus.PROCESSED}
-        )
-        failed_batches = sum(1 for b in batches if b.batch.status in FAILED_BATCH_STATUSES)
-
-        # Audit status derivation
-        audit: AuditStatus | None = None
-        audit_status: AuditStatusValue | None = None
-        if audit_model is not None:
-            if audit_model.batch_id is None:
-                audit_status = "pending"
-            elif audit_model.report is not None:
-                audit_status = "complete"
-            elif (
-                audit_model.batch is not None and audit_model.batch.status in FAILED_BATCH_STATUSES
-            ):
-                audit_status = "failed"
-            else:
-                audit_status = "in_progress"
-            audit = AuditStatus(
-                audit_id=str(audit_model.id),
-                status=audit_status,
-                report=audit_model.report,
+            return await _build_sweep_status_response(
+                session,
+                sweep=resolved.sweep,
+                tag_name=resolved.tag_name,
             )
 
-        # Overall status derivation
-        overall: SweepStatusValue
-        if sweep.status == SweepRunStatus.FAILED:
-            overall = "failed"
-        elif sweep.status == SweepRunStatus.OPEN:
-            overall = "pending" if (pending + submitted) > 0 else "open"
-        else:
-            # sweep complete
-            if audit is None or audit_status == "complete":
-                overall = "complete"
-            elif audit_status == "failed":
-                overall = "failed"
-            else:
-                overall = "auditing"
+    @app_mcp.tool(
+        name="list_sweeps",
+        description=(
+            "List status for every tag that has a recorded tag sweep (``tag_sweep`` row). "
+            "Read-only; use from the sweep-catchup status UI to poll progress."
+        ),
+        annotations=ToolAnnotations(
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+        meta={"ui": {"resourceUri": _SWEEP_CATCHUP_RESOURCE_URI}},
+    )
+    async def list_sweeps() -> SweepListResponse:
+        async with app_mcp.session() as session:
+            stmt = (
+                select(TagSweepModel, TagModel.name)
+                .join(TagModel, TagSweepModel.tag_id == TagModel.id)
+                .order_by(TagModel.name.asc())
+            )
+            pairs = (await session.execute(stmt)).all()
+            rows: list[SweepListRow] = []
+            for sweep, name in pairs:
+                status_row = await _build_sweep_status_response(session, sweep=sweep, tag_name=name)
+                rows.append(SweepListRow.model_validate(status_row.model_dump()))
+            return SweepListResponse(rows=rows)
 
-        return SweepStatusResponse(
-            sweep_id=str(sweep.id),
-            tag_name=resolved_tag_name,
-            status=overall,
-            triggered_at=sweep.triggered_at.isoformat(),
-            completed_at=sweep.completed_at.isoformat() if sweep.completed_at else None,
-            batch_counts=BatchCounts(
-                total=len(batches),
-                pending=pending,
-                submitted=submitted,
-                complete=complete,
-                failed=failed_batches,
-            ),
-            audit=audit,
+    @app_mcp.tool(
+        name="enqueue_global_sweep_catchup",
+        description=(
+            "For every tag that already has a ``tag_sweep`` row: prune ``_unsure`` / ``_excluded`` "
+            "side tags, all audits, and prior sweep batch rows; then reopen/init the sweep with "
+            "``audit_after=false``, ``include_unsure=false``, ``include_excluded=false`` (no new "
+            "side tags during processing), and enqueue Celery materialization for the **entire** "
+            "incremental-eligible catalog per tag (same as ``limit=0`` on ``enqueue_tag_sweep``). "
+            "Opens the read-only sweep-catchup status UI via tool meta."
+        ),
+        annotations=ToolAnnotations(
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=False,
+            openWorldHint=False,
+        ),
+        meta={"ui": {"resourceUri": _SWEEP_CATCHUP_RESOURCE_URI}},
+    )
+    async def enqueue_global_sweep_catchup() -> GlobalSweepCatchupResult:
+        async with app_mcp.session() as session:
+            stmt = (
+                select(TagModel.name)
+                .join(TagSweepModel, TagSweepModel.tag_id == TagModel.id)
+                .order_by(TagModel.name.asc())
+            )
+            tag_names = list((await session.execute(stmt)).scalars().all())
+
+        tags_out: list[GlobalSweepCatchupTagResult] = []
+        enqueued_count = 0
+        skipped_count = 0
+
+        for tag_name in tag_names:
+            async with app_mcp.session() as session:
+                await _sweep_reset_service.prune_side_tags_audits_and_sweep_batches(
+                    session, tag_name
+                )
+                request = SweepKickoffRequest(
+                    tag_name=tag_name,
+                    include_unsure=False,
+                    include_excluded=False,
+                    audit_after=False,
+                )
+                sweep = await _sweep_initializer.init_sweep(session, request)
+                sweep_id = sweep.id
+                tag_m = await _tag_repo.require_tag_model(session, tag_name)
+                eligible = await _sweep_repo.fetch_eligible_oracle_ids(
+                    session,
+                    tag_m,
+                    sweep_id,
+                    _GLOBAL_SWEEP_CATCHUP_CARD_LIMIT,
+                )
+
+            if not eligible:
+                tags_out.append(
+                    GlobalSweepCatchupTagResult(
+                        tag_name=tag_name,
+                        sweep_id=str(sweep_id),
+                        enqueued=False,
+                        error="No eligible cards to sweep",
+                    )
+                )
+                skipped_count += 1
+                logger.info("Global sweep catch-up: skipped {} (no eligible cards).", tag_name)
+                continue
+
+            enqueue_materialize_sweep_batches(
+                str(sweep_id),
+                tag_name,
+                limit=_GLOBAL_SWEEP_CATCHUP_CARD_LIMIT,
+                reenqueue_failed=False,
+            )
+            tags_out.append(
+                GlobalSweepCatchupTagResult(
+                    tag_name=tag_name,
+                    sweep_id=str(sweep_id),
+                    enqueued=True,
+                    error=None,
+                )
+            )
+            enqueued_count += 1
+
+        return GlobalSweepCatchupResult(
+            tags_considered=len(tag_names),
+            enqueued_count=enqueued_count,
+            skipped_count=skipped_count,
+            tags=tags_out,
         )

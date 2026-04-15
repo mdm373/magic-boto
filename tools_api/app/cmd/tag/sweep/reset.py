@@ -39,7 +39,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
             "Full reset before a new sweep: clears card_tags for the tag and its "
-            "_unsure/_excluded side tags, deletes those side tag rows, deletes sweep "
+            "_unsure/_excluded side tags, deletes those side tag rows, deletes all "
+            "tag_audit rows for the tag (and their linked batches), deletes sweep "
             "batch history, resets the sweep epoch, and removes any open sweep run. "
             "Does not remove the main tag or change its description."
         )

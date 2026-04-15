@@ -50,6 +50,7 @@ The inclusion/exclusion rules will be used as a classification checklist by a sm
 - **Do not reference card names** in any rule — the model cannot see them. Describe criteria purely in terms of card text, type, mana cost, power, and toughness.
 - State rules as yes/no tests the model can apply directly to a card's rules text. Avoid conditional prose ("unless the card also…", "provided that…").
 - Do not explain *why* a rule exists in the description text — that belongs in Feedback Points. The description should be a checklist, not a rationale document.
+- All mana references in the description should be in {W} {U} {B} {R} {G} format as the inference model recieves all mana references in this formnat
 
 Example Suggested Description for Ramp:
 

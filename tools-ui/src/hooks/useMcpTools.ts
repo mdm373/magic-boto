@@ -35,6 +35,10 @@ export type SweepStatusResponse = Readonly<{
   audit: AuditSectionData | null;
 }>;
 
+export type ListSweepsResponse = Readonly<{
+  rows: readonly SweepStatusResponse[];
+}>;
+
 export type AuditResponse = Readonly<{
   audit_id: string;
   tag_name: string;
@@ -77,6 +81,14 @@ export function useGetSweepStatus(app: App | null) {
   return useCallback(
     (sweepId: string) =>
       callTool<SweepStatusResponse>("get_sweep_status", { sweep_id: sweepId }),
+    [callTool],
+  );
+}
+
+export function useListSweeps(app: App | null) {
+  const callTool = useServerTool(app);
+  return useCallback(
+    () => callTool<ListSweepsResponse>("list_sweeps", {}),
     [callTool],
   );
 }

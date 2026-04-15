@@ -1,28 +1,42 @@
 import { useApp, useHostStyles } from "@modelcontextprotocol/ext-apps/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { App, McpUiHostContext } from "@modelcontextprotocol/ext-apps";
 
 import { createOnToolResult } from "../utils/mcpToolResultTextJson";
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// ── Tunables ──────────────────────────────────────────────────────────────────
 
-const VISIBLE_COUNT = 3;
+/** Cards per page (3×3 grid). */
+const PAGE_SIZE = 9;
+const GRID_COLS = 3;
+
 const CARD_NORMAL_WIDTH = 200;
-const CARD_SELECTED_WIDTH = 288; // ~44% larger than normal
+/** How much wider the focused card is vs normal (44 → 44% larger width). */
+const FOCUS_EXTRA_WIDTH_PERCENT = 44;
+const FOCUS_WIDTH_MULTIPLIER = 1 + FOCUS_EXTRA_WIDTH_PERCENT / 100;
+/**
+ * Soft, wide focus halo — box-shadow avoids layout shift. Two layers: faint
+ * solid ring + blurred wash (tweak opacities / px here only).
+ */
+const FOCUS_RING_BOX_SHADOW =
+  "0 0 0 4px color-mix(in srgb, var(--color-border-primary) 28%, transparent), 0 0 22px 6px color-mix(in srgb, var(--color-text-tertiary) 16%, transparent)";
+
+/** Single-row: top/bottom inset inside the frame for ring blur + scaled paint (px each side). */
+const SINGLE_ROW_VERTICAL_INSET_PX = 28;
+
 const GAP_PX = 16;
-const NAV_DURATION_MS = 220;
+/** Page change: long enough to read; easing keeps motion smooth. */
+const NAV_DURATION_MS = 520;
+/**
+ * Slide distance as % of each grid’s own width (CSS transform % is relative to
+ * the element being transformed). Reads as “this whole page moves off” rather
+ * than a tiny nudge.
+ */
+const PAGE_SLIDE_OUT_PERCENT = 48;
+const PAGE_SLIDE_IN_FROM_PERCENT = 42;
 
-// Scryfall images are ~488×680px (aspect ratio ≈ 1.394 h/w).
-// We size the card area to comfortably contain the selected card so the
-// nav row never shifts when selection changes.
-const CARD_SELECTED_HEIGHT = Math.ceil(CARD_SELECTED_WIDTH * 7 / 5); // 404 (5:7 placeholder ratio)
-const CARD_AREA_HEIGHT = CARD_SELECTED_HEIGHT + 16; // 420 — breathing room
-
-const CARD_STEP_PX = CARD_NORMAL_WIDTH + GAP_PX; // row shift per nav step (216)
-// No selection: 3×200 + 2×16 = 632
-const CLIP_PX = VISIBLE_COUNT * CARD_NORMAL_WIDTH + (VISIBLE_COUNT - 1) * GAP_PX;
-// With selection: 1×288 + 2×200 + 2×16 = 720 (selected card is always a middle card, never the exiting/entering one)
-const CLIP_SELECTED_PX = CARD_SELECTED_WIDTH + (VISIBLE_COUNT - 1) * CARD_NORMAL_WIDTH + (VISIBLE_COUNT - 1) * GAP_PX;
+// Scryfall images ~488×680 — placeholder uses 5:7 (h/w).
+const CARD_NORMAL_HEIGHT = Math.ceil((CARD_NORMAL_WIDTH * 7) / 5);
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -50,20 +64,13 @@ type CarouselState = Readonly<{
   selectedId: string | null;
 }>;
 
-/**
- * During navigation we render a 4-card window and slide the whole row.
- * `dir: "left"` → next (row shifts left;  card[0] exits, card[3] enters)
- * `dir: "right"` → prev (row shifts right; card[3] exits, card[0] enters)
- *
- * `selectedId` is the card that was focused and remains in view — it keeps
- * its CARD_SELECTED_WIDTH during the slide so the card never visually shrinks.
- * The exiting and entering edge cards are always normal-width, so CARD_STEP_PX
- * is constant regardless of where the selected card sits in the row.
- */
-type NavTransition = Readonly<{
+/** Full-page transition: outgoing grid fades/slides away, incoming replaces it. */
+type PageNavTransition = Readonly<{
   dir: "left" | "right";
-  cards: readonly CardMeta[]; // always 4 cards
-  selectedId: string | null;
+  outgoing: readonly CardMeta[];
+  incoming: readonly CardMeta[];
+  /** Preserve focus on the page being replaced until it leaves (then cleared at settle). */
+  outgoingSelectedId: string | null;
 }>;
 
 const INITIAL_STATE: CarouselState = {
@@ -74,47 +81,80 @@ const INITIAL_STATE: CarouselState = {
   selectedId: null,
 };
 
+// ── Layout helpers ────────────────────────────────────────────────────────────
+
+function slicePage(cards: readonly CardMeta[], startIndex: number): readonly CardMeta[] {
+  return cards.slice(startIndex, startIndex + PAGE_SIZE);
+}
+
+/** First index of the last page (aligned to PAGE_SIZE steps from 0). */
+function lastPageStart(cardsLength: number): number {
+  if (cardsLength <= 0) return 0;
+  if (cardsLength <= PAGE_SIZE) return 0;
+  return Math.floor((cardsLength - 1) / PAGE_SIZE) * PAGE_SIZE;
+}
+
+/**
+ * Layout tiers for the outer card frame: 1–3 cards → one row, 4–6 → two rows, 7+ → three rows.
+ * Matches the 3×3 grid (max nine cards per page).
+ */
+function layoutTierRowCount(visibleCount: number): number {
+  if (visibleCount <= 0) return 1;
+  if (visibleCount <= 3) return 1;
+  if (visibleCount <= 6) return 2;
+  return 3;
+}
+
+/**
+ * Fixed outer frame height. Multi-row tiers use normal row heights (scale overlaps).
+ * Single-row tier: scaled card height + vertical insets for the soft ring and paint safety.
+ */
+function fixedCardFrameHeightPx(visibleCount: number): number {
+  const rows = layoutTierRowCount(visibleCount);
+  if (rows === 1) {
+    return (
+      Math.ceil(CARD_NORMAL_HEIGHT * FOCUS_WIDTH_MULTIPLIER) + 2 * SINGLE_ROW_VERTICAL_INSET_PX
+    );
+  }
+  return rows * CARD_NORMAL_HEIGHT + (rows - 1) * GAP_PX;
+}
+
+/** `transform-origin` so scale grows inward / stays in view by grid position. */
+function focusTransformOrigin(
+  rowIndex: number,
+  totalRows: number,
+  colIndex: number,
+  colsInThisRow: number,
+): string {
+  const y: "top" | "center" | "bottom" =
+    totalRows <= 1 ? "top" : rowIndex === 0 ? "top" : rowIndex >= totalRows - 1 ? "bottom" : "center";
+  const x: "left" | "center" | "right" =
+    colsInThisRow <= 1 ? "center" : colIndex === 0 ? "left" : colIndex >= colsInThisRow - 1 ? "right" : "center";
+  return `${x} ${y}`;
+}
+
+function chunkIntoRows(pageCards: readonly CardMeta[]): readonly (readonly CardMeta[])[] {
+  const rows: CardMeta[][] = [];
+  for (let i = 0; i < pageCards.length; i += GRID_COLS) {
+    rows.push(pageCards.slice(i, i + GRID_COLS) as CardMeta[]);
+  }
+  return rows;
+}
+
 // ── Styles ────────────────────────────────────────────────────────────────────
 
-// Page is a flex column that fills its panel; the card area grows (flex:1) so
-// the nav row is always pinned to the bottom regardless of panel height.
 const PAGE_STYLE: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
   minHeight: "100%",
+  minWidth: 0,
+  maxWidth: "100%",
+  boxSizing: "border-box",
+  overflowX: "clip",
   padding: "1.5rem",
   gap: "1.5rem",
   backgroundColor: "var(--color-background-tertiary)",
   color: "var(--color-text-tertiary)",
-};
-
-// Card area: grows to fill available space; min-height prevents it from ever
-// being smaller than the tallest possible card state (selected card + breathing
-// room), so the nav row never moves when selection changes.
-const CARD_AREA_STYLE: React.CSSProperties = {
-  flex: 1,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  minHeight: CARD_AREA_HEIGHT,
-  paddingBottom: "1.25rem",
-};
-
-// alignItems:"center" so sibling cards vertically center on the selected card
-// rather than aligning to the bottom.
-const CARD_ROW_STABLE: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "row",
-  justifyContent: "center",
-  alignItems: "center",
-  gap: `${GAP_PX}px`,
-};
-
-const CARD_ROW_TRANSITION: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "row",
-  alignItems: "center",
-  gap: `${GAP_PX}px`,
 };
 
 const NAV_ROW_STYLE: React.CSSProperties = {
@@ -125,6 +165,8 @@ const NAV_ROW_STYLE: React.CSSProperties = {
   flexShrink: 0,
   paddingTop: "0.25rem",
   paddingBottom: "1.25rem",
+  position: "relative",
+  zIndex: 5,
 };
 
 const NAV_BUTTON_BASE: React.CSSProperties = {
@@ -156,32 +198,135 @@ const PLACEHOLDER_STYLE: React.CSSProperties = {
   width: "100%",
 };
 
-// ── Card image slot (reused by both stable and transition renders) ─────────────
+type CardGridProps = Readonly<{
+  pageCards: readonly CardMeta[];
+  selectedId: string | null;
+  images: Readonly<Record<string, string>>;
+  onToggleSelect: (cardId: string) => void;
+  /** When false, skip imageAppear bookkeeping (transition clone). */
+  trackShownImages: boolean;
+  shownImagesRef: React.MutableRefObject<Set<string>>;
+}>;
 
-function CardImageSlot({
-  card,
-  imageState,
-  cardAnimation,
-  isSelected,
-}: {
-  card: CardMeta;
-  imageState: string | undefined;
-  cardAnimation?: string;
-  isSelected?: boolean;
-}) {
+function CardGrid({
+  pageCards,
+  selectedId,
+  images,
+  onToggleSelect,
+  trackShownImages,
+  shownImagesRef,
+}: CardGridProps) {
+  const rows = useMemo(() => chunkIntoRows(pageCards), [pageCards]);
+  const totalRows = rows.length;
+
   return (
-    <div style={{ width: isSelected ? CARD_SELECTED_WIDTH : CARD_NORMAL_WIDTH, flexShrink: 0, animation: cardAnimation }}>
-      {imageState && imageState !== "error" ? (
-        <img
-          src={imageState}
-          alt={card.name}
-          style={{ width: "100%", display: "block", borderRadius: "var(--border-radius-md, 6px)" }}
-        />
-      ) : imageState === "error" ? (
-        <div style={PLACEHOLDER_STYLE}>{card.name}</div>
-      ) : (
-        <div style={PLACEHOLDER_STYLE}>Loading…</div>
-      )}
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: `${GAP_PX}px`,
+        width: "100%",
+        maxWidth: "100%",
+        minWidth: 0,
+        overflowX: "clip",
+        overflowY: "visible",
+      }}
+    >
+      {rows.map((row, ri) => (
+        <div
+          key={`row-${ri}`}
+          style={{
+            display: "flex",
+            flexDirection: "row",
+            justifyContent: "center",
+            alignItems: "center",
+            gap: `${GAP_PX}px`,
+            flexWrap: "nowrap",
+            maxWidth: "100%",
+            minWidth: 0,
+            minHeight: CARD_NORMAL_HEIGHT,
+            height: CARD_NORMAL_HEIGHT,
+            overflow: "visible",
+          }}
+        >
+          {row.map((card, ci) => {
+            const isSelected = selectedId === card.card_id;
+            const imageState = images[card.card_id];
+            const isNewImage =
+              trackShownImages &&
+              imageState != null &&
+              imageState !== "error" &&
+              !shownImagesRef.current.has(card.card_id);
+            if (isNewImage) shownImagesRef.current.add(card.card_id);
+
+            const origin = focusTransformOrigin(ri, totalRows, ci, row.length);
+            const scale = isSelected ? FOCUS_WIDTH_MULTIPLIER : 1;
+
+            return (
+              <div
+                key={card.card_id}
+                role="button"
+                tabIndex={0}
+                onClick={() => onToggleSelect(card.card_id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onToggleSelect(card.card_id);
+                  }
+                }}
+                style={{
+                  width: CARD_NORMAL_WIDTH,
+                  height: CARD_NORMAL_HEIGHT,
+                  flexShrink: 0,
+                  position: "relative",
+                  zIndex: isSelected ? 40 : 1,
+                  cursor: "pointer",
+                  overflow: "visible",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <div
+                  style={{
+                    width: CARD_NORMAL_WIDTH,
+                    borderRadius: "var(--border-radius-md, 6px)",
+                    transform: `scale(${scale})`,
+                    transformOrigin: origin,
+                    boxShadow: isSelected ? FOCUS_RING_BOX_SHADOW : "none",
+                    transition:
+                      "transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.28s ease",
+                    willChange: "transform",
+                  }}
+                >
+                  {imageState && imageState !== "error" ? (
+                    <img
+                      src={imageState}
+                      alt={card.name}
+                      style={{
+                        width: "100%",
+                        maxWidth: "100%",
+                        height: "auto",
+                        display: "block",
+                        verticalAlign: "top",
+                        objectFit: "cover",
+                        aspectRatio: "5 / 7",
+                        borderRadius: "var(--border-radius-md, 6px)",
+                        animation: isNewImage ? "imageAppear 200ms ease" : undefined,
+                      }}
+                    />
+                  ) : imageState === "error" ? (
+                    <div style={PLACEHOLDER_STYLE}>{card.name}</div>
+                  ) : (
+                    <div style={PLACEHOLDER_STYLE}>Loading…</div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ))}
     </div>
   );
 }
@@ -192,21 +337,15 @@ export function CardCarouselApp() {
   const [state, setState] = useState<CarouselState>(INITIAL_STATE);
   const [images, setImages] = useState<Readonly<Record<string, string>>>({});
   const [hostContext, setHostContext] = useState<McpUiHostContext | undefined>();
-  const [navTransition, setNavTransition] = useState<NavTransition | null>(null);
+  const [pageNavTransition, setPageNavTransition] = useState<PageNavTransition | null>(null);
   const [navigating, setNavigating] = useState(false);
 
   const appRef = useRef<App | null>(null);
   const navigatingRef = useRef(false);
   const fetchedRef = useRef<Set<string>>(new Set());
-  // Tracks card_ids whose images have already been shown in the stable row.
-  // Prevents imageAppear from re-firing on cards that were already visible
-  // in the preceding transition row.
   const shownImagesRef = useRef<Set<string>>(new Set());
-  // Stable ref so navigate() can read current state without a stale closure
   const stateRef = useRef(state);
   stateRef.current = state;
-  // Mirrors images state so navigate()'s setTimeout can read current values
-  // without a stale closure.
   const imagesRef = useRef(images);
   imagesRef.current = images;
 
@@ -220,7 +359,7 @@ export function CardCarouselApp() {
         fetchedRef.current.clear();
         shownImagesRef.current.clear();
         setImages({});
-        setNavTransition(null);
+        setPageNavTransition(null);
         setState({ ...INITIAL_STATE, status: "loading" });
       };
 
@@ -254,16 +393,16 @@ export function CardCarouselApp() {
 
   useHostStyles(app, app?.getHostContext());
 
-  // Load images for cards that are currently visible (stable or in-flight transition)
   const { status, startIndex, cards } = state;
   useEffect(() => {
     if (status !== "ready") return;
     const currentApp = appRef.current;
     if (!currentApp) return;
 
-    const toLoad = navTransition
-      ? navTransition.cards
-      : cards.slice(startIndex, startIndex + VISIBLE_COUNT);
+    const stablePage = slicePage(cards, startIndex);
+    const toLoad = pageNavTransition
+      ? [...pageNavTransition.outgoing, ...pageNavTransition.incoming]
+      : stablePage;
 
     for (const card of toLoad) {
       if (fetchedRef.current.has(card.card_id)) continue;
@@ -281,76 +420,58 @@ export function CardCarouselApp() {
           setImages((prev) => ({ ...prev, [card.card_id]: "error" }));
         });
     }
-  }, [status, startIndex, cards, navTransition]);
+  }, [status, startIndex, cards, pageNavTransition]);
 
-  /**
-   * Slide the 4-card conveyor-belt row, then settle on the new startIndex.
-   *
-   * If the currently selected card will still be visible after navigation,
-   * selection is preserved; otherwise it is cleared.
-   *
-   * next (dir=left):  [A B C D] — row shifts left  — viewport ends on [B C D]
-   * prev (dir=right): [Z A B C] — row starts at -CARD_STEP, shifts right — viewport ends on [Z A B]
-   */
   const navigate = useCallback((dir: "prev" | "next") => {
     if (navigatingRef.current) return;
+    const s = stateRef.current;
+    const lastStart = lastPageStart(s.cards.length);
+    const newIndex =
+      dir === "next"
+        ? Math.min(s.startIndex + PAGE_SIZE, lastStart)
+        : Math.max(0, s.startIndex - PAGE_SIZE);
+    if (newIndex === s.startIndex) return;
+
     navigatingRef.current = true;
     setNavigating(true);
 
-    const s = stateRef.current;
-
-    // Reset shownImagesRef to only the cards currently visible in the stable
-    // row.  The entering card is never in this set, so it will always receive
-    // imageAppear when it first lands in the stable row — regardless of how
-    // many times it has been seen in previous transitions.
-    const currentStable = new Set(
-      s.cards.slice(s.startIndex, s.startIndex + VISIBLE_COUNT).map((c) => c.card_id),
-    );
+    const outgoing = slicePage(s.cards, s.startIndex);
+    const incoming = slicePage(s.cards, newIndex);
+    const currentStable = new Set(outgoing.map((c) => c.card_id));
     shownImagesRef.current = currentStable;
 
-    const newIndex =
-      dir === "next"
-        ? Math.max(0, Math.min(s.cards.length - VISIBLE_COUNT, s.startIndex + 1))
-        : Math.max(0, s.startIndex - 1);
-
-    const fourCards =
-      dir === "next"
-        ? s.cards.slice(s.startIndex, s.startIndex + VISIBLE_COUNT + 1)
-        : s.cards.slice(s.startIndex - 1, s.startIndex + VISIBLE_COUNT);
-
-    // Determine which cards are visible after the transition and whether the
-    // selected card survives.  The selected card keeps its width in the
-    // transition row (never collapses to normal size mid-animation).
-    const nextVisible = dir === "next" ? fourCards.slice(1) : fourCards.slice(0, VISIBLE_COUNT);
-    const nextSelectedId =
-      s.selectedId !== null && nextVisible.some((c) => c.card_id === s.selectedId)
+    const outgoingSelectedId =
+      s.selectedId !== null && outgoing.some((c) => c.card_id === s.selectedId)
         ? s.selectedId
         : null;
 
-    // Don't touch state.selectedId here — it's irrelevant while we're
-    // rendering the transition row.  We update it atomically when settling.
-    setNavTransition({ dir: dir === "next" ? "left" : "right", cards: fourCards, selectedId: nextSelectedId });
+    setPageNavTransition({
+      dir: dir === "next" ? "left" : "right",
+      outgoing,
+      incoming,
+      outgoingSelectedId,
+    });
 
     setTimeout(() => {
-      // Cards whose images were already loaded during the transition were
-      // visible at full opacity via cardFadeIn / the stable non-animated slot.
-      // Mark them shown so imageAppear doesn't blink them on stable-row mount.
-      // Cards whose images are still loading are left out so imageAppear fires
-      // naturally when they arrive in the stable row.
-      const snap = imagesRef.current;
-      for (const card of fourCards) {
-        if (snap[card.card_id] && snap[card.card_id] !== "error") {
+      const imgSnap = imagesRef.current;
+      for (const card of [...outgoing, ...incoming]) {
+        if (imgSnap[card.card_id] && imgSnap[card.card_id] !== "error") {
           shownImagesRef.current.add(card.card_id);
         }
       }
-      setState((prev) => ({ ...prev, startIndex: newIndex, selectedId: nextSelectedId }));
-      setNavTransition(null);
+      setState((prev) => ({ ...prev, startIndex: newIndex, selectedId: null }));
+      setPageNavTransition(null);
       navigatingRef.current = false;
       setNavigating(false);
     }, NAV_DURATION_MS);
   }, []);
 
-  // ── Computed values ─────────────────────────────────────────────────────────
+  const toggleSelect = useCallback((cardId: string) => {
+    setState((prev) => ({
+      ...prev,
+      selectedId: prev.selectedId === cardId ? null : cardId,
+    }));
+  }, []);
 
   const insets = hostContext?.safeAreaInsets;
   const pageStyle: React.CSSProperties = insets
@@ -364,42 +485,78 @@ export function CardCarouselApp() {
       }
     : PAGE_STYLE;
 
-  // ── Early returns ───────────────────────────────────────────────────────────
-
   if (error) return <div style={pageStyle}><strong>Error:</strong> {error.message}</div>;
   if (!isConnected || state.status === "idle") return <div style={pageStyle}>Connecting…</div>;
   if (state.status === "loading") return <div style={pageStyle}>Loading cards…</div>;
   if (state.status === "error") return <div style={pageStyle}>Could not load cards.</div>;
   if (state.cards.length === 0) return <div style={pageStyle}>No cards found.</div>;
 
-  const visibleCards = state.cards.slice(startIndex, startIndex + VISIBLE_COUNT);
-  const visibleCount = visibleCards.length;
+  const pageCards = slicePage(state.cards, startIndex);
+  const visibleCount = pageCards.length;
+  const lastStart = lastPageStart(state.cards.length);
   const canPrev = startIndex > 0;
-  const canNext = startIndex + VISIBLE_COUNT < state.cards.length;
+  const canNext = startIndex < lastStart;
+
+  const cardFramePx = pageNavTransition
+    ? Math.max(
+        fixedCardFrameHeightPx(pageNavTransition.outgoing.length),
+        fixedCardFrameHeightPx(pageNavTransition.incoming.length),
+      )
+    : fixedCardFrameHeightPx(visibleCount);
+
+  const maxCardsInFrame = pageNavTransition
+    ? Math.max(pageNavTransition.outgoing.length, pageNavTransition.incoming.length)
+    : visibleCount;
+  const pinGridToTop = layoutTierRowCount(maxCardsInFrame) === 1;
+  const gridAlignItems: React.CSSProperties["alignItems"] = pinGridToTop ? "flex-start" : "center";
+  const singleRowInnerChrome: React.CSSProperties = pinGridToTop
+    ? {
+        paddingTop: SINGLE_ROW_VERTICAL_INSET_PX,
+        paddingBottom: SINGLE_ROW_VERTICAL_INSET_PX,
+        boxSizing: "border-box",
+      }
+    : {};
+
+  const outName = pageNavTransition?.dir === "left" ? "pageOutLeft" : "pageOutRight";
+  const inName = pageNavTransition?.dir === "left" ? "pageInLeft" : "pageInRight";
+
+  const cardAreaStyle: React.CSSProperties = {
+    flex: "0 0 auto",
+    height: cardFramePx,
+    minHeight: cardFramePx,
+    minWidth: 0,
+    width: "100%",
+    maxWidth: "100%",
+    overflowX: "clip",
+    overflowY: "visible",
+    overscrollBehavior: "contain",
+    display: "flex",
+    alignItems: gridAlignItems,
+    justifyContent: "center",
+    boxSizing: "border-box",
+    position: "relative",
+    zIndex: 1,
+    transition: "height 0.35s ease, min-height 0.35s ease",
+  };
 
   return (
     <>
-      {/*
-        rowSlideLeft:  [A B C D] row at 0 → -CARD_STEP_PX  (viewport shows B C D)
-        rowSlideRight: [Z A B C] row at -CARD_STEP_PX → 0  (viewport shows Z A B)
-        cardFadeOut / cardFadeIn: edge cards only
-      */}
       <style>{`
-        @keyframes rowSlideLeft {
-          from { transform: translateX(0); }
-          to   { transform: translateX(-${CARD_STEP_PX}px); }
+        @keyframes pageOutLeft {
+          from { opacity: 1; transform: translateX(0); }
+          to   { opacity: 0; transform: translateX(-${PAGE_SLIDE_OUT_PERCENT}%); }
         }
-        @keyframes rowSlideRight {
-          from { transform: translateX(-${CARD_STEP_PX}px); }
-          to   { transform: translateX(0); }
+        @keyframes pageInLeft {
+          from { opacity: 0; transform: translateX(${PAGE_SLIDE_IN_FROM_PERCENT}%); }
+          to   { opacity: 1; transform: translateX(0); }
         }
-        @keyframes cardFadeOut {
-          from { opacity: 1; }
-          to   { opacity: 0; }
+        @keyframes pageOutRight {
+          from { opacity: 1; transform: translateX(0); }
+          to   { opacity: 0; transform: translateX(${PAGE_SLIDE_OUT_PERCENT}%); }
         }
-        @keyframes cardFadeIn {
-          from { opacity: 0; }
-          to   { opacity: 1; }
+        @keyframes pageInRight {
+          from { opacity: 0; transform: translateX(-${PAGE_SLIDE_IN_FROM_PERCENT}%); }
+          to   { opacity: 1; transform: translateX(0); }
         }
         @keyframes imageAppear {
           from { opacity: 0; }
@@ -408,97 +565,91 @@ export function CardCarouselApp() {
       `}</style>
 
       <div style={pageStyle}>
-        {/*
-          Card area: grows to fill the panel (flex:1) and has a fixed min-height
-          equal to CARD_AREA_HEIGHT so the nav row never shifts when a card is
-          selected or deselected.
-        */}
-        <div style={CARD_AREA_STYLE}>
-          {navTransition ? (
-            // Clip window — overflow:hidden trims the horizontal slide.
-            // Width is wider when a selected card rides through the transition.
-            <div style={{ width: navTransition.selectedId ? CLIP_SELECTED_PX : CLIP_PX, overflow: "hidden" }}>
+        <div style={cardAreaStyle}>
+          {pageNavTransition ? (
+            <div
+              style={{
+                position: "relative",
+                width: "100%",
+                height: cardFramePx,
+                minHeight: cardFramePx,
+                overflowX: "clip",
+                overflowY: "visible",
+                ...singleRowInnerChrome,
+              }}
+            >
+              {/* Absolutely stacked so the (invisible) outgoing layer does not widen/tall the box after opacity hits 0. */}
               <div
                 style={{
-                  ...CARD_ROW_TRANSITION,
-                  animation: `${navTransition.dir === "left" ? "rowSlideLeft" : "rowSlideRight"} ${NAV_DURATION_MS}ms ease forwards`,
+                  position: "absolute",
+                  inset: 0,
+                  display: "flex",
+                  alignItems: gridAlignItems,
+                  justifyContent: "center",
+                  pointerEvents: "none",
+                  zIndex: 0,
+                  animation: `${outName} ${NAV_DURATION_MS}ms cubic-bezier(0.22, 1, 0.36, 1) forwards`,
                 }}
               >
-                {navTransition.cards.map((card, i) => {
-                  const len = navTransition.cards.length;
-                  const isExiting = navTransition.dir === "left" ? i === 0 : i === len - 1;
-                  const isEntering = navTransition.dir === "left" ? i === len - 1 : i === 0;
-                  return (
-                    <CardImageSlot
-                      key={card.card_id}
-                      card={card}
-                      imageState={images[card.card_id]}
-                      isSelected={navTransition.selectedId === card.card_id}
-                      cardAnimation={
-                        isExiting
-                          ? `cardFadeOut ${NAV_DURATION_MS}ms ease forwards`
-                          : isEntering
-                            ? `cardFadeIn ${NAV_DURATION_MS}ms ease forwards`
-                            : undefined
-                      }
-                    />
-                  );
-                })}
+                <CardGrid
+                  pageCards={pageNavTransition.outgoing}
+                  selectedId={pageNavTransition.outgoingSelectedId}
+                  images={images}
+                  onToggleSelect={() => {}}
+                  trackShownImages={false}
+                  shownImagesRef={shownImagesRef}
+                />
+              </div>
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  display: "flex",
+                  alignItems: gridAlignItems,
+                  justifyContent: "center",
+                  pointerEvents: "auto",
+                  zIndex: 1,
+                  animation: `${inName} ${NAV_DURATION_MS}ms cubic-bezier(0.22, 1, 0.36, 1) forwards`,
+                }}
+              >
+                <CardGrid
+                  pageCards={pageNavTransition.incoming}
+                  selectedId={null}
+                  images={images}
+                  onToggleSelect={() => {}}
+                  trackShownImages={false}
+                  shownImagesRef={shownImagesRef}
+                />
               </div>
             </div>
           ) : (
-            // Stable row — cards clickable; selected card expands, peers center on it
-            <div style={CARD_ROW_STABLE}>
-              {visibleCards.map((card) => {
-                const isSelected = state.selectedId === card.card_id;
-                const imageState = images[card.card_id];
-                // Only fade-in on first appearance; re-mounting after a
-                // transition must not re-trigger the animation.
-                const isNewImage =
-                  imageState != null &&
-                  imageState !== "error" &&
-                  !shownImagesRef.current.has(card.card_id);
-                if (isNewImage) shownImagesRef.current.add(card.card_id);
-                return (
-                  <div
-                    key={card.card_id}
-                    onClick={() =>
-                      setState((s) => ({
-                        ...s,
-                        selectedId: s.selectedId === card.card_id ? null : card.card_id,
-                      }))
-                    }
-                    style={{
-                      width: isSelected ? CARD_SELECTED_WIDTH : CARD_NORMAL_WIDTH,
-                      flexShrink: 0,
-                      transition: "width 0.25s ease",
-                      cursor: "pointer",
-                    }}
-                  >
-                    {imageState && imageState !== "error" ? (
-                      <img
-                        src={imageState}
-                        alt={card.name}
-                        style={{
-                          width: "100%",
-                          display: "block",
-                          borderRadius: "var(--border-radius-md, 6px)",
-                          animation: isNewImage ? "imageAppear 200ms ease" : undefined,
-                        }}
-                      />
-                    ) : imageState === "error" ? (
-                      <div style={PLACEHOLDER_STYLE}>{card.name}</div>
-                    ) : (
-                      <div style={PLACEHOLDER_STYLE}>Loading…</div>
-                    )}
-                  </div>
-                );
-              })}
+            <div
+              style={{
+                height: "100%",
+                minHeight: "100%",
+                width: "100%",
+                maxWidth: "100%",
+                minWidth: 0,
+                overflowX: "clip",
+                overflowY: "visible",
+                display: "flex",
+                alignItems: gridAlignItems,
+                justifyContent: "center",
+                ...singleRowInnerChrome,
+              }}
+            >
+              <CardGrid
+                pageCards={pageCards}
+                selectedId={state.selectedId}
+                images={images}
+                onToggleSelect={toggleSelect}
+                trackShownImages
+                shownImagesRef={shownImagesRef}
+              />
             </div>
           )}
         </div>
 
-        {/* Nav row — always at the bottom of the panel (page is flex-column, card area is flex:1) */}
         <div style={NAV_ROW_STYLE}>
           <button
             onClick={() => navigate("prev")}
@@ -508,13 +659,14 @@ export function CardCarouselApp() {
               opacity: canPrev && !navigating ? 1 : 0.3,
               cursor: canPrev && !navigating ? "pointer" : "default",
             }}
-            aria-label="Previous"
+            aria-label="Previous page"
           >
             ‹
           </button>
 
           <span style={COUNTER_STYLE}>
-            {startIndex + 1}–{startIndex + visibleCount} of {state.cards.length}
+            {visibleCount === 0 ? "0" : `${startIndex + 1}–${startIndex + visibleCount}`} of{" "}
+            {state.cards.length}
             {state.total > state.cards.length ? ` (${state.total} total)` : ""}
           </span>
 
@@ -526,7 +678,7 @@ export function CardCarouselApp() {
               opacity: canNext && !navigating ? 1 : 0.3,
               cursor: canNext && !navigating ? "pointer" : "default",
             }}
-            aria-label="Next"
+            aria-label="Next page"
           >
             ›
           </button>

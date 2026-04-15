@@ -18,3 +18,13 @@ export function shouldContinuePollingSweepView(data: SweepStatusResponse): boole
   }
   return data.status === "pending" || data.status === "auditing";
 }
+
+/**
+ * Keep polling `list_sweeps` while any row would still need updates in the single-sweep view.
+ */
+export function shouldContinuePollingSweepList(rows: readonly SweepStatusResponse[]): boolean {
+  if (rows.length === 0) {
+    return false;
+  }
+  return rows.some((row) => shouldContinuePollingSweepView(row));
+}
