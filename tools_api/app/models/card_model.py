@@ -60,6 +60,10 @@ class CardModel(Base):
         server_default=func.now(),
         insert_default=func.now(),
     )
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
     edition: Mapped[EditionModel] = relationship(
         "EditionModel",

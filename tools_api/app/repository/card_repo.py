@@ -5,10 +5,12 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import cast
 
+import sqlalchemy as sa
 from fastapi_pagination import Params
 from fastapi_pagination.bases import AbstractPage
 from fastapi_pagination.ext.sqlalchemy import paginate
 from sqlalchemy import and_, func, select, true
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql import Select
@@ -16,7 +18,7 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from app.models import CardModel, InventoryCardModel, InventoryModel
 
-from .pg_bulk_upsert import bulk_insert_on_conflict_do_update, orm_columns_dict
+from .pg_bulk_upsert import orm_columns_dict
 
 # asyncpg rejects queries whose total bind parameters exceed 32767; chunk IN lists.
 _IN_CLAUSE_BATCH = 500
@@ -182,11 +184,44 @@ class CardRepo:
         *,
         batch_size: int,
     ) -> None:
-        """Bulk-insert cards; on ``(scryfall_id, side)`` conflict, overwrite the row."""
-        await bulk_insert_on_conflict_do_update(
-            session,
-            batch_size=batch_size,
-            model=CardModel,
-            index_elements=("scryfall_id", "side"),
-            param_rows=[orm_columns_dict(row) for row in rows],
-        )
+        """Bulk-insert cards; on ``(scryfall_id, side)`` conflict, update only when changed.
+
+        - Never overwrite ``created_at``.
+        - Never update ``card_id`` (PK) during a conflict update.
+        - Set ``updated_at`` only when any tracked card fields are actually different.
+        """
+        if not rows:
+            return
+
+        param_rows = [orm_columns_dict(row) for row in rows]
+        index_elements = ("scryfall_id", "side")
+
+        for start in range(0, len(param_rows), batch_size):
+            chunk = param_rows[start : start + batch_size]
+            insert_stmt = pg_insert(CardModel).values(list(chunk))
+            excluded = insert_stmt.excluded
+
+            # Columns we will overwrite from EXCLUDED on conflict.
+            # We intentionally skip PK `card_id` and timestamps.
+            overwrite_cols: list[str] = [
+                col.name
+                for col in CardModel.__table__.columns
+                if col.name not in {"card_id", "created_at", "updated_at"}
+            ]
+            set_ = {name: getattr(excluded, name) for name in overwrite_cols}
+            set_["updated_at"] = func.now()
+
+            # Only update when values actually differ. `IS DISTINCT FROM` treats NULL safely.
+            where_changed = sa.or_(
+                *[
+                    getattr(CardModel, name).is_distinct_from(getattr(excluded, name))
+                    for name in overwrite_cols
+                ]
+            )
+
+            stmt = insert_stmt.on_conflict_do_update(
+                index_elements=list(index_elements),
+                set_=set_,
+                where=where_changed,
+            )
+            await session.execute(stmt)
