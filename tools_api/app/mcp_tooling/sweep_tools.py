@@ -146,6 +146,7 @@ async def _build_sweep_status_response(
         sweep_id=str(sweep.id),
         tag_name=tag_name,
         status=overall,
+        requested_limit=sweep.requested_limit,
         triggered_at=sweep.triggered_at.isoformat(),
         completed_at=sweep.completed_at.isoformat() if sweep.completed_at else None,
         batch_counts=BatchCounts(
@@ -218,8 +219,13 @@ def register_sweep_tools(app_mcp: AppMcp) -> None:
             audit_after=audit_after,
         )
         async with app_mcp.session() as session:
-            sweep = await _sweep_initializer.init_sweep(session, request)
+            sweep = await _sweep_initializer.init_sweep(
+                session,
+                request,
+                requested_limit=limit,
+            )
             sweep_id = sweep.id
+            await session.commit()
 
         enqueue_materialize_sweep_batches(
             str(sweep_id),
@@ -383,8 +389,13 @@ def register_sweep_tools(app_mcp: AppMcp) -> None:
                     include_excluded=False,
                     audit_after=False,
                 )
-                sweep = await _sweep_initializer.init_sweep(session, request)
+                sweep = await _sweep_initializer.init_sweep(
+                    session,
+                    request,
+                    requested_limit=_GLOBAL_SWEEP_CATCHUP_CARD_LIMIT,
+                )
                 sweep_id = sweep.id
+                await session.commit()
                 tag_m = await _tag_repo.require_tag_model(session, tag_name)
                 eligible = await _sweep_repo.fetch_eligible_oracle_ids(
                     session,

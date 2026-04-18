@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Text, Uuid
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base
@@ -48,4 +48,9 @@ class TagSweepModel(Base):
         Uuid(as_uuid=True),
         ForeignKey("magic_boto.tag_audit.id", ondelete="SET NULL"),
         nullable=True,
+    )
+    requested_limit: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        doc="Requested card limit for this sweep kickoff; 0 means 'all eligible'.",
     )

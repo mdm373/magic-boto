@@ -170,9 +170,11 @@ export function SweepApp() {
     return <div style={pageStyle}>Loading sweep status…</div>;
   }
 
-  const { tag_name, batch_counts: bc, audit } = status;
+  const { tag_name, batch_counts: bc, audit, requested_limit } = status;
   const color = STATUS_COLORS[status.status];
   const progressPct = bc.total > 0 ? Math.round((bc.complete / bc.total) * 100) : 0;
+  const limitLabel =
+    requested_limit == null || requested_limit === 0 ? "All cards" : `Limit: ${requested_limit}`;
 
   return (
     <div style={pageStyle}>
@@ -199,6 +201,9 @@ export function SweepApp() {
           </div>
           <div style={{ fontSize: "0.7rem", color: "var(--color-text-tertiary)", marginTop: 2 }}>
             {status.sweep_id}
+          </div>
+          <div style={{ fontSize: "0.7rem", color: "var(--color-text-tertiary)", marginTop: 2 }}>
+            {limitLabel}
           </div>
         </div>
 

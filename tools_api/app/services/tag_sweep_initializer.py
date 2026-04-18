@@ -76,14 +76,20 @@ class TagSweepInitializer:
         self._batch_serialization = batch_serialization
 
     async def init_sweep(
-        self, session: AsyncSession, request: SweepKickoffRequest
+        self,
+        session: AsyncSession,
+        request: SweepKickoffRequest,
+        *,
+        requested_limit: int | None = None,
     ) -> TagSweepModel:
         """Open or resume a run and persist pipeline options (no pending batches yet)."""
         tag = await self._tag_repo.require_tag_model(session, request.tag_name)
         sweep = await self._ensure_sweep_run(session, tag)
         sweep_id = sweep.id
         logger.info("Sweep ID: {}", sweep.id)
-        await self._configure_pipeline(session, tag, sweep_id, request)
+        await self._configure_pipeline(
+            session, tag, sweep_id, request, requested_limit=requested_limit
+        )
         return sweep
 
     async def materialize_sweep_batches(
@@ -126,6 +132,8 @@ class TagSweepInitializer:
         tag_m: TagModel,
         sweep_id: uuid.UUID,
         request: SweepKickoffRequest,
+        *,
+        requested_limit: int | None = None,
     ) -> None:
         post_audit_id: uuid.UUID | None = None
         if request.audit_after:
@@ -143,6 +151,7 @@ class TagSweepInitializer:
             include_unsure=request.include_unsure,
             include_excluded=request.include_excluded,
             post_sweep_audit_id=post_audit_id,
+            requested_limit=requested_limit,
         )
 
     async def _create_new_batches(

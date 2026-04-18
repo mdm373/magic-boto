@@ -139,6 +139,10 @@ function SweepRow({ status }: Readonly<{ status: SweepStatusResponse }>) {
   const { tag_name, batch_counts: bc } = status;
   const color = STATUS_COLORS[status.status];
   const progressPct = bc.total > 0 ? Math.round((bc.complete / bc.total) * 100) : 0;
+  const limitLabel =
+    status.requested_limit == null || status.requested_limit === 0
+      ? "All cards"
+      : `Limit: ${status.requested_limit}`;
 
   return (
     <div style={ROW_BOX}>
@@ -159,6 +163,9 @@ function SweepRow({ status }: Readonly<{ status: SweepStatusResponse }>) {
       </div>
       <div style={{ fontSize: "0.65rem", color: "var(--color-text-tertiary)", marginTop: 2 }}>
         {status.sweep_id}
+      </div>
+      <div style={{ fontSize: "0.65rem", color: "var(--color-text-tertiary)", marginTop: 2 }}>
+        {limitLabel}
       </div>
       {bc.total > 0 && (
         <div style={{ marginTop: "0.5rem" }}>

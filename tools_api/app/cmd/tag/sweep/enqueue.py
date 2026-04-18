@@ -95,7 +95,8 @@ def main() -> None:
                 audit_excluded_sample=args.audit_excluded_sample,
                 audit_unsure_sample=args.audit_unsure_sample,
             )
-            sweep = await init.init_sweep(session, request)
+            sweep = await init.init_sweep(session, request, requested_limit=args.limit)
+            await session.commit()
             return str(sweep.id)
 
     sweep_id = asyncio.run(body())

@@ -22,6 +22,8 @@ Cards in the excluded sample that SHOULD have this tag. For each, give the card 
 ## Uncertainty Analysis
 Explain what properties of the unsure cards are creating ambiguity. What edge cases, card mechanics, or wording patterns is the model struggling to resolve? Be specific.
 
+When elaborating on false positives/negatives (including “maybe/unsure” cases), only name cards that are actual violations or plausible violations. Do **not** list cards that are clearly correct/OK. If you find no false positives, no false negatives, and no plausible violations in the unsure set, say **“All ok.”**
+
 ## Feedback Points
 A numbered list of specific, actionable improvements that would help a model classify this tag more accurately. Focus on clarifying boundaries, ruling in/out edge cases, and removing vague language from the description.
 

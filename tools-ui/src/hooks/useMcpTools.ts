@@ -29,6 +29,7 @@ export type SweepStatusResponse = Readonly<{
   sweep_id: string;
   tag_name: string;
   status: SweepStatusValue;
+  requested_limit?: number | null;
   triggered_at: string;
   completed_at: string | null;
   batch_counts: BatchCounts;

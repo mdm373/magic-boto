@@ -19,55 +19,63 @@ class CardsPaginationParams(Params):
 
 
 class Card(BaseModel):
-    """MTGJSON card subset for API responses (well-defined schema)."""
+    """MTGJSON card subset for API responses (well-defined schema).
+
+    Full HTTP and verbose MCP responses populate all fields. Non-verbose MCP responses
+    set only ``card_id``, ``name``, and ``scryfall_id``; other fields are ``null``.
+    """
 
     model_config = ConfigDict(title="Card")
 
     card_id: str = Field(..., description="Internal catalog id")
     name: str = Field(..., description="Card name")
     mana_cost: str | None = Field(None, description="Mana cost (e.g. {2}{U}{U})")
-    mana_value: int = Field(..., description="Mana value (formerly CMC).")
-    set_code: str = Field(..., min_length=1, description="Set/edition code (e.g. M21)")
+    mana_value: int | None = Field(None, description="Mana value (formerly CMC).")
+    set_code: str | None = Field(
+        None,
+        description="Set/edition code (e.g. M21). Null when omitted (compact MCP response).",
+    )
     number: str | None = Field(None, description="Collector number in the set (e.g. 100, 12p)")
     scryfall_id: str = Field(
         ...,
         min_length=1,
         description="Scryfall printing id (UUID) for this cardboard slip.",
     )
-    side: CardSide = Field(
-        ...,
+    side: CardSide | None = Field(
+        None,
         description="Printing side: ``a`` (primary / single-faced) or ``b`` (companion row).",
     )
-    oracle_id: str = Field(
-        ..., min_length=1, description="Card Definition (Cross Printing) Identifier"
+    oracle_id: str | None = Field(
+        None,
+        description="Card Definition (Cross Printing) Identifier",
     )
     type: str | None = Field(None, description="Card type line")
     power: str | None = Field(None, description="Power text (e.g. 2, *, *+1).")
     toughness: str | None = Field(None, description="Toughness text (e.g. 2, *).")
     text: str | None = Field(None, description="Oracle / rules text (MTGJSON ``text`` column).")
-    card_types: list[CardType] = Field(
-        default_factory=list,
+    card_types: list[CardType] | None = Field(
+        None,
         description="Standard rulebook card types (e.g. Creature, Artifact).",
     )
-    card_subtypes: list[str] = Field(
-        default_factory=list,
+    card_subtypes: list[str] | None = Field(
+        None,
         description="Card subtypes (normalized lowercase, e.g. human, wizard).",
     )
-    card_keywords: list[str] = Field(
-        default_factory=list,
+    card_keywords: list[str] | None = Field(
+        None,
         description="Keyword abilities (normalized lowercase, e.g. flying, trample).",
     )
-    card_supertypes: list[CardSupertype] = Field(
-        default_factory=list,
+    card_supertypes: list[CardSupertype] | None = Field(
+        None,
         description="Card supertypes (lowercase, e.g. basic, legendary).",
     )
-    color_identity: list[ColorIdentity] = Field(
-        default_factory=list,
+    color_identity: list[ColorIdentity] | None = Field(
+        None,
         description="Commander color identity pips (WUBRG), WUBRG order.",
     )
-    rarity: CardRarity = Field(..., description="Printing rarity")
-    tags: list[str] = Field(
-        default_factory=list,
+    rarity: CardRarity | None = Field(None, description="Printing rarity")
+    tags: list[str] | None = Field(
+        None,
         description=(
             "User-defined tags applied to this card's oracle identity "
             "(shared across all printings)."

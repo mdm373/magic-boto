@@ -75,7 +75,9 @@ def register_cards_tools(app_mcp: AppMcp) -> None:
         name="search_cards",
         description=(
             "Search MTG cards with explicit optional filters. "
-            "All provided filters are combined with AND."
+            "All provided filters are combined with AND. "
+            "By default each hit is a compact Card: only card_id, name, and scryfall_id are set; "
+            "other fields are null (carousel UI). Pass verbose=true to populate all fields."
         ),
         annotations=ToolAnnotations(
             readOnlyHint=True,
@@ -88,17 +90,22 @@ def register_cards_tools(app_mcp: AppMcp) -> None:
     async def search_cards(
         filters: CardSearchFilters = CardSearchFilters(),
         pagination: CardSearchPagination = CardSearchPagination(),
+        verbose: bool = False,
     ) -> CardsPage:
         query = CardSearchQuery(filters=filters, pagination=pagination)
         async with app_mcp.session() as session:
-            page = await _card_service.search_cards(session, query)
+            page = await _card_service.search_cards(
+                session, query, summary_only=not verbose
+            )
             return cast(CardsPage, page)
 
     @app_mcp.tool(
         name="get_card",
         description=(
             "Get one card by internal catalog id (``card_id`` from search results). "
-            "Unique per printing and avoids the ambiguity of Scryfall id on flip/split cards."
+            "Unique per printing and avoids the ambiguity of Scryfall id on flip/split cards. "
+            "By default returns a compact Card (only card_id, name, scryfall_id; "
+            "other fields null). Pass verbose=true to populate all fields."
         ),
         annotations=ToolAnnotations(
             readOnlyHint=True,
@@ -108,9 +115,9 @@ def register_cards_tools(app_mcp: AppMcp) -> None:
         ),
         meta={"ui": {"resourceUri": CARD_RESOURCE_URI}},
     )
-    async def get_card(card_id: str) -> Card:
+    async def get_card(card_id: str, verbose: bool = False) -> Card:
         async with app_mcp.session() as session:
-            card = await _card_service.query_card(session, card_id)
+            card = await _card_service.query_card(session, card_id, summary_only=not verbose)
             if card is None:
                 raise NotFoundError("Card not found")
             return card

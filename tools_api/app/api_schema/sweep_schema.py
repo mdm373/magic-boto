@@ -36,6 +36,7 @@ class SweepStatusResponse(BaseModel):
     sweep_id: str
     tag_name: str
     status: SweepStatusValue
+    requested_limit: int | None = None
     triggered_at: str
     completed_at: str | None
     batch_counts: BatchCounts

@@ -15,6 +15,17 @@ def _map_mana_value(meta_mana: int | None) -> int:
 class CardMapper:
     """Map ORM card model to API response schema."""
 
+    def to_response_compact(self, card: CardModel) -> Card:
+        """Same Card schema with only card_id, name, scryfall_id (MCP default)."""
+        scryfall_id = card.scryfall_id.strip()
+        return Card.model_validate(
+            {
+                "card_id": card.card_id,
+                "name": card.name or "",
+                "scryfall_id": scryfall_id,
+            }
+        )
+
     def to_response(self, card: CardModel) -> Card:
         scryfall_id = card.scryfall_id.strip()
         oracle_id = (card.oracle_id or "").strip()

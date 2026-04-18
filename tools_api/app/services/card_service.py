@@ -27,6 +27,8 @@ class CardService:
         self,
         session: AsyncSession,
         query: CardSearchQuery,
+        *,
+        summary_only: bool = False,
     ) -> AbstractPage[Card]:
         """List cards."""
         filters = [
@@ -40,16 +42,23 @@ class CardService:
             page_size=query.pagination.page_size,
             inventory_name=query.filters.inventory_name,
         )
-        page.items = [self._mapper.to_response(card) for card in page.items]  # type: ignore[attr-defined]
+        if summary_only:
+            page.items = [self._mapper.to_response_compact(card) for card in page.items]  # type: ignore[attr-defined]
+        else:
+            page.items = [self._mapper.to_response(card) for card in page.items]  # type: ignore[attr-defined]
         return cast(AbstractPage[Card], page)
 
     async def query_card(
         self,
         session: AsyncSession,
         card_id: str,
+        *,
+        summary_only: bool = False,
     ) -> Card | None:
         """Look up a single card by internal catalog id. Returns None if not found."""
         card = await self._repo.get_by_id(session, card_id)
         if card is None:
             return None
+        if summary_only:
+            return self._mapper.to_response_compact(card)
         return self._mapper.to_response(card)

@@ -33,4 +33,3 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_column("cards", "updated_at", schema=_SCHEMA)
-

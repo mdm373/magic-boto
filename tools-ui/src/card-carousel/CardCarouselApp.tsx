@@ -11,8 +11,8 @@ const PAGE_SIZE = 9;
 const GRID_COLS = 3;
 
 const CARD_NORMAL_WIDTH = 200;
-/** How much wider the focused card is vs normal (44 → 44% larger width). */
-const FOCUS_EXTRA_WIDTH_PERCENT = 44;
+/** How much wider the focused card is vs normal (was 44%; +20% vs that → 72.8% larger width). */
+const FOCUS_EXTRA_WIDTH_PERCENT = 72.8;
 const FOCUS_WIDTH_MULTIPLIER = 1 + FOCUS_EXTRA_WIDTH_PERCENT / 100;
 /**
  * Soft, wide focus halo — box-shadow avoids layout shift. Two layers: faint

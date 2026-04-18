@@ -115,14 +115,20 @@ class TagSweepRepo:
         include_unsure: bool,
         include_excluded: bool,
         post_sweep_audit_id: uuid.UUID | None,
+        requested_limit: int | None = None,
     ) -> None:
-        """Persist Celery process options and optional reserved audit row. Caller must commit."""
+        """Persist pipeline options, optional kickoff limit, and optional audit row.
+
+        Caller must commit.
+        """
         sweep = await self.get_sweep(session, sweep_id)
         if sweep is None:
             raise ValueError(f"Sweep {sweep_id} not found.")
         sweep.pipeline_include_unsure = include_unsure
         sweep.pipeline_include_excluded = include_excluded
         sweep.post_sweep_audit_id = post_sweep_audit_id
+        if requested_limit is not None:
+            sweep.requested_limit = requested_limit
         await session.flush()
 
     async def delete_sweep_batch_history_for_tag(
