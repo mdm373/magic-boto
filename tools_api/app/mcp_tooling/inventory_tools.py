@@ -69,10 +69,7 @@ def register_inventory_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="list_inventory_names",
-        description=(
-            "List names of card inventories (collections) in the database. "
-            "Use with card search ``inventory_name`` (canonical lowercase names)."
-        ),
+        description="List inventory (collection) names; use with card search ``inventory_name``.",
         annotations=ToolAnnotations(
             readOnlyHint=True,
             destructiveHint=False,
@@ -87,12 +84,8 @@ def register_inventory_tools(app_mcp: AppMcp) -> None:
     @app_mcp.tool(
         name="create_inventory",
         description=(
-            "Create a named inventory collection if it does not exist, or return the existing one. "
-            "Use this to persist deck lists and other constructed lists: "
-            "pick a stable name per deck "
-            "so ``inventory_name`` in card search can filter to that collection. "
-            "Names are stored trimmed and lowercased. "
-            "The reserved name _default cannot be created here."
+            "Get or create a named inventory. Names are trimmed and lowercased; "
+            "``_default`` is reserved and cannot be created here."
         ),
         annotations=ToolAnnotations(
             readOnlyHint=False,
@@ -104,12 +97,7 @@ def register_inventory_tools(app_mcp: AppMcp) -> None:
     async def create_inventory(
         name: Annotated[
             str,
-            Field(
-                description=(
-                    "Collection name (e.g. deck title). Persist decks under distinct names "
-                    "so searches can target them."
-                ),
-            ),
+            Field(description="Collection name (trimmed, stored lowercase)."),
         ],
     ) -> str:
         cn = canonical_name(name)
@@ -126,9 +114,8 @@ def register_inventory_tools(app_mcp: AppMcp) -> None:
     @app_mcp.tool(
         name="add_inventory_cards",
         description=(
-            "Add catalog printings to an inventory by Scryfall printing id "
-            "(each list entry adds one copy; duplicates increase quantity). "
-            "Returns only ok. The reserved name _default is not allowed."
+            "Add copies by Scryfall printing id (one per list element; duplicates add quantity). "
+            "``_default`` is not allowed."
         ),
         annotations=ToolAnnotations(
             readOnlyHint=False,
@@ -168,10 +155,7 @@ def register_inventory_tools(app_mcp: AppMcp) -> None:
     @app_mcp.tool(
         name="open_inventory_import",
         description=(
-            "Open the inventory CSV import UI. "
-            "Pass inventory_name to pre-fill the destination field (optional). "
-            "The user picks a CSV file in the UI and clicks Import. "
-            "Returns existing inventory names for autocomplete."
+            "Return ``inventory_name`` (optional hint) and ``existing_names`` for CSV import flows."
         ),
         annotations=ToolAnnotations(
             readOnlyHint=True,
@@ -184,7 +168,7 @@ def register_inventory_tools(app_mcp: AppMcp) -> None:
     async def open_inventory_import(
         inventory_name: Annotated[
             str,
-            Field(description="Optional inventory name to pre-fill in the UI.", default=""),
+            Field(description="Suggested destination inventory name.", default=""),
         ] = "",
     ) -> OpenInventoryImportResult:
         async with app_mcp.session() as session:
@@ -194,13 +178,9 @@ def register_inventory_tools(app_mcp: AppMcp) -> None:
     @app_mcp.tool(
         name="import_inventory_csv",
         description=(
-            "Read a UTF-8 CSV from an absolute path on the MCP server's filesystem and import "
-            "rows into the named inventory. "
-            "CSV must include a Scryfall id column (e.g. ``scryfall id``, ``SCRYFALL_ID``, "
-            "``id``). Optional ``count`` / ``quantity`` column; if missing or blank, each row "
-            "counts as 1. "
-            "Unknown Scryfall ids are skipped; returns their list in ``unknown_scryfall_ids``. "
-            "Fails if more than ``inventory_import_max_unknown_scryfall_ids`` distinct unknown ids."
+            "Import UTF-8 CSV from a server path into an inventory. "
+            "Requires a Scryfall id column; optional ``count``/``quantity`` (default 1 per row). "
+            "Unknown ids are skipped and listed in ``unknown_scryfall_ids`` (server cap applies)."
         ),
         annotations=ToolAnnotations(
             readOnlyHint=False,
@@ -212,7 +192,7 @@ def register_inventory_tools(app_mcp: AppMcp) -> None:
     async def import_inventory_csv(
         csv_file_path: Annotated[
             str,
-            Field(description="Absolute path to the CSV file on the MCP server host."),
+            Field(description="Absolute path to the CSV on the server."),
         ],
         inventory_name: Annotated[
             str,
@@ -248,13 +228,8 @@ def register_inventory_tools(app_mcp: AppMcp) -> None:
     @app_mcp.tool(
         name="import_inventory_csv_content",
         description=(
-            "Import inventory rows from UTF-8 CSV text sent directly from the client. "
-            "Use this when the CSV file was picked in a UI and its content was read client-side. "
-            "CSV must include a Scryfall id column (e.g. ``scryfall id``, ``SCRYFALL_ID``, "
-            "``id``). Optional ``count`` / ``quantity`` column; if missing or blank, each row "
-            "counts as 1. "
-            "Unknown Scryfall ids are skipped; returns their list in ``unknown_scryfall_ids``. "
-            "Fails if more than ``inventory_import_max_unknown_scryfall_ids`` distinct unknown ids."
+            "Import UTF-8 CSV text into an inventory. "
+            "Same column rules as ``import_inventory_csv``; unknown ids skipped and reported."
         ),
         annotations=ToolAnnotations(
             readOnlyHint=False,
@@ -266,7 +241,7 @@ def register_inventory_tools(app_mcp: AppMcp) -> None:
     async def import_inventory_csv_content(
         csv_content: Annotated[
             str,
-            Field(description="Full UTF-8 text of the CSV file."),
+            Field(description="Full UTF-8 CSV body."),
         ],
         inventory_name: Annotated[
             str,
@@ -297,10 +272,8 @@ def register_inventory_tools(app_mcp: AppMcp) -> None:
     @app_mcp.tool(
         name="remove_inventory_cards",
         description=(
-            "Remove catalog printings from an inventory by Scryfall printing id "
-            "(each list entry removes one copy; duplicates remove more). "
-            "Counts cannot go below zero. Returns only ok. "
-            "The reserved name _default is not allowed."
+            "Remove copies by Scryfall printing id (one per list element). "
+            "Quantities do not go below zero. ``_default`` is not allowed."
         ),
         annotations=ToolAnnotations(
             readOnlyHint=False,

@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 
 class MtgjsonFetchEditionLine(BaseModel):
-    """One edition row within a fetch job (poll payload)."""
+    """Per-edition state inside a fetch job."""
 
     set_code: str
     state: Literal["requested", "inprogress", "done"]
@@ -18,7 +18,7 @@ class MtgjsonFetchEditionLine(BaseModel):
 
 
 class MtgjsonFetchJobStatusResponse(BaseModel):
-    """Current job state for ``get_mtgjson_fetch_job``."""
+    """Job row plus edition lines for polling."""
 
     job_id: str
     started_at: str | None = None
@@ -28,14 +28,14 @@ class MtgjsonFetchJobStatusResponse(BaseModel):
 
 
 class EnqueueMtgjsonFetchResponse(BaseModel):
-    """Result of ``enqueue_mtgjson_fetch``."""
+    """Job id returned after enqueueing a fetch."""
 
     status: Literal["ok"] = "ok"
     job_id: str
 
 
 class OpenMtgjsonFetchUiResponse(BaseModel):
-    """Result of ``open_mtgjson_fetch_ui`` (opens MCP App only; does not start a job)."""
+    """Handshake payload for ``begin_mtgjson_fetch``."""
 
     ready: Literal[True] = True
 

@@ -24,10 +24,7 @@ def register_tags_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="list_tags",
-        description=(
-            "List all user-defined tags. Tags have descriptions indicating their intent"
-            "Tags can be applied to cards to organise them by intent or theme."
-        ),
+        description="List tags with names, descriptions, and sweep filter settings.",
         annotations=ToolAnnotations(
             readOnlyHint=True,
             destructiveHint=False,
@@ -60,11 +57,7 @@ def register_tags_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="create_tag",
-        description=(
-            "Create a new tag with a name and description. "
-            "Names are stored trimmed and lowercased. "
-            "Raises an error if a tag with that name already exists."
-        ),
+        description="Create a tag (name stored trimmed/lowercase; error if it already exists).",
         annotations=ToolAnnotations(
             readOnlyHint=False,
             destructiveHint=False,
@@ -75,28 +68,22 @@ def register_tags_tools(app_mcp: AppMcp) -> None:
     async def create_tag(
         name: Annotated[
             str,
-            Field(description="Tag name (e.g. 'ramp', 'removal'). Stored lowercase."),
+            Field(description="Tag name (stored lowercase)."),
         ],
         description: Annotated[
             str,
-            Field(description="Description of the tag's intent for the agent to understand."),
+            Field(description="What this tag means for sweeps and tagging."),
         ],
         sweep_include_types: Annotated[
             list[str],
             Field(
-                description=(
-                    "Card types the sweep should be restricted to "
-                    "(e.g. ['creature', 'artifact']). Omit or pass empty to sweep all types."
-                ),
+                description="Restrict sweeps to these card types; empty = all types.",
             ),
         ] = [],
         sweep_include_supertypes: Annotated[
             list[str],
             Field(
-                description=(
-                    "Card supertypes the sweep should be restricted to "
-                    "(e.g. ['legendary']). Omit or pass empty to sweep all supertypes."
-                ),
+                description="Restrict sweeps to these supertypes; empty = all.",
             ),
         ] = [],
     ) -> Tag:
@@ -120,10 +107,7 @@ def register_tags_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="update_tag",
-        description=(
-            "Update an existing tag's description. "
-            "Tag name is matched case-insensitively; the tag must already exist."
-        ),
+        description="Update a tag's description (name matched case-insensitively).",
         annotations=ToolAnnotations(
             readOnlyHint=False,
             destructiveHint=False,
@@ -138,7 +122,7 @@ def register_tags_tools(app_mcp: AppMcp) -> None:
         ],
         description: Annotated[
             str,
-            Field(description="New description of the tag's intent for agents and sweeps."),
+            Field(description="Replacement description text."),
         ],
     ) -> Tag:
         if not description.strip():
@@ -154,10 +138,7 @@ def register_tags_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="tag_cards",
-        description=(
-            "Apply a tag to one or more cards by oracle ID. "
-            "Use ``oracle_id`` from card search results."
-        ),
+        description="Attach a tag to oracle ids (from card search when verbose).",
         annotations=ToolAnnotations(
             readOnlyHint=False,
             destructiveHint=False,
@@ -169,7 +150,7 @@ def register_tags_tools(app_mcp: AppMcp) -> None:
         tag_name: Annotated[str, Field(description="Tag name to apply (case-insensitive).")],
         oracle_ids: Annotated[
             list[str],
-            Field(description="List of oracle IDs of the cards to tag."),
+            Field(description="Oracle ids to tag."),
         ],
     ) -> Literal["ok"]:
         async with app_mcp.session() as session:
@@ -182,10 +163,7 @@ def register_tags_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="untag_cards",
-        description=(
-            "Remove a tag from one or more cards by oracle ID. "
-            "The tag is lifted from the card identity, affecting all printings."
-        ),
+        description="Remove a tag from oracle ids (oracle identity, all printings).",
         annotations=ToolAnnotations(
             readOnlyHint=False,
             destructiveHint=True,
@@ -197,7 +175,7 @@ def register_tags_tools(app_mcp: AppMcp) -> None:
         tag_name: Annotated[str, Field(description="Tag name to remove (case-insensitive).")],
         oracle_ids: Annotated[
             list[str],
-            Field(description="List of oracle IDs of the cards to untag."),
+            Field(description="Oracle ids to untag."),
         ],
     ) -> Literal["ok"]:
         async with app_mcp.session() as session:

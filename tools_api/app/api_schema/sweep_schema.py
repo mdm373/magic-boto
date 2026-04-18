@@ -16,7 +16,7 @@ class SweepEnqueueResult(BaseModel):
 
 
 class CleanTagSweepResetResult(BaseModel):
-    """Result of a full tag sweep clean reset (assignments + sweep state)."""
+    """Counters from ``clean_reset_tag_sweep``."""
 
     tag_name: str
     deleted_sweep_id: str | None
@@ -44,7 +44,7 @@ class SweepStatusResponse(BaseModel):
 
 
 class SweepListRow(SweepStatusResponse):
-    """One row in ``list_sweeps`` — same shape as :class:`SweepStatusResponse`."""
+    """Same fields as :class:`SweepStatusResponse` for list endpoints."""
 
 
 class SweepListResponse(BaseModel):
@@ -59,7 +59,7 @@ class GlobalSweepCatchupTagResult(BaseModel):
 
 
 class GlobalSweepCatchupResult(BaseModel):
-    """Summary of ``enqueue_global_sweep_catchup`` (per-tag outcomes for logs and UI)."""
+    """Aggregate result of ``enqueue_global_sweep_catchup``."""
 
     tags_considered: int
     enqueued_count: int

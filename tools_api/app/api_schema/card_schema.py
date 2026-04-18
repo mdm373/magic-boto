@@ -1,9 +1,12 @@
 """MTGJSON card response and query schemas."""
 
+from collections.abc import Callable
+from typing import Any
+
 from fastapi import Query
 from fastapi_pagination import Page, Params
 from fastapi_pagination.customization import CustomizedPage, UseParams
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_serializer
 
 from app.models.card_rarity import CardRarity
 from app.models.card_side import CardSide
@@ -19,10 +22,9 @@ class CardsPaginationParams(Params):
 
 
 class Card(BaseModel):
-    """MTGJSON card subset for API responses (well-defined schema).
+    """Card row for API and MCP (subset of catalog fields).
 
-    Full HTTP and verbose MCP responses populate all fields. Non-verbose MCP responses
-    set only ``card_id``, ``name``, and ``scryfall_id``; other fields are ``null``.
+    Optional fields may be absent by query mode. ``None`` values are omitted on serialize.
     """
 
     model_config = ConfigDict(title="Card")
@@ -30,16 +32,16 @@ class Card(BaseModel):
     card_id: str = Field(..., description="Internal catalog id")
     name: str = Field(..., description="Card name")
     mana_cost: str | None = Field(None, description="Mana cost (e.g. {2}{U}{U})")
-    mana_value: int | None = Field(None, description="Mana value (formerly CMC).")
+    mana_value: int | None = Field(None, description="Mana value (CMC).")
     set_code: str | None = Field(
         None,
-        description="Set/edition code (e.g. M21). Null when omitted (compact MCP response).",
+        description="Set/edition code (e.g. M21).",
     )
     number: str | None = Field(None, description="Collector number in the set (e.g. 100, 12p)")
     scryfall_id: str = Field(
         ...,
         min_length=1,
-        description="Scryfall printing id (UUID) for this cardboard slip.",
+        description="Scryfall printing id (UUID) for this printing.",
     )
     side: CardSide | None = Field(
         None,
@@ -47,12 +49,12 @@ class Card(BaseModel):
     )
     oracle_id: str | None = Field(
         None,
-        description="Card Definition (Cross Printing) Identifier",
+        description="Scryfall oracle id (card identity across printings).",
     )
     type: str | None = Field(None, description="Card type line")
     power: str | None = Field(None, description="Power text (e.g. 2, *, *+1).")
     toughness: str | None = Field(None, description="Toughness text (e.g. 2, *).")
-    text: str | None = Field(None, description="Oracle / rules text (MTGJSON ``text`` column).")
+    text: str | None = Field(None, description="Oracle / rules text.")
     card_types: list[CardType] | None = Field(
         None,
         description="Standard rulebook card types (e.g. Creature, Artifact).",
@@ -76,11 +78,16 @@ class Card(BaseModel):
     rarity: CardRarity | None = Field(None, description="Printing rarity")
     tags: list[str] | None = Field(
         None,
-        description=(
-            "User-defined tags applied to this card's oracle identity "
-            "(shared across all printings)."
-        ),
+        description="Tags on this oracle identity (all printings).",
     )
+
+    @model_serializer(mode="wrap")
+    def _serialize_strip_none(self, handler: Callable[[Any], Any]) -> Any:
+        """Drop keys whose values are ``None``."""
+        data = handler(self)
+        if not isinstance(data, dict):
+            return data
+        return {k: v for k, v in data.items() if v is not None}
 
 
 class CardsListMetadata(BaseModel):

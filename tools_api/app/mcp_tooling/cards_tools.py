@@ -57,7 +57,7 @@ async def _fetch_card_image(scryfall_id: str) -> bytes:
 
 
 def register_cards_tools(app_mcp: AppMcp) -> None:
-    """Register card MCP tools and UI resource."""
+    """Register card MCP tools and bundled UI resources."""
 
     @app_mcp.mcp.resource(CARD_RESOURCE_URI, name="card_ui", mime_type=_UI_MIME_TYPE)
     def card_ui() -> str:
@@ -74,10 +74,8 @@ def register_cards_tools(app_mcp: AppMcp) -> None:
     @app_mcp.tool(
         name="search_cards",
         description=(
-            "Search MTG cards with explicit optional filters. "
-            "All provided filters are combined with AND. "
-            "By default each hit is a compact Card: only card_id, name, and scryfall_id are set; "
-            "other fields are null (carousel UI). Pass verbose=true to populate all fields."
+            "Search the catalog with optional filters (AND). "
+            "Use verbose=true for full card fields; default is a minimal card row."
         ),
         annotations=ToolAnnotations(
             readOnlyHint=True,
@@ -94,18 +92,14 @@ def register_cards_tools(app_mcp: AppMcp) -> None:
     ) -> CardsPage:
         query = CardSearchQuery(filters=filters, pagination=pagination)
         async with app_mcp.session() as session:
-            page = await _card_service.search_cards(
-                session, query, summary_only=not verbose
-            )
+            page = await _card_service.search_cards(session, query, summary_only=not verbose)
             return cast(CardsPage, page)
 
     @app_mcp.tool(
         name="get_card",
         description=(
-            "Get one card by internal catalog id (``card_id`` from search results). "
-            "Unique per printing and avoids the ambiguity of Scryfall id on flip/split cards. "
-            "By default returns a compact Card (only card_id, name, scryfall_id; "
-            "other fields null). Pass verbose=true to populate all fields."
+            "Get one card by internal ``card_id`` (one row per printing). "
+            "Use verbose=true for full fields; default is minimal."
         ),
         annotations=ToolAnnotations(
             readOnlyHint=True,
@@ -124,7 +118,7 @@ def register_cards_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="get_card_image",
-        description="Renders a Magic card image in the UI by Scryfall ID.",
+        description="Fetch JPEG artwork for a Scryfall printing id (UUID).",
     )
     async def show_card_image(scryfall_id: str) -> ImageContent:
         image_bytes = await _fetch_card_image(scryfall_id)

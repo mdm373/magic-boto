@@ -45,7 +45,7 @@ def ensure_mcp_logging() -> None:
 
 
 def mcp_cors_origins_from_env() -> list[str]:
-    """Comma-separated list, or * (default) for browser MCP clients."""
+    """Parse ``TOOLS_MCP_CORS_ORIGINS`` (comma list or ``*``)."""
     raw = os.environ.get("TOOLS_MCP_CORS_ORIGINS", "*").strip()
     if not raw:
         return ["*"]
@@ -82,7 +82,7 @@ def _env_flag(name: str) -> bool:
 
 
 def create_mcp_server(*, streamable_http: bool) -> FastMCP[dict[str, Any]]:
-    """Build FastMCP with tools and DB lifespan. ``json_response`` only for streamable HTTP."""
+    """Construct FastMCP with tool registration and DB lifespan."""
     ensure_mcp_logging()
     host = os.environ.get("TOOLS_MCP_HOST", "127.0.0.1")
     port = int(os.environ.get("TOOLS_MCP_PORT", "8765"))
@@ -107,7 +107,9 @@ def create_mcp_server(*, streamable_http: bool) -> FastMCP[dict[str, Any]]:
 
     mcp = FastMCP(
         "Magic Boto Tools",
-        instructions=("MTG card, edition, and inventory name lookup"),
+        instructions=(
+            "MTG catalog: cards, editions, inventories, tags, sweeps, audits, MTGJSON fetch jobs."
+        ),
         lifespan=mcp_lifespan,
         host=host,
         port=port,

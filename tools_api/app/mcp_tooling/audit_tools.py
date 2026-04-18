@@ -38,7 +38,7 @@ def _read_ui(filename: str) -> str:
 
 
 def register_audit_tools(app_mcp: AppMcp) -> None:
-    """Register audit MCP tools and UI resource."""
+    """Register audit MCP tools and bundled UI resources."""
 
     @app_mcp.mcp.resource(_AUDIT_RESOURCE_URI, name="audit_ui", mime_type=_UI_MIME_TYPE)
     def audit_ui() -> str:
@@ -47,8 +47,7 @@ def register_audit_tools(app_mcp: AppMcp) -> None:
     @app_mcp.tool(
         name="get_tag_audit",
         description=(
-            "Return an audit by ID or the latest audit for a tag by name. "
-            "Provide exactly one of audit_id or tag_name."
+            "Fetch one audit by ``audit_id`` or the latest audit for ``tag_name`` (one required)."
         ),
         annotations=ToolAnnotations(
             readOnlyHint=True,
@@ -61,13 +60,13 @@ def register_audit_tools(app_mcp: AppMcp) -> None:
     async def get_tag_audit(
         audit_id: Annotated[
             str | None,
-            Field(default=None, description="Audit UUID. Mutually exclusive with tag_name."),
+            Field(default=None, description="Audit UUID; mutually exclusive with ``tag_name``."),
         ] = None,
         tag_name: Annotated[
             str | None,
             Field(
                 default=None,
-                description="Tag name; uses latest audit. Mutually exclusive with audit_id.",
+                description="Tag name (latest audit); mutually exclusive with ``audit_id``.",
             ),
         ] = None,
     ) -> AuditResponse:
@@ -118,9 +117,8 @@ def register_audit_tools(app_mcp: AppMcp) -> None:
     @app_mcp.tool(
         name="apply_audit",
         description=(
-            "Apply the latest completed audit to a tag: updates the tag description from the "
-            "audit suggestion, clears all tagged cards and side tags, resets the sweep epoch, "
-            "and deletes any open sweep run."
+            "Apply the latest completed audit: set tag description from the suggestion, clear "
+            "assignments per flags, and drop any open sweep run."
         ),
         annotations=ToolAnnotations(
             readOnlyHint=False,
@@ -133,11 +131,11 @@ def register_audit_tools(app_mcp: AppMcp) -> None:
         tag_name: Annotated[str, Field(description="Tag name to apply the audit to.")],
         delete_tagged: Annotated[
             bool,
-            Field(description="Delete all card_tag entries for the tag."),
+            Field(description="Clear card–tag rows for this tag."),
         ] = True,
         delete_side_tags: Annotated[
             bool,
-            Field(description="Delete the _unsure and _excluded side tags entirely."),
+            Field(description="Remove ``_unsure`` / ``_excluded`` side tags for this tag."),
         ] = True,
     ) -> ApplyAuditResult:
         async with app_mcp.session() as session:

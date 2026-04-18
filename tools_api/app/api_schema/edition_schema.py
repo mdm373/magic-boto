@@ -4,17 +4,17 @@ from pydantic import BaseModel, Field
 
 
 class EditionsQuery(BaseModel):
-    """Query params for listing editions (extensible)."""
+    """Filters for listing editions."""
 
     set_code: str | None = Field(
         default=None,
         min_length=1,
-        description="Exact edition/set code (e.g. M21).",
+        description="Exact set code (e.g. M21).",
     )
     name: str | None = Field(
         default=None,
         min_length=1,
-        description="Fuzzy search on edition name (case-insensitive substring).",
+        description="Case-insensitive substring on edition name.",
     )
 
     def is_empty(self) -> bool:
@@ -23,7 +23,7 @@ class EditionsQuery(BaseModel):
 
 
 class Edition(BaseModel):
-    """MTGJSON edition (set) for API responses."""
+    """One edition (set) row."""
 
-    set_code: str = Field(..., min_length=1, description="Edition/set code (e.g. M21)")
-    name: str = Field("", description="Edition/set display name")
+    set_code: str = Field(..., min_length=1, description="Set code (e.g. M21).")
+    name: str = Field("", description="Display name.")

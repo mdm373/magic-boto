@@ -44,7 +44,7 @@ def _iso(dt: datetime | None) -> str | None:
 
 
 def register_mtgjson_fetch_tools(app_mcp: AppMcp) -> None:
-    """Register MTGJSON fetch MCP tools and MCP App UI resource."""
+    """Register MTGJSON fetch MCP tools and bundled UI resource."""
 
     @app_mcp.mcp.resource(_FETCH_UI_URI, name="mtgjson_fetch_ui", mime_type=_UI_MIME_TYPE)
     def mtgjson_fetch_ui() -> str:
@@ -52,10 +52,7 @@ def register_mtgjson_fetch_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="begin_mtgjson_fetch",
-        description=(
-            "Open the MTGJSON async fetch dashboard to start a job fetching new sets and cards."
-            "``enqueue_mtgjson_fetch``."
-        ),
+        description="Return ``{ready: true}`` as the fetch-job tool bundle entrypoint.",
         annotations=ToolAnnotations(
             readOnlyHint=True,
             destructiveHint=False,
@@ -69,7 +66,10 @@ def register_mtgjson_fetch_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="enqueue_ui_triggered_mtgjson_fetch",
-        description=("DO NOT USE THIS"),
+        description=(
+            "Create an MTGJSON fetch job from comma-separated set codes "
+            "(empty → SLD) and enqueue processing."
+        ),
         annotations=ToolAnnotations(
             readOnlyHint=False,
             destructiveHint=False,
@@ -82,10 +82,7 @@ def register_mtgjson_fetch_tools(app_mcp: AppMcp) -> None:
             str,
             Field(
                 default="",
-                description=(
-                    "Comma-separated MTGJSON set codes to seed as ``requested`` edition rows "
-                    "(cache-bust re-import when already in DB). Leave empty to default to ``SLD``."
-                ),
+                description="Comma-separated set codes to fetch (empty uses SLD).",
             ),
         ] = "",
     ) -> EnqueueMtgjsonFetchResponse:
@@ -103,10 +100,7 @@ def register_mtgjson_fetch_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="get_mtgjson_fetch_job",
-        description=(
-            "Return the current state of an MTGJSON fetch job and its per-edition rows. "
-            "Poll until ``ended_at`` is non-null."
-        ),
+        description="Fetch job status and per-edition rows; poll until ``ended_at`` is set.",
         annotations=ToolAnnotations(
             readOnlyHint=True,
             destructiveHint=False,
@@ -117,7 +111,7 @@ def register_mtgjson_fetch_tools(app_mcp: AppMcp) -> None:
     async def get_mtgjson_fetch_job(
         job_id: Annotated[
             str,
-            Field(description="Job UUID returned by ``enqueue_mtgjson_fetch``."),
+            Field(description="Job UUID from ``enqueue_ui_triggered_mtgjson_fetch``."),
         ],
     ) -> MtgjsonFetchJobStatusResponse:
         from uuid import UUID

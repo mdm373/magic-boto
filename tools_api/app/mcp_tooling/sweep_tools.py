@@ -166,7 +166,7 @@ def _read_ui(filename: str) -> str:
 
 
 def register_sweep_tools(app_mcp: AppMcp) -> None:
-    """Register sweep MCP tools and UI resource."""
+    """Register sweep MCP tools and bundled UI resources."""
 
     @app_mcp.mcp.resource(_SWEEP_RESOURCE_URI, name="sweep_ui", mime_type=_UI_MIME_TYPE)
     def sweep_ui() -> str:
@@ -181,10 +181,8 @@ def register_sweep_tools(app_mcp: AppMcp) -> None:
     @app_mcp.tool(
         name="enqueue_tag_sweep",
         description=(
-            "Trigger an async sweep that evaluates eligible cards against the tag description "
-            "and applies the tag to matches. "
-            "Always ask the user how many cards to sweep (limit) before calling this tool — "
-            "do not assume or infer a value."
+            "Start an async tag sweep over eligible catalog cards. "
+            "``limit`` must be chosen explicitly (0 = all eligible)."
         ),
         annotations=ToolAnnotations(
             readOnlyHint=False,
@@ -199,17 +197,13 @@ def register_sweep_tools(app_mcp: AppMcp) -> None:
         limit: Annotated[
             int,
             Field(
-                description=(
-                    "Number of cards to sweep. Must be explicitly provided by the user — "
-                    "do not default or infer this value. "
-                    "0 means the entire eligible catalog (can be tens of thousands of cards)."
-                ),
+                description="Max cards to sweep; 0 means all eligible (may be very large).",
                 ge=0,
             ),
         ],
         audit_after: Annotated[
             bool,
-            Field(description="Run an audit sweep automatically after processing completes."),
+            Field(description="Chain an audit after the sweep finishes."),
         ] = True,
     ) -> SweepEnqueueResult:
         request = SweepKickoffRequest(
@@ -238,11 +232,8 @@ def register_sweep_tools(app_mcp: AppMcp) -> None:
     @app_mcp.tool(
         name="clean_reset_tag_sweep",
         description=(
-            "Full reset before a new sweep for a tag: removes all ``card_tags`` for the tag "
-            "and its ``_unsure`` / ``_excluded`` side tags (then deletes those side tag rows), "
-            "deletes all ``tag_audit`` rows for the tag (and their linked batches), "
-            "deletes sweep batch history, clears the sweep epoch gate, and removes any open "
-            "sweep run. Does not change the main tag description. Then call enqueue_tag_sweep."
+            "Clear tag assignments, side tags, audits, and sweep state for a tag so a fresh "
+            "sweep can run. Does not change the main tag description."
         ),
         annotations=ToolAnnotations(
             readOnlyHint=False,
@@ -270,8 +261,7 @@ def register_sweep_tools(app_mcp: AppMcp) -> None:
     @app_mcp.tool(
         name="get_sweep_status",
         description=(
-            "Return the current status of a tag sweep run. "
-            "Provide exactly one of sweep_id (from enqueue_tag_sweep) or tag_name."
+            "Current status of one sweep; pass exactly one of ``sweep_id`` or ``tag_name``."
         ),
         annotations=ToolAnnotations(
             readOnlyHint=True,
@@ -286,19 +276,14 @@ def register_sweep_tools(app_mcp: AppMcp) -> None:
             str | None,
             Field(
                 default=None,
-                description=(
-                    "Sweep run UUID from enqueue_tag_sweep. Mutually exclusive with tag_name."
-                ),
+                description="Sweep run UUID; mutually exclusive with ``tag_name``.",
             ),
         ] = None,
         tag_name: Annotated[
             str | None,
             Field(
                 default=None,
-                description=(
-                    "Tag name (canonical); resolves that tag's sweep row. "
-                    "Mutually exclusive with sweep_id."
-                ),
+                description="Tag name; mutually exclusive with ``sweep_id``.",
             ),
         ] = None,
     ) -> SweepStatusResponse:
@@ -321,10 +306,7 @@ def register_sweep_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="list_sweeps",
-        description=(
-            "List status for every tag that has a recorded tag sweep (``tag_sweep`` row). "
-            "Read-only; use from the sweep-catchup status UI to poll progress."
-        ),
+        description="Status snapshot for every tag that has a sweep run recorded.",
         annotations=ToolAnnotations(
             readOnlyHint=True,
             destructiveHint=False,
@@ -350,12 +332,9 @@ def register_sweep_tools(app_mcp: AppMcp) -> None:
     @app_mcp.tool(
         name="enqueue_global_sweep_catchup",
         description=(
-            "For every tag that already has a ``tag_sweep`` row: prune ``_unsure`` / ``_excluded`` "
-            "side tags, all audits, and prior sweep batch rows; then reopen/init the sweep with "
-            "``audit_after=false``, ``include_unsure=false``, ``include_excluded=false`` (no new "
-            "side tags during processing), and enqueue Celery materialization for the **entire** "
-            "incremental-eligible catalog per tag (same as ``limit=0`` on ``enqueue_tag_sweep``). "
-            "Opens the read-only sweep-catchup status UI via tool meta."
+            "For each tag with a sweep row: prune side tags and sweep/audit artifacts, then "
+            "re-queue full incremental-eligible catch-up per tag "
+            "(no audit; no new unsure/excluded)."
         ),
         annotations=ToolAnnotations(
             readOnlyHint=False,

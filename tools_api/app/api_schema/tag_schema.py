@@ -8,44 +8,32 @@ from pydantic import BaseModel, Field
 
 
 class Tag(BaseModel):
-    """A user-defined tag that can be applied to cards."""
+    """User-defined tag metadata."""
 
-    name: str = Field(description="Canonical (lowercase, trimmed) tag name.")
-    description: str = Field(description="Human-readable description of the tag's intent.")
+    name: str = Field(description="Canonical tag name (lowercase, trimmed).")
+    description: str = Field(description="What the tag means for sweeps and tagging.")
     sweep_include_types: Sequence[str] = Field(
         default=(),
-        description=(
-            "Card types the sweep is restricted to (e.g. 'creature', 'artifact'). "
-            "Empty means all types are included."
-        ),
+        description="Sweep only these card types; empty = no type restriction.",
     )
     sweep_include_supertypes: Sequence[str] = Field(
         default=(),
-        description=(
-            "Card supertypes the sweep is restricted to (e.g. 'legendary'). "
-            "Empty means all supertypes are included."
-        ),
+        description="Sweep only these supertypes; empty = no supertype restriction.",
     )
 
 
 class CreateTagRequest(BaseModel):
-    name: str = Field(description="Tag name. Stored trimmed and lowercased.")
-    description: str = Field(description="Description of the tag's intent.")
+    name: str = Field(description="Tag name (stored trimmed, lowercased).")
+    description: str = Field(description="Tag intent / sweep guidance text.")
     sweep_include_types: Sequence[str] = Field(
         default=(),
-        description=(
-            "Card types to restrict the sweep to (e.g. ['creature', 'artifact']). "
-            "Omit or pass empty to sweep all card types."
-        ),
+        description="Restrict sweeps to these card types; empty = all types.",
     )
     sweep_include_supertypes: Sequence[str] = Field(
         default=(),
-        description=(
-            "Card supertypes to restrict the sweep to (e.g. ['legendary']). "
-            "Omit or pass empty to sweep all supertypes."
-        ),
+        description="Restrict sweeps to these supertypes; empty = all.",
     )
 
 
 class CardTagRequest(BaseModel):
-    oracle_ids: list[str] = Field(description="Oracle IDs of the cards to tag or untag.")
+    oracle_ids: list[str] = Field(description="Oracle ids to tag or untag.")

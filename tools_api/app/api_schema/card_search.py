@@ -68,16 +68,12 @@ def _normalize_inventory_name(value: str | None) -> str | None:
 
 
 class CardSearchFilters(BaseModel):
-    """Optional filters for card search. Populated fields are ANDed together."""
+    """Optional card search filters (AND)."""
 
     distinct_oracle: bool = Field(
         default=False,
         title="Distinct Oracle",
-        description=(
-            "When true, return at most one printing per oracle identity. "
-            "Results are ordered by oracle_id then name for stable pagination. "
-            "Useful for iterating over the full card catalog without printing duplicates."
-        ),
+        description="At most one printing per oracle id (stable order for paging the catalog).",
     )
     mana_value_eq: int | None = Field(
         default=None,
@@ -107,19 +103,17 @@ class CardSearchFilters(BaseModel):
     scryfall_id: uuid.UUID | None = Field(
         default=None,
         title="Scryfall Id",
-        description="Exact match on Scryfall printing id (same UUID as in card responses).",
+        description="Exact Scryfall printing id.",
     )
     oracle_id: uuid.UUID | None = Field(
         default=None,
         title="Oracle Id",
-        description="Cross-printing Scryfall oracle id.",
+        description="Exact Scryfall oracle id.",
     )
     inventory_name: str | None = Field(
         default=None,
         title="Inventory Name",
-        description=(
-            "Limit results to cards in the inventory with this name (trimmed, lowercase)."
-        ),
+        description="Only cards in this inventory (canonical name).",
     )
     rarity: CardRarity | None = Field(
         default=None,
@@ -129,47 +123,47 @@ class CardSearchFilters(BaseModel):
     subtype: str | None = Field(
         default=None,
         title="Subtype",
-        description="Require a single subtype (trimmed, lowercased).",
+        description="Require this subtype token.",
     )
     subtype_one_of: list[str] | None = Field(
         default=None,
         title="Subtype (One Of)",
-        description="Require at least one subtype from this list (each trimmed, lowercased).",
+        description="Require at least one of these subtype tokens (OR).",
     )
     subtype_all_of: list[str] | None = Field(
         default=None,
         title="Subtype (All Of)",
-        description="Require all listed subtypes (each trimmed, lowercased).",
+        description="Require all of these subtype tokens (AND).",
     )
     keyword: str | None = Field(
         default=None,
         title="Keyword",
-        description=("Require a single keyword ability (trimmed, lowercased)."),
+        description="Require this keyword ability token.",
     )
     keyword_one_of: list[str] | None = Field(
         default=None,
         title="Keyword (One Of)",
-        description="Require at least one keyword from this list (OR; each trimmed, lowercased).",
+        description="Require at least one of these keyword tokens (OR).",
     )
     keyword_all_of: list[str] | None = Field(
         default=None,
         title="Keyword (All Of)",
-        description="Require all listed keywords (AND; each trimmed, lowercased).",
+        description="Require all of these keyword tokens (AND).",
     )
     tag: str | None = Field(
         default=None,
         title="Tag",
-        description="Require a single tag on the card's oracle identity (trimmed, lowercased).",
+        description="Require this user tag on the oracle identity.",
     )
     tag_one_of: list[str] | None = Field(
         default=None,
         title="Tag (One Of)",
-        description="Require at least one of these tags (OR; each trimmed, lowercased).",
+        description="Require at least one of these tags (OR).",
     )
     tag_all_of: list[str] | None = Field(
         default=None,
         title="Tag (All Of)",
-        description="Require all of these tags (AND; each trimmed, lowercased).",
+        description="Require all of these tags (AND).",
     )
     super_type: CardSupertype | None = Field(
         default=None,
@@ -179,97 +173,86 @@ class CardSearchFilters(BaseModel):
     set_code: str | None = Field(
         default=None,
         title="Set Code",
-        description="Require a single set code (trimmed, uppercased; matches DB ``setCode``).",
+        description="Require this edition set code.",
     )
     set_code_any_of: list[str] | None = Field(
         default=None,
         title="Set Code (Any Of)",
-        description="Match if set code is any of these (OR; each trimmed, uppercased).",
+        description="Set code is one of these (OR).",
     )
     power_eq: int | None = Field(
         default=None,
         ge=0,
         title="Power (Equal)",
-        description=(
-            "Numeric power from ``public.card_meta`` (plain integer P/T only). "
-            "Cards without a numeric power have no match."
-        ),
+        description="Integer power equal to this (non-numeric powers do not match).",
     )
     power_lt: int | None = Field(
         default=None,
         ge=0,
         title="Power (Less Than)",
-        description="``card_meta.power_number`` strictly less than this value.",
+        description="Integer power strictly less than this value.",
     )
     power_gt: int | None = Field(
         default=None,
         ge=0,
         title="Power (Greater Than)",
-        description="``card_meta.power_number`` strictly greater than this value.",
+        description="Integer power strictly greater than this value.",
     )
     toughness_eq: int | None = Field(
         default=None,
         ge=0,
         title="Toughness (Equal)",
-        description=(
-            "Numeric toughness from ``public.card_meta`` (plain integer P/T only). "
-            "Cards without a numeric toughness have no match."
-        ),
+        description="Integer toughness equal to this (non-numeric toughness does not match).",
     )
     toughness_lt: int | None = Field(
         default=None,
         ge=0,
         title="Toughness (Less Than)",
-        description="``card_meta.toughness_number`` strictly less than this value.",
+        description="Integer toughness strictly less than this value.",
     )
     toughness_gt: int | None = Field(
         default=None,
         ge=0,
         title="Toughness (Greater Than)",
-        description="``card_meta.toughness_number`` strictly greater than this value.",
+        description="Integer toughness strictly greater than this value.",
     )
     power_like: str | None = Field(
         default=None,
         title="Power (Like)",
-        description="Case-insensitive substring match on raw ``mtgjson.cards.power`` text.",
+        description="Case-insensitive substring on printed power text.",
     )
     toughness_like: str | None = Field(
         default=None,
         title="Toughness (Like)",
-        description="Case-insensitive substring match on raw ``mtgjson.cards.toughness`` text.",
+        description="Case-insensitive substring on printed toughness text.",
     )
     text_like: str | None = Field(
         default=None,
         title="Text (Like)",
-        description=(
-            "Case-insensitive substring match on oracle / rules text (``mtgjson.cards.text``)."
-        ),
+        description="Case-insensitive substring on oracle / rules text.",
     )
     number_eq: int | None = Field(
         default=None,
         ge=0,
         title="Collector Number (Equal)",
-        description=(
-            "Numeric collector number from ``public.card_meta.collector_number`` "
-            "(parsed from ``mtgjson.cards.number``). No match if unset in meta."
-        ),
+        description="Numeric collector number equal to this (unparsed numbers do not match).",
     )
     number_lt: int | None = Field(
         default=None,
         ge=0,
         title="Collector Number (Less Than)",
-        description="``card_meta.collector_number`` strictly less than this value.",
+        description="Numeric collector number strictly less than this value.",
     )
     number_gt: int | None = Field(
         default=None,
         ge=0,
         title="Collector Number (Greater Than)",
-        description="``card_meta.collector_number`` strictly greater than this value.",
+        description="Numeric collector number strictly greater than this value.",
     )
     number_like: str | None = Field(
         default=None,
         title="Collector Number (Like)",
-        description="Case-insensitive substring match on raw ``mtgjson.cards.number`` text.",
+        description="Case-insensitive substring on collector number text.",
     )
     color_identity: ColorIdentity | None = Field(
         default=None,
@@ -279,10 +262,7 @@ class CardSearchFilters(BaseModel):
     color_identity_one_of: list[ColorIdentity] | None = Field(
         default=None,
         title="Color Identity (One Of)",
-        description=(
-            "Card's color identity includes at least one of these pips (OR). "
-            "Stored as WUBRG-ordered string; matched by pip presence."
-        ),
+        description="Color identity includes at least one of these pips (OR).",
     )
     color_identity_all_of: list[ColorIdentity] | None = Field(
         default=None,
