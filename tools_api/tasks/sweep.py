@@ -28,7 +28,7 @@ def enqueue(
     no_include_excluded: bool = False,
     audit_after: bool = False,
     audit_tagged_sample: int = 20,
-    audit_excluded_sample: int = 40,
+    audit_excluded_sample: int = 70,
     audit_unsure_sample: int = 10,
 ) -> None:
     """Run ``python -m app.cmd.tag.sweep.enqueue``.

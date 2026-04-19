@@ -33,7 +33,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Poll existing audit until ready and then process it.",
     )
     parser.add_argument("--tagged-sample", type=int, default=20, metavar="N")
-    parser.add_argument("--excluded-sample", type=int, default=40, metavar="N")
+    parser.add_argument("--excluded-sample", type=int, default=70, metavar="N")
     parser.add_argument("--unsure-sample", type=int, default=10, metavar="N")
     return parser
 

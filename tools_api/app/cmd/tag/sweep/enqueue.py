@@ -63,7 +63,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Default path: after sweep process, run audit enqueue and its Celery pipeline.",
     )
     parser.add_argument("--audit-tagged-sample", type=int, default=20, metavar="N")
-    parser.add_argument("--audit-excluded-sample", type=int, default=40, metavar="N")
+    parser.add_argument("--audit-excluded-sample", type=int, default=70, metavar="N")
     parser.add_argument("--audit-unsure-sample", type=int, default=10, metavar="N")
     return parser
 

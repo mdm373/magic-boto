@@ -23,7 +23,7 @@ def enqueue(
     tag: str = "",
     audit_id: str = "",
     tagged_sample: int = 20,
-    excluded_sample: int = 40,
+    excluded_sample: int = 70,
     unsure_sample: int = 10,
 ) -> None:
     """Run ``python -m app.cmd.tag.audit.enqueue`` (new batch or ``--audit-id`` Celery-only)."""

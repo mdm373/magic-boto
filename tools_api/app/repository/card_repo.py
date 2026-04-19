@@ -6,7 +6,6 @@ from collections.abc import Sequence
 from typing import cast
 
 import sqlalchemy as sa
-from fastapi_pagination import Params
 from fastapi_pagination.bases import AbstractPage
 from fastapi_pagination.ext.sqlalchemy import paginate
 from sqlalchemy import and_, func, select, true
@@ -16,6 +15,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.sql import Select
 from sqlalchemy.sql.elements import ColumnElement
 
+from app.api_schema.card_schema import CardsPaginationParams
 from app.models import CardModel, InventoryCardModel, InventoryModel
 
 from .pg_bulk_upsert import orm_columns_dict
@@ -74,7 +74,7 @@ class CardRepo:
             await paginate(
                 session,
                 stmt,
-                params=Params(page=page_number, size=page_size),
+                params=CardsPaginationParams(page=page_number, size=page_size),
             ),
         )
 

@@ -16,6 +16,7 @@ from app.models import (
     CardSupertypeModel,
     CardTagModel,
     CardTypeModel,
+    ColorIdentity,
     TagModel,
 )
 
@@ -320,6 +321,11 @@ def _build_color_identity_filters(
         out.extend(
             CardModel.color_identity.like(f"%{c.value}%") for c in filters.color_identity_all_of
         )
+    if filters.color_identity_only_of:
+        allowed = frozenset(filters.color_identity_only_of)
+        for pip in ColorIdentity:
+            if pip not in allowed:
+                out.append(~CardModel.color_identity.like(f"%{pip.value}%"))
     return out
 
 

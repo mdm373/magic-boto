@@ -7,6 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.api_schema.card_pagination_limits import CARD_CATALOG_MAX_PAGE_SIZE
 from app.models import CardRarity, CardSupertype, CardType, ColorIdentity
 from app.repository.canonical import canonical_name
 
@@ -269,6 +270,11 @@ class CardSearchFilters(BaseModel):
         title="Color Identity (All Of)",
         description="Card's color identity includes every listed pip (AND).",
     )
+    color_identity_only_of: list[ColorIdentity] | None = Field(
+        default=None,
+        title="Color Identity (Only Of)",
+        description="Card's color identity only includes these pips and colorless.",
+    )
     card_type: CardType | None = Field(
         default=None,
         title="Card Type",
@@ -340,6 +346,7 @@ class CardSearchFilters(BaseModel):
     @field_validator(
         "color_identity_one_of",
         "color_identity_all_of",
+        "color_identity_only_of",
         "card_type_one_of",
         "card_type_all_of",
         mode="after",
@@ -354,8 +361,20 @@ class CardSearchFilters(BaseModel):
 class CardSearchPagination(BaseModel):
     """Pagination settings for card search."""
 
-    page_size: int = Field(default=100, ge=1, le=1000, title="Page Size")
+    page_size: int = Field(
+        default=100,
+        ge=1,
+        title="Page Size",
+        description=f"Rows per page; values above {CARD_CATALOG_MAX_PAGE_SIZE} are capped.",
+    )
     page_number: int = Field(default=1, ge=1, title="Page Number")
+
+    @field_validator("page_size", mode="after")
+    @classmethod
+    def _clamp_page_size(cls, value: int) -> int:
+        if value > CARD_CATALOG_MAX_PAGE_SIZE:
+            return CARD_CATALOG_MAX_PAGE_SIZE
+        return value
 
 
 class CardSearchQuery(BaseModel):
