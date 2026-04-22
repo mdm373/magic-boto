@@ -1,6 +1,6 @@
 # magic-boto
 
-> **MCP** for conversational **catalog** and **inventory** queries, **agent-assisted intent tagging**, and **MCP App UI** (carousels, card detail, job progress).
+> An **MCP** for conversational querying of the Magic the Gathering card catalog and personal card collections. Provides tools to run sweeps of agent driven card tagging via Anthropic batch APIs
 
 Connect an MCP-capable agent as in **Setup** below, then talk to it in natural language (catalog, inventory, tagging).
 
@@ -9,13 +9,9 @@ Connect an MCP-capable agent as in **Setup** below, then talk to it in natural l
 ## What it does
 
 - **Card Query:** search and page through the MTG catalog or your personal inventory with filters.
-- **MTGJSON refresh:** update MCP's local catalog of card/edition data from mtgjson.com.
+- **MTGJSON refresh:** update the local catalog of card/edition data from [MTGJSON](https://mtgjson.com/).
 - **Inventory:** import card collection CSVs as inventories to search against.
-- **Tags:** define and apply **intent** labels on cards (e.g. ramp, removal) using anthropic models.
-
-The catalog comes from [MTGJSON](https://mtgjson.com). Tags are refined with agent help and stored with card data for search and deck workflows.
-
-More detail: [docs/PROJECT-PLAN.md](docs/PROJECT-PLAN.md). Contributors: [AGENTS.md](AGENTS.md).
+- **Tags:** define and apply **intent** tags (e.g. ramp, removal) accross the card catalog using anthropic models.
 
 ---
 
@@ -67,6 +63,25 @@ uv run invoke migrate
 
 - **Streamable HTTP:** `http://localhost:8765/mcp` when the Compose **`tools_mcp`** service is running (use `http://<host>:<TOOLS_MCP_PORT>/mcp` if you changed the port in `.env`).
 - **Stdio:** from **`tools_api`** with the same environment loaded, run `uv run python -m app.cmd.serve_mcp.stdio` and configure the client to launch that command (see the client’s MCP docs).
+  - Example Claude Desktop Config:
+  
+  ```json
+  {
+    "mcpServers": {
+      "magic-boto-tools": {
+        "command": "uv",
+        "args": [
+          "run",
+          "--directory",
+          "{PATH YOU CLONED TO}\\tools_api",
+          "python",
+          "-m",
+          "app.cmd.serve_mcp.stdio"
+        ]
+      }
+    }
+  }
+  ```
 
 Optional: [MCP Inspector](http://localhost:6274) (Compose) to try tools against the HTTP endpoint.
 
