@@ -71,11 +71,6 @@ def _normalize_inventory_name(value: str | None) -> str | None:
 class CardSearchFilters(BaseModel):
     """Optional card search filters (AND)."""
 
-    distinct_oracle: bool = Field(
-        default=False,
-        title="Distinct Oracle",
-        description="At most one printing per oracle id (stable order for paging the catalog).",
-    )
     mana_value_eq: int | None = Field(
         default=None,
         title="Mana Value (Equal)",
@@ -263,17 +258,17 @@ class CardSearchFilters(BaseModel):
     color_identity_one_of: list[ColorIdentity] | None = Field(
         default=None,
         title="Color Identity (One Of)",
-        description="Color identity includes at least one of these pips (OR).",
+        description="Color identity includes at least one of these pips.",
     )
     color_identity_all_of: list[ColorIdentity] | None = Field(
         default=None,
         title="Color Identity (All Of)",
-        description="Card's color identity includes every listed pip (AND).",
+        description="Card's color identity is a superset of these pips.",
     )
     color_identity_only_of: list[ColorIdentity] | None = Field(
         default=None,
         title="Color Identity (Only Of)",
-        description="Card's color identity only includes these pips and colorless.",
+        description="Card's color identity is a subset of these pips and colorless.",
     )
     card_type: CardType | None = Field(
         default=None,
@@ -377,8 +372,24 @@ class CardSearchPagination(BaseModel):
         return value
 
 
+class CardSearchFlags(BaseModel):
+    """Non-filter search behavior toggles (mostly MCP-facing)."""
+
+    verbose: bool = Field(
+        default=False,
+        title="Verbose",
+        description="Return full card fields; default is a minimal card row.",
+    )
+    distinct_oracle: bool = Field(
+        default=False,
+        title="Distinct Oracle",
+        description="At most one printing per oracle id (stable order for paging the catalog).",
+    )
+
+
 class CardSearchQuery(BaseModel):
     """Shared card search request body for HTTP and MCP."""
 
     filters: CardSearchFilters = Field(default_factory=CardSearchFilters)
     pagination: CardSearchPagination = Field(default_factory=CardSearchPagination)
+    flags: CardSearchFlags = Field(default_factory=CardSearchFlags)

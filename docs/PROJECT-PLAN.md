@@ -8,14 +8,14 @@ This document is the **single source of truth** for the magic-boto project: visi
 
 ## Vision and scope
 
-**Goal:** A **data and tools backend** for Magic: The Gathering — card lookup, inventory, and related operations — with a **streamable HTTP MCP** surface so external LLM clients can call tools. **Orchestration and system prompts** live outside this repo (Cursor rules, desktop MCP hosts, Markdown under **`tasks/`**, etc.).
+**Goal:** A **Model Context Protocol (MCP)** server (streamable HTTP) as the **primary** way for LLM clients to drive **conversational card querying** over the **MTG catalog** and **imported inventory** — search, drill into printings, editions, and named collections — and **agent-assisted card intent tagging** (shared labels for roles, strategy, and deck-building intent). **HTTP/OpenAPI** exposes the same domain for scripts and integrations. **Orchestration and system prompts** live outside this repo (Cursor rules, desktop MCP hosts, Markdown under **`tasks/`**, etc.).
 
 - **Data:** A Postgres backend with:
-  - **Card definitions** — loaded into the **`magic_boto`** schema from **MTGJSON** (API v5 / per-set files; see `app.fetch` and `docs/DB-POPULATE-PLAN.md`).
-  - **Your own MTG inventory** — cards you own, in `magic_boto` inventory tables.
+  - **Card definitions** — loaded into the **`magic_boto`** schema from **MTGJSON** (API v5 / per-set files; see `docs/DB-POPULATE-PLAN.md`, `app/services/mtgjson_fetch/`, and `uv run invoke fetch` from `tools_api/`).
+  - **Your own MTG inventory** — cards you own, in `magic_boto` inventory tables (query and mutate via MCP tools).
 - **APIs:** **`tools_api`**
-  - **HTTP:** OpenAPI-described REST endpoints (e.g. MTGJSON card search, editions, inventory).
-  - **MCP:** Same domain logic exposed as MCP tools over **streamable HTTP** (`/mcp` by default).
+  - **MCP:** Domain logic as MCP tools over **streamable HTTP** (`/mcp` by default) — **lead surface** for agents.
+  - **HTTP:** OpenAPI-described REST endpoints (same capabilities for non-MCP callers).
 
 ---
 
@@ -31,8 +31,8 @@ flowchart LR
 ```
 
 - **Postgres** holds the card catalog (MTGJSON) and app schema (inventory, etc.).
-- **tools_api** (container) runs **Uvicorn** for `app.http.main:app` on one port.
-- **tools_mcp** (same image, second service) runs **Uvicorn** for `app.mcp.asgi:app` on **`TOOLS_MCP_PORT`** (default **8765**).
+- **tools_api** (container) runs **Uvicorn** for `app.cmd.serve_http:app` on one port.
+- **tools_mcp** (same image, second service) runs **Uvicorn** for `app.cmd.serve_mcp.asgi:app` on **`TOOLS_MCP_PORT`** (default **8765**).
 - **No in-repo agent or chat UI**; connect any MCP-capable host to the MCP URL (see root **`docker-compose.yml`** and **`AGENTS.md`**).
 
 ### Rules and validation
@@ -82,12 +82,52 @@ Root **`docker-compose.yml`** brings up **Postgres**, **tools_api**, **tools_mcp
 |------|---------|
 | `docs/` | Project plan and design notes. |
 | `tasks/` | Optional Markdown instructions / prompts for human or agent workflows (not loaded by the server automatically). |
-| `tools_api/` | HTTP app, MCP ASGI app, DB, migrations, Invoke tasks, Dockerfile. |
-| `scripts/` | Miscellaneous helper scripts (repo root). |
+| `tools-ui/` | Vite/React sources for MCP App UIs; build outputs are copied into `tools_api/app/mcp_tooling/ui_dist/`. |
+| `tools_api/` | HTTP app, MCP ASGI app, DB, migrations, Invoke tasks, Dockerfile, Celery worker code. |
 
 ### IDE and Python env
 
 Open **`magic-boto.code-workspace`**. Use the **tools_api** folder’s interpreter (`.venv` under `tools_api/` after `uv sync`). Run **Ruff** and **mypy** from **`tools_api/`**.
+
+### `tools_api/app/` layout (post-restructure)
+
+The older `app/http/`, `app/mcp/`, `app/schema/`, `app/fetch/`, `app/tag/` tree is **gone**. Current boundaries:
+
+- **`app/cmd/`** — CLIs and ASGI/HTTP entrypoints (`serve_http`, `serve_mcp`, Celery, tag sweep/audit, inventory, fetch).
+- **`app/http_routing/`** — FastAPI routers.
+- **`app/mcp_tooling/`** — MCP server wiring (`server.py`), tools (`*_tools.py`), middleware.
+- **`app/api_schema/`** — Pydantic request/response models (HTTP + MCP).
+- **`app/services/`** — Domain logic (including `mtgjson_fetch/`).
+- **`app/models/`**, **`app/db.py`** — SQLAlchemy ORM and session setup.
+
+---
+
+## Tag sweep, audit, and shared batches
+
+Oracle tag **sweep** and **audit** use the Anthropic Messages Batch API. Shared batch lifecycle rows live in **`magic_boto.batches`**; sweep runs use **`magic_boto.tag_sweep`** and related join tables; audits use **`magic_boto.tag_audit`** (linked to a batch). Implementation: `app/models/batch_model.py`, `tag_audit_model.py`, `sweep_run_model.py`, `sweep_run_batch_model.py`, `sweep_run_batch_card_model.py`, plus repos and services under `app/services/` and `app/repository/`.
+
+**Operator entrypoints (from `tools_api/`):**
+
+- **`uv run invoke sweep.enqueue`** — enqueue sweep work (see task for flags; Celery continues the pipeline after submit).
+- **`uv run invoke sweep.process`** / **`sweep.reset`** — process results or full reset for a tag.
+- **`uv run invoke audit.enqueue`** — start or continue an audit (see task for `--audit-id`).
+- **`uv run invoke batch.poll`** — enqueue Celery polling for batch UUIDs.
+
+MCP tools for the same domain live under `app/mcp_tooling/sweep_tools.py` and `audit_tools.py` (e.g. enqueue / reset helpers).
+
+---
+
+## MTGJSON ingestion
+
+- **Sync CLI:** `uv run invoke fetch` → `app/cmd/fetch.py` and `app/services/mtgjson_fetch/` (full-catalog style ingest as implemented there).
+- **Async jobs (DB + Celery):** tables `mtgjson_fetch_jobs` / `mtgjson_fetch_job_editions`, worker `app/worker/process_mtgjson_fetch.py`, MCP tools in `app/mcp_tooling/mtgjson_fetch_tools.py`, UI page built from `tools-ui` into `app/mcp_tooling/ui_dist/`.
+
+---
+
+## Further reading
+
+- **[DB-POPULATE-PLAN.md](DB-POPULATE-PLAN.md)** — schema + how to load catalog data.
+- **[sweep-cost-optimisations.md](sweep-cost-optimisations.md)** — historical notes and **backlog** ideas for sweep cost/quality (not all implemented).
 
 ---
 

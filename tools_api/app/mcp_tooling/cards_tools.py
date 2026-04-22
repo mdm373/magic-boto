@@ -13,6 +13,7 @@ from app import SERVICE_ROOT
 from app.api_schema import (
     Card,
     CardSearchFilters,
+    CardSearchFlags,
     CardSearchPagination,
     CardSearchQuery,
     CardsPage,
@@ -75,7 +76,7 @@ def register_cards_tools(app_mcp: AppMcp) -> None:
         name="search_cards",
         description=(
             "Search the catalog with optional filters (AND). "
-            "Use verbose=true for full card fields; default is a minimal card row."
+            "Use flags.verbose=true for full card fields; default is a minimal card row."
         ),
         annotations=ToolAnnotations(
             readOnlyHint=True,
@@ -88,11 +89,11 @@ def register_cards_tools(app_mcp: AppMcp) -> None:
     async def search_cards(
         filters: CardSearchFilters = CardSearchFilters(),
         pagination: CardSearchPagination = CardSearchPagination(),
-        verbose: bool = False,
+        flags: CardSearchFlags = CardSearchFlags(),
     ) -> CardsPage:
-        query = CardSearchQuery(filters=filters, pagination=pagination)
+        query = CardSearchQuery(filters=filters, pagination=pagination, flags=flags)
         async with app_mcp.session() as session:
-            page = await _card_service.search_cards(session, query, summary_only=not verbose)
+            page = await _card_service.search_cards(session, query)
             return cast(CardsPage, page)
 
     @app_mcp.tool(

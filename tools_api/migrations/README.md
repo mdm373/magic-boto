@@ -1,17 +1,36 @@
-# Migrations
+# Alembic migrations (`tools_api/migrations/`)
 
-## What these migrations do
+## Apply or revert
 
-Alembic revisions under `tools_api/migrations/versions/` manage the **`magic_boto`** schema (editions, cards, junction tables, inventory, and related CHECK constraints).
+From **`tools_api/`**:
 
-They do **not** require the legacy `mtgjson` app tables. Load catalog data with the **fetch/ingest** pipeline (`app.fetch`) after the schema exists.
+```powershell
+uv run invoke migrate          # upgrade to head
+uv run invoke migrate.down     # downgrade one revision
+uv run invoke migrate.create   # new revision (prompts for message)
+```
 
-## Commands
+Or directly:
 
-Run from the `tools_api/` directory with `POSTGRES_*` set in the environment (see repo `.env.example`).
+```powershell
+uv run alembic upgrade head
+uv run alembic downgrade -1
+```
 
-- Apply all: `uv run alembic upgrade head`
-- Roll back one: `uv run alembic downgrade -1`
-- Current: `uv run alembic current`
+**Do not run upgrades or downgrades against a shared database unless the project owner confirms.**
 
-Or use the Invoke wrapper from `tools_api/`: `uv run invoke migrate` (same as `alembic upgrade head`).
+## Layout
+
+- **`alembic.ini`** — Alembic config (paths relative to `tools_api/`).
+- **`versions/`** — one file per revision: `YYYYMMDD_<rev>_<slug>.py`.
+- **`check_constraints.py`** — helpers for `TEXT` + `CHECK` “enum” columns (see existing revisions).
+
+## Reference schema dump
+
+After migrating a local DB, you can refresh the checked-in snapshot:
+
+```powershell
+uv run invoke export.db-schema
+```
+
+Writes `tools_api/debug/schema.sql` (do not hand-edit; regenerate only).

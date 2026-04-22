@@ -12,8 +12,9 @@ Treat the **Magic Boto MCP** as the **only** supported interface for **catalog l
 
 Typical tools:
 
-- **`search_cards`** – filter and paginate catalog cards; this is the main way to discover and narrow candidates.
-- **`get_card`** – one printing by **Scryfall printing id** (`scryfall_id`) when you already have it.
+- **`search_cards`** – filter and paginate catalog cards; this is the main way to discover and narrow candidates. Optional **`flags.verbose`** returns full card payloads; **`flags.distinct_oracle`** returns at most one printing per oracle id when paging the catalog.
+- **`get_card`** – one printing by **internal catalog id** (`card_id` from search results), with optional **`verbose`** for a full payload.
+- **`get_card_image`** – JPEG artwork by **Scryfall printing id** (UUID) when you need the picture.
 - **Edition tools** – set/edition lookup as exposed by the server.
 
 Card search supports an **`inventory_name`** filter (trimmed, lowercased). Use it whenever the question is about **quantities tied to a named collection** in this project.
@@ -22,19 +23,9 @@ Card search supports an **`inventory_name`** filter (trimmed, lowercased). Use i
 
 Cards can be tagged with user-defined labels (e.g. `ramp`, `removal`, `draw`, `finisher`). Tags are a first-class way to group cards by **role or intent** across inventories and decks.
 
-### Tag tools
-
-- **`list_tags`** – see all defined tags and their descriptions.
-- **`get_tag`** – retrieve one tag by name.
-- **`create_tag`** – define a new tag with a name and description.
-- **`tag_cards`** – apply a tag to one or more cards by Scryfall printing id.
-- **`untag_cards`** – remove a tag from one or more cards by Scryfall printing id.
-
 ### When to use tags
 
-- When the user asks to mark, label, or categorise cards by role, use `tag_cards`.
 - When the user wants to find cards with a particular role, search with a tag filter if supported, or look up the tag and cross-reference with `search_cards`.
-- Before tagging, check `list_tags` to reuse an existing tag rather than creating a duplicate.
 - Tags are shared across all decks and inventories—they describe the **card itself**, not its membership in a specific list.
 
 ## “Their cards” and inventory
@@ -42,7 +33,6 @@ Cards can be tagged with user-defined labels (e.g. `ramp`, `removal`, `draw`, `f
 When the user talks about **their collection**, **cards they own**, **their inventory**, or **what they have**, interpret that as the **default inventory** named **`_default`**.
 
 - To reason about **ownership** (what they have on file), use **`search_cards`** with **`inventory_name: "_default"`** so results are limited to printings recorded in that collection.
-- The reserved name **`_default`** is the bulk / CLI import target; treat it as the **main “my cards” pool** unless they name another inventory.
 
 ## Deck lists vs the default pool
 
@@ -59,8 +49,7 @@ So: **`_default`** ≈ **collection they own**; **other inventory names** ≈ **
 If you are blocked because a filter or field is missing:
 
 - Say what capability is missing in concrete terms.
-- Suggest the smallest change (schema field, filter, or endpoint) that would unblock the workflow.
-- Prefer an MCP-only workaround when possible (e.g. broader `search_cards` with client-side filtering on returned fields).
+- Suggest the smallest change (schema field, filter, function) that would unblock the workflow or reduce the amount or reasoning required to work with current MCP results
 
 ## Errors
 
@@ -77,6 +66,7 @@ When an MCP tool returns an error:
    - The error looks like a server fault (5xx, unexpected exception message).
 
 When stopping, tell the user:
+
 - What you were trying to do.
 - The exact error you got (quote it).
 - What you think it might mean, if you have a reasonable guess.

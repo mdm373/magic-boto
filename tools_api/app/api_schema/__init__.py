@@ -8,7 +8,7 @@ from .card_schema import (
     CardsPage,
     CardsPaginationParams,
 )
-from .card_search import CardSearchFilters, CardSearchPagination, CardSearchQuery
+from .card_search import CardSearchFilters, CardSearchFlags, CardSearchPagination, CardSearchQuery
 from .descriptions import allowed_values_description
 from .edition_schema import Edition, EditionsQuery
 from .sweep_schema import (
@@ -28,6 +28,7 @@ __all__ = [
     "CleanTagSweepResetResult",
     "SweepEnqueueResult",
     "SweepStatusResponse",
+    "CardSearchFlags",
     "SweepStatusValue",
     "allowed_values_description",
     "CardSearchFilters",

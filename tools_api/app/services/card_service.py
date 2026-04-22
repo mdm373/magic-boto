@@ -1,12 +1,14 @@
 """Card lookup service for MTGJSON cards API."""
 
-from typing import cast
+from collections.abc import Sequence
+from typing import Any, cast
 
 from fastapi_pagination.bases import AbstractPage
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api_schema import Card
 from app.api_schema.card_search import CardSearchQuery
+from app.models import CardModel
 from app.repository import CardRepo
 from app.services.card_search_query_builder import CardSearchQueryBuilder
 from app.services.mapper import CardMapper
@@ -23,12 +25,15 @@ class CardService:
         self._query_builder = query_builder
         self._repo = CardRepo()
 
+    def _map_page_items(self, items: Sequence[CardModel], *, summary_only: bool) -> Sequence[Card]:
+        if summary_only:
+            return [self._mapper.to_response_compact(item) for item in items]
+        return [self._mapper.to_response(item) for item in items]
+
     async def search_cards(
         self,
         session: AsyncSession,
         query: CardSearchQuery,
-        *,
-        summary_only: bool = False,
     ) -> AbstractPage[Card]:
         """List cards."""
         filters = [
@@ -37,16 +42,16 @@ class CardService:
         page = await self._repo.search_cards(
             session,
             filters=filters,
-            distinct_oracle=query.filters.distinct_oracle,
+            distinct_oracle=query.flags.distinct_oracle,
             page_number=query.pagination.page_number,
             page_size=query.pagination.page_size,
             inventory_name=query.filters.inventory_name,
         )
-        if summary_only:
-            page.items = [self._mapper.to_response_compact(card) for card in page.items]  # type: ignore[attr-defined]
-        else:
-            page.items = [self._mapper.to_response(card) for card in page.items]  # type: ignore[attr-defined]
-        return cast(AbstractPage[Card], page)
+        summary_only = not query.flags.verbose
+        any_page: Any = page
+        new_items = self._map_page_items(any_page.items, summary_only=summary_only)
+        copy_fn = getattr(any_page, "model_copy", None) or getattr(any_page, "copy")
+        return cast(AbstractPage[Card], copy_fn(update={"items": new_items}))
 
     async def query_card(
         self,

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import cast
 
-from sqlalchemy import delete, exists, select, update
+from sqlalchemy import delete, exists, func, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -400,10 +400,12 @@ class TagSweepRepo:
     ) -> Sequence[str]:
         """Return oracle_ids eligible for this sweep.
 
-        Epoch gate: cards created at or before the sweep's ``completed_at`` are
-        skipped — they were already evaluated.  Only cards ingested after that
-        epoch (or all cards when no completed sweep exists yet) are considered.
-        One sweep row per tag is assumed.
+        Epoch gate: for each ``oracle_id``, compare ``MIN(created_at)`` over **all**
+        catalog printings of that identity to the tag's last sweep ``completed_at``.
+        If that earliest ingest is at or before the epoch, the oracle is skipped —
+        it was already in the catalog when the last sweep finished. New reprints
+        alone therefore do not re-open an oracle. When no sweep has completed yet,
+        every matching oracle is considered. One sweep row per tag is assumed.
         """
         epoch_subq = (
             select(TagSweepModel.completed_at)
@@ -421,22 +423,29 @@ class TagSweepRepo:
             .scalar_subquery()
         )
 
-        stmt = (
-            select(CardModel.oracle_id)
-            .group_by(CardModel.oracle_id)
-            .where(
-                # Epoch gate: skip cards that existed when the last sweep completed.
-                (epoch_subq.is_(None)) | (CardModel.created_at > epoch_subq),
-                CardModel.oracle_id.not_in(current_subq),
+        first_seen_sq = (
+            select(
+                CardModel.oracle_id.label("oracle_id"),
+                func.min(CardModel.created_at).label("first_seen"),
             )
+            .group_by(CardModel.oracle_id)
+            .subquery()
+        )
+
+        stmt = select(first_seen_sq.c.oracle_id).where(
+            first_seen_sq.c.oracle_id.not_in(current_subq),
+            (epoch_subq.is_(None)) | (first_seen_sq.c.first_seen > epoch_subq),
         )
 
         include_types = [r.card_type for r in tag.tag_types]
         if include_types:
             stmt = stmt.where(
                 exists(
-                    select(CardTypeModel.card_id).where(
-                        CardTypeModel.card_id == CardModel.card_id,
+                    select(CardTypeModel.card_id)
+                    .select_from(CardTypeModel)
+                    .join(CardModel, CardTypeModel.card_id == CardModel.card_id)
+                    .where(
+                        CardModel.oracle_id == first_seen_sq.c.oracle_id,
                         CardTypeModel.card_type.in_(include_types),
                     )
                 )
@@ -446,14 +455,17 @@ class TagSweepRepo:
         if include_supertypes:
             stmt = stmt.where(
                 exists(
-                    select(CardSupertypeModel.card_id).where(
-                        CardSupertypeModel.card_id == CardModel.card_id,
+                    select(CardSupertypeModel.card_id)
+                    .select_from(CardSupertypeModel)
+                    .join(CardModel, CardSupertypeModel.card_id == CardModel.card_id)
+                    .where(
+                        CardModel.oracle_id == first_seen_sq.c.oracle_id,
                         CardSupertypeModel.card_supertype.in_(include_supertypes),
                     )
                 )
             )
 
-        stmt = stmt.order_by(CardModel.oracle_id)
+        stmt = stmt.order_by(first_seen_sq.c.oracle_id)
         if limit > 0:
             stmt = stmt.limit(limit)
 

@@ -25,7 +25,7 @@ class Settings(BaseSettings):
 
     anthropic_api_key: str | None = Field(
         default=None,
-        description="Anthropic API key — required for the generate.tags sweep task only.",
+        description="Anthropic API key — required for tag sweep/audit (Anthropic Batch API) only.",
     )
 
     # Anthropic Messages Batch API.

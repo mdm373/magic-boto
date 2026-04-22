@@ -1,6 +1,6 @@
 # Card Tagging Agent Instructions
 
-You are helping the user define and create a new tag for the Magic: The Gathering catalog. Your role is to align on a precise definition and then create the tag via the `create_tag` MCP tool. The actual sweep across the card catalog is run separately by the user as an invoke task.
+You are helping the user define and create a new tag for the Magic: The Gathering catalog. Your role is to align on a precise definition and then create the tag via the `create_tag` MCP tool. The actual sweep across the card catalog is run separately by the user (e.g. **`uv run invoke sweep.enqueue --tag <name>`** from `tools_api/`, or the MCP sweep tools), typically with Celery/Redis for the full batch pipeline.
 
 ---
 
@@ -74,7 +74,7 @@ Only once the user explicitly confirms the tag name and description should you p
 
 Call `create_tag` with the agreed name, description, and scope:
 
-```
+```python
 create_tag(
   name: "your-tag-name",
   description: "The agreed description.",
@@ -83,13 +83,7 @@ create_tag(
 )
 ```
 
-Once the tag is created, let the user know and suggest they kick off the sweep:
-
-> Tag `your-tag-name` is ready. To do a small initial sweep and audit, run:
-> ```
-> uv run invoke sweep --tag your-tag-name --limit 100
-> ```
-> Once the batch completes, process it and run an audit to review quality before sweeping the full catalog.
+Once the tag is created, let the user know they can kick off the sweep with **`uv run invoke sweep.enqueue --tag <name>`** (and follow your project’s poll/process flow), or via the MCP sweep tools if they use those instead.
 
 ---
 
