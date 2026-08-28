@@ -107,7 +107,11 @@ def register_tags_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="update_tag",
-        description="Update a tag's description (name matched case-insensitively).",
+        description=(
+            "Update a tag's description and optionally sweep include filters "
+            "(name matched case-insensitively). Omit sweep lists to leave them unchanged; "
+            "pass an empty list to clear a filter (no restriction)."
+        ),
         annotations=ToolAnnotations(
             readOnlyHint=False,
             destructiveHint=False,
@@ -124,11 +128,35 @@ def register_tags_tools(app_mcp: AppMcp) -> None:
             str,
             Field(description="Replacement description text."),
         ],
+        sweep_include_types: Annotated[
+            list[str] | None,
+            Field(
+                description=(
+                    "If omitted, sweep type filter is unchanged. If set (including []), "
+                    "replaces the filter; [] clears it (all card types)."
+                ),
+            ),
+        ] = None,
+        sweep_include_supertypes: Annotated[
+            list[str] | None,
+            Field(
+                description=(
+                    "If omitted, sweep supertype filter is unchanged. If set (including []), "
+                    "replaces the filter; [] clears it (all supertypes)."
+                ),
+            ),
+        ] = None,
     ) -> Tag:
         if not description.strip():
             raise InvalidRequestError("Tag description is required.")
         async with app_mcp.session() as session:
-            ok = await _tag_repo.update_description(session, name, description)
+            ok = await _tag_repo.update_tag(
+                session,
+                name,
+                description,
+                sweep_include_types=sweep_include_types,
+                sweep_include_supertypes=sweep_include_supertypes,
+            )
             if not ok:
                 raise NotFoundError(f"Tag '{name}' not found.")
             updated = await _tag_repo.get_tag(session, name)

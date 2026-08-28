@@ -27,6 +27,12 @@ RegisterMcpTool: TypeAlias = Callable[[AsyncToolHandler], Any]
 # MCP JSON-RPC server error range (-32000..-32099); not all codes are exported on ``mcp.types`` yet.
 MCP_NOT_FOUND = -32001
 
+# Appended automatically to descriptions of tools that carry meta.ui so agents know
+# not to echo the raw JSON payload — the client renders the interactive UI instead.
+_UI_DESCRIPTION_SUFFIX = (
+    " Renders an interactive UI — do not summarise or repeat the JSON response to the user."
+)
+
 
 class AppMcp:
     """Binds a :class:`FastMCP` server with app-level tool registration (error mapping)."""
@@ -86,6 +92,9 @@ def app_mcp_tool(
     structured_output: bool | None = None,
 ) -> RegisterMcpTool:
     """Combine :meth:`FastMCP.tool` registration with :func:`map_app_errors`."""
+
+    if meta and "ui" in meta and description is not None:
+        description = description + _UI_DESCRIPTION_SUFFIX
 
     tool_decorator = mcp.tool(
         name=name,

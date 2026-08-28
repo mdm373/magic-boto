@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 from pathlib import Path
 from typing import cast
@@ -38,6 +39,11 @@ _IMAGE_CACHE_DIR = SERVICE_ROOT / "cache" / "card_images"
 
 _card_service = create_card_service()
 
+_SCRYFALL_SEMAPHORE = asyncio.Semaphore(1)
+_SCRYFALL_REQUEST_DELAY = 1.0  # minimum seconds between image requests
+_scryfall_last_fetch: float = 0.0
+_SCRYFALL_HEADERS = {"User-Agent": "magic-boto/1.0 (personal collection tool)"}
+
 
 def _read_ui(filename: str) -> str:
     path = _UI_DIST / filename
@@ -46,14 +52,23 @@ def _read_ui(filename: str) -> str:
 
 async def _fetch_card_image(scryfall_id: str) -> bytes:
     """Return image bytes for a Scryfall ID, using the shared cache."""
+    global _scryfall_last_fetch
     cache_path = _IMAGE_CACHE_DIR / f"{scryfall_id}.jpg"
     if cache_path.exists():
         return cache_path.read_bytes()
-    async with httpx.AsyncClient(follow_redirects=True) as client:
-        response = await client.get(_SCRYFALL_IMAGE_URL.format(scryfall_id=scryfall_id))
-    response.raise_for_status()
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    cache_path.write_bytes(response.content)
+    async with _SCRYFALL_SEMAPHORE:
+        # Re-check cache in case another concurrent call wrote it while we waited.
+        if cache_path.exists():
+            return cache_path.read_bytes()
+        wait = _SCRYFALL_REQUEST_DELAY - (asyncio.get_event_loop().time() - _scryfall_last_fetch)
+        if wait > 0:
+            await asyncio.sleep(wait)
+        async with httpx.AsyncClient(follow_redirects=True, headers=_SCRYFALL_HEADERS) as client:
+            response = await client.get(_SCRYFALL_IMAGE_URL.format(scryfall_id=scryfall_id))
+        _scryfall_last_fetch = asyncio.get_event_loop().time()
+        response.raise_for_status()
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_bytes(response.content)
     return response.content
 
 

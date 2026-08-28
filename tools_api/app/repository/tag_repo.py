@@ -137,15 +137,42 @@ class TagRepo:
         await session.flush()
         return True
 
-    async def update_description(self, session: AsyncSession, name: str, description: str) -> bool:
-        """Update a tag's description. Returns False if not found."""
+    async def update_tag(
+        self,
+        session: AsyncSession,
+        name: str,
+        description: str,
+        *,
+        sweep_include_types: Sequence[str] | None = None,
+        sweep_include_supertypes: Sequence[str] | None = None,
+    ) -> bool:
+        """Update description and optionally replace sweep filters. Returns False if not found.
+
+        When ``sweep_include_types`` or ``sweep_include_supertypes`` is ``None``, that filter
+        is left unchanged. When provided (including ``[]``), the corresponding rows are replaced;
+        an empty sequence clears the filter (no restriction).
+        """
         canonical = canonical_name(name)
         row = await session.scalar(select(TagModel).where(TagModel.name == canonical))
         if row is None:
             return False
         row.description = description.strip()
+        if sweep_include_types is not None:
+            row.tag_types = [
+                TagTypeModel(card_type=t.strip().lower()) for t in sweep_include_types if t.strip()
+            ]
+        if sweep_include_supertypes is not None:
+            row.supertypes = [
+                TagSupertypeModel(card_supertype=s.strip().lower())
+                for s in sweep_include_supertypes
+                if s.strip()
+            ]
         await session.flush()
         return True
+
+    async def update_description(self, session: AsyncSession, name: str, description: str) -> bool:
+        """Update a tag's description. Returns False if not found."""
+        return await self.update_tag(session, name, description)
 
     async def delete_tag(self, session: AsyncSession, name: str) -> bool:
         """Delete a tag by canonical name. Returns True if deleted, False if not found."""
