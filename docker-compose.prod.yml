@@ -46,6 +46,15 @@ services:
 
   keycloak_public_proxy:
     mem_limit: 32m
+    # Same reasoning as nginx's depends_on below: the base file gates this on keycloak being
+    # fully healthy, which is fine for local dev but means this (and therefore nginx, which
+    # depends on this) stays stuck in "Created" for however long Keycloak's JVM/Quarkus
+    # augmentation takes on a constrained instance — several minutes is normal on 512MB, not a
+    # sign anything's actually wrong. Caddy itself proxies fine as soon as Keycloak's container
+    # exists; requests just 502 until Keycloak's HTTP interface is actually serving.
+    depends_on: !override
+      keycloak:
+        condition: service_started
 
   keycloak:
     command: start --import-realm
