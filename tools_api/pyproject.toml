@@ -20,6 +20,7 @@ dependencies = [
     "httpx>=0.28.0",
     "celery[redis]>=5.4.0",
     "flower>=2.0.0",
+    "pyjwt[crypto]>=2.9.0",
 ]
 
 [project.optional-dependencies]

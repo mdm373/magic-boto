@@ -6,9 +6,23 @@ import { createOnToolResult } from "../utils/mcpToolResultTextJson";
 
 // ── Tunables ──────────────────────────────────────────────────────────────────
 
-/** Cards per page (3×3 grid). */
-const PAGE_SIZE = 9;
-const GRID_COLS = 3;
+/** Cards per page: cols (from width) × rows (from height), capped at a 3×3 grid. */
+const PAGE_ROWS_MAX = 3;
+const PAGE_ROWS_MIN = 1;
+const GRID_COLS_MAX = 3;
+/** Page's own top+bottom padding (1.5rem each, 16px root) + nav row + requested safety
+ *  margin so the last visible row never grazes the fold. Approximate, not measured — a
+ *  little unused space at the bottom is fine; a clipped row is not. */
+const PAGE_VERTICAL_CHROME_PX = 48;
+const NAV_ROW_ESTIMATED_HEIGHT_PX = 70;
+const HEIGHT_SAFETY_BUFFER_PX = 32;
+/**
+ * Never shrink a card below its designed size (200, matches CARD_NORMAL_WIDTH below) — a
+ * cramped card is unreadable regardless of column count, and it also breaks the focus-zoom
+ * effect's proportions (a scaled-up focused card next to undersized siblings looks broken).
+ * Drop to fewer columns instead; on a phone-width viewport this correctly lands on 1.
+ */
+const CARD_MIN_WIDTH = 200;
 
 const CARD_NORMAL_WIDTH = 200;
 /** How much wider the focused card is vs normal (was 44%; +20% vs that → 72.8% larger width). */
@@ -83,40 +97,81 @@ const INITIAL_STATE: CarouselState = {
 
 // ── Layout helpers ────────────────────────────────────────────────────────────
 
-function slicePage(cards: readonly CardMeta[], startIndex: number): readonly CardMeta[] {
-  return cards.slice(startIndex, startIndex + PAGE_SIZE);
+/** Largest column count (up to GRID_COLS_MAX) that keeps each card at least CARD_MIN_WIDTH,
+ *  falling back to fewer, wider columns as the container narrows (down to a single column). */
+function computeGridMetrics(containerWidth: number): {
+  cols: number;
+  cardWidth: number;
+  cardHeight: number;
+} {
+  if (containerWidth <= 0) {
+    return { cols: GRID_COLS_MAX, cardWidth: CARD_NORMAL_WIDTH, cardHeight: CARD_NORMAL_HEIGHT };
+  }
+  for (let cols = GRID_COLS_MAX; cols > 1; cols--) {
+    const perCard = (containerWidth - (cols - 1) * GAP_PX) / cols;
+    if (perCard >= CARD_MIN_WIDTH) {
+      const cardWidth = Math.min(CARD_NORMAL_WIDTH, Math.floor(perCard));
+      return { cols, cardWidth, cardHeight: Math.ceil((cardWidth * 7) / 5) };
+    }
+  }
+  const cardWidth = Math.min(CARD_NORMAL_WIDTH, Math.floor(containerWidth));
+  return { cols: 1, cardWidth, cardHeight: Math.ceil((cardWidth * 7) / 5) };
 }
 
-/** First index of the last page (aligned to PAGE_SIZE steps from 0). */
-function lastPageStart(cardsLength: number): number {
+/** How many card rows fit in the available viewport height, from 1 up to PAGE_ROWS_MAX.
+ *  A height of 0 means "host hasn't told us" (not "host gave us zero space") — assume
+ *  generous desktop space, same fallback stance as computeGridMetrics takes for width. */
+function computeRowsPerPage(viewportHeight: number, cardHeight: number): number {
+  if (viewportHeight <= 0) return PAGE_ROWS_MAX;
+  const budget =
+    viewportHeight - PAGE_VERTICAL_CHROME_PX - NAV_ROW_ESTIMATED_HEIGHT_PX - HEIGHT_SAFETY_BUFFER_PX;
+  if (budget <= 0) return PAGE_ROWS_MIN;
+  const rows = Math.floor((budget + GAP_PX) / (cardHeight + GAP_PX));
+  return Math.min(PAGE_ROWS_MAX, Math.max(PAGE_ROWS_MIN, rows));
+}
+
+/** Host gives either an exact size or just a cap (width/height independently) — resolve
+ *  both to a usable number, 0 meaning "host hasn't told us yet" (caller applies a fallback). */
+function resolveContainerSize(
+  dimensions: McpUiHostContext["containerDimensions"],
+): { width: number; height: number } {
+  if (!dimensions) return { width: 0, height: 0 };
+  const width = "width" in dimensions ? dimensions.width : (dimensions.maxWidth ?? 0);
+  const height = "height" in dimensions ? dimensions.height : (dimensions.maxHeight ?? 0);
+  return { width, height };
+}
+
+function slicePage(
+  cards: readonly CardMeta[],
+  startIndex: number,
+  pageSize: number,
+): readonly CardMeta[] {
+  return cards.slice(startIndex, startIndex + pageSize);
+}
+
+/** First index of the last page (aligned to pageSize steps from 0). */
+function lastPageStart(cardsLength: number, pageSize: number): number {
   if (cardsLength <= 0) return 0;
-  if (cardsLength <= PAGE_SIZE) return 0;
-  return Math.floor((cardsLength - 1) / PAGE_SIZE) * PAGE_SIZE;
+  if (cardsLength <= pageSize) return 0;
+  return Math.floor((cardsLength - 1) / pageSize) * pageSize;
 }
 
-/**
- * Layout tiers for the outer card frame: 1–3 cards → one row, 4–6 → two rows, 7+ → three rows.
- * Matches the 3×3 grid (max nine cards per page).
- */
-function layoutTierRowCount(visibleCount: number): number {
+/** Rows needed for `visibleCount` cards at the current column count. */
+function layoutTierRowCount(visibleCount: number, cols: number): number {
   if (visibleCount <= 0) return 1;
-  if (visibleCount <= 3) return 1;
-  if (visibleCount <= 6) return 2;
-  return 3;
+  return Math.ceil(visibleCount / cols);
 }
 
 /**
  * Fixed outer frame height. Multi-row tiers use normal row heights (scale overlaps).
  * Single-row tier: scaled card height + vertical insets for the soft ring and paint safety.
  */
-function fixedCardFrameHeightPx(visibleCount: number): number {
-  const rows = layoutTierRowCount(visibleCount);
+function fixedCardFrameHeightPx(visibleCount: number, cols: number, cardHeight: number): number {
+  const rows = layoutTierRowCount(visibleCount, cols);
   if (rows === 1) {
-    return (
-      Math.ceil(CARD_NORMAL_HEIGHT * FOCUS_WIDTH_MULTIPLIER) + 2 * SINGLE_ROW_VERTICAL_INSET_PX
-    );
+    return Math.ceil(cardHeight * FOCUS_WIDTH_MULTIPLIER) + 2 * SINGLE_ROW_VERTICAL_INSET_PX;
   }
-  return rows * CARD_NORMAL_HEIGHT + (rows - 1) * GAP_PX;
+  return rows * cardHeight + (rows - 1) * GAP_PX;
 }
 
 /** `transform-origin` so scale grows inward / stays in view by grid position. */
@@ -133,10 +188,13 @@ function focusTransformOrigin(
   return `${x} ${y}`;
 }
 
-function chunkIntoRows(pageCards: readonly CardMeta[]): readonly (readonly CardMeta[])[] {
+function chunkIntoRows(
+  pageCards: readonly CardMeta[],
+  cols: number,
+): readonly (readonly CardMeta[])[] {
   const rows: CardMeta[][] = [];
-  for (let i = 0; i < pageCards.length; i += GRID_COLS) {
-    rows.push(pageCards.slice(i, i + GRID_COLS) as CardMeta[]);
+  for (let i = 0; i < pageCards.length; i += cols) {
+    rows.push(pageCards.slice(i, i + cols) as CardMeta[]);
   }
   return rows;
 }
@@ -206,6 +264,9 @@ type CardGridProps = Readonly<{
   /** When false, skip imageAppear bookkeeping (transition clone). */
   trackShownImages: boolean;
   shownImagesRef: React.MutableRefObject<Set<string>>;
+  cols: number;
+  cardWidth: number;
+  cardHeight: number;
 }>;
 
 function CardGrid({
@@ -215,8 +276,11 @@ function CardGrid({
   onToggleSelect,
   trackShownImages,
   shownImagesRef,
+  cols,
+  cardWidth,
+  cardHeight,
 }: CardGridProps) {
-  const rows = useMemo(() => chunkIntoRows(pageCards), [pageCards]);
+  const rows = useMemo(() => chunkIntoRows(pageCards, cols), [pageCards, cols]);
   const totalRows = rows.length;
 
   return (
@@ -245,8 +309,8 @@ function CardGrid({
             flexWrap: "nowrap",
             maxWidth: "100%",
             minWidth: 0,
-            minHeight: CARD_NORMAL_HEIGHT,
-            height: CARD_NORMAL_HEIGHT,
+            minHeight: cardHeight,
+            height: cardHeight,
             overflow: "visible",
           }}
         >
@@ -276,8 +340,8 @@ function CardGrid({
                   }
                 }}
                 style={{
-                  width: CARD_NORMAL_WIDTH,
-                  height: CARD_NORMAL_HEIGHT,
+                  width: cardWidth,
+                  height: cardHeight,
                   flexShrink: 0,
                   position: "relative",
                   zIndex: isSelected ? 40 : 1,
@@ -290,7 +354,7 @@ function CardGrid({
               >
                 <div
                   style={{
-                    width: CARD_NORMAL_WIDTH,
+                    width: cardWidth,
                     borderRadius: "var(--border-radius-md, 6px)",
                     transform: `scale(${scale})`,
                     transformOrigin: origin,
@@ -349,6 +413,26 @@ export function CardCarouselApp() {
   const imagesRef = useRef(images);
   imagesRef.current = images;
 
+  // Host-reported container size, not a DOM measurement: this SDK's apps report their own
+  // size to the host (see McpUiSizeChangedNotification) rather than being handed a fixed
+  // viewport — an auto-height iframe model where our own rendered size isn't an external
+  // constraint at all. containerDimensions is the host's actual allotted space for us.
+  const { width: containerWidth, height: containerHeight } = useMemo(
+    () => resolveContainerSize(hostContext?.containerDimensions),
+    [hostContext?.containerDimensions],
+  );
+  const { cols, cardWidth, cardHeight } = useMemo(
+    () => computeGridMetrics(containerWidth),
+    [containerWidth],
+  );
+  const rowsPerPage = useMemo(
+    () => computeRowsPerPage(containerHeight, cardHeight),
+    [containerHeight, cardHeight],
+  );
+  const pageSize = cols * rowsPerPage;
+  const pageSizeRef = useRef(pageSize);
+  pageSizeRef.current = pageSize;
+
   const { app, isConnected, error } = useApp({
     appInfo: { name: "CardCarouselApp", version: "1.0.0" },
     capabilities: {},
@@ -399,7 +483,7 @@ export function CardCarouselApp() {
     const currentApp = appRef.current;
     if (!currentApp) return;
 
-    const stablePage = slicePage(cards, startIndex);
+    const stablePage = slicePage(cards, startIndex, pageSize);
     const toLoad = pageNavTransition
       ? [...pageNavTransition.outgoing, ...pageNavTransition.incoming]
       : stablePage;
@@ -420,23 +504,22 @@ export function CardCarouselApp() {
           setImages((prev) => ({ ...prev, [card.card_id]: "error" }));
         });
     }
-  }, [status, startIndex, cards, pageNavTransition]);
+  }, [status, startIndex, cards, pageNavTransition, pageSize]);
 
   const navigate = useCallback((dir: "prev" | "next") => {
     if (navigatingRef.current) return;
     const s = stateRef.current;
-    const lastStart = lastPageStart(s.cards.length);
+    const size = pageSizeRef.current;
+    const lastStart = lastPageStart(s.cards.length, size);
     const newIndex =
-      dir === "next"
-        ? Math.min(s.startIndex + PAGE_SIZE, lastStart)
-        : Math.max(0, s.startIndex - PAGE_SIZE);
+      dir === "next" ? Math.min(s.startIndex + size, lastStart) : Math.max(0, s.startIndex - size);
     if (newIndex === s.startIndex) return;
 
     navigatingRef.current = true;
     setNavigating(true);
 
-    const outgoing = slicePage(s.cards, s.startIndex);
-    const incoming = slicePage(s.cards, newIndex);
+    const outgoing = slicePage(s.cards, s.startIndex, size);
+    const incoming = slicePage(s.cards, newIndex, size);
     const currentStable = new Set(outgoing.map((c) => c.card_id));
     shownImagesRef.current = currentStable;
 
@@ -491,23 +574,23 @@ export function CardCarouselApp() {
   if (state.status === "error") return <div style={pageStyle}>Could not load cards.</div>;
   if (state.cards.length === 0) return <div style={pageStyle}>No cards found.</div>;
 
-  const pageCards = slicePage(state.cards, startIndex);
+  const pageCards = slicePage(state.cards, startIndex, pageSize);
   const visibleCount = pageCards.length;
-  const lastStart = lastPageStart(state.cards.length);
+  const lastStart = lastPageStart(state.cards.length, pageSize);
   const canPrev = startIndex > 0;
   const canNext = startIndex < lastStart;
 
   const cardFramePx = pageNavTransition
     ? Math.max(
-        fixedCardFrameHeightPx(pageNavTransition.outgoing.length),
-        fixedCardFrameHeightPx(pageNavTransition.incoming.length),
+        fixedCardFrameHeightPx(pageNavTransition.outgoing.length, cols, cardHeight),
+        fixedCardFrameHeightPx(pageNavTransition.incoming.length, cols, cardHeight),
       )
-    : fixedCardFrameHeightPx(visibleCount);
+    : fixedCardFrameHeightPx(visibleCount, cols, cardHeight);
 
   const maxCardsInFrame = pageNavTransition
     ? Math.max(pageNavTransition.outgoing.length, pageNavTransition.incoming.length)
     : visibleCount;
-  const pinGridToTop = layoutTierRowCount(maxCardsInFrame) === 1;
+  const pinGridToTop = layoutTierRowCount(maxCardsInFrame, cols) === 1;
   const gridAlignItems: React.CSSProperties["alignItems"] = pinGridToTop ? "flex-start" : "center";
   const singleRowInnerChrome: React.CSSProperties = pinGridToTop
     ? {
@@ -598,6 +681,9 @@ export function CardCarouselApp() {
                   onToggleSelect={() => {}}
                   trackShownImages={false}
                   shownImagesRef={shownImagesRef}
+                  cols={cols}
+                  cardWidth={cardWidth}
+                  cardHeight={cardHeight}
                 />
               </div>
               <div
@@ -619,6 +705,9 @@ export function CardCarouselApp() {
                   onToggleSelect={() => {}}
                   trackShownImages={false}
                   shownImagesRef={shownImagesRef}
+                  cols={cols}
+                  cardWidth={cardWidth}
+                  cardHeight={cardHeight}
                 />
               </div>
             </div>
@@ -645,6 +734,9 @@ export function CardCarouselApp() {
                 onToggleSelect={toggleSelect}
                 trackShownImages
                 shownImagesRef={shownImagesRef}
+                cols={cols}
+                cardWidth={cardWidth}
+                cardHeight={cardHeight}
               />
             </div>
           )}

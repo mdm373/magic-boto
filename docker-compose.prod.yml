@@ -1,0 +1,19 @@
+# Public-host overlay (Lightsail etc). Run alongside the base file, never alone:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Moves Keycloak off `start-dev` into production mode, hostname-aware for its public subdomain.
+# Ingress itself is a *native* nginx on the host, not a compose service — see
+# docs/LIGHTSAIL-DEPLOY.md and nginx/. Every service port in docker-compose.yml is already
+# 127.0.0.1-bound, which is exactly what a host-native nginx needs: it reaches all of them via
+# localhost, nothing outside the host can.
+services:
+  keycloak:
+    command: start --import-realm
+    environment:
+      # An explicit https:// URL is what Keycloak's hostname-v2 provider needs to know it's
+      # externally HTTPS despite terminating plain HTTP from nginx internally (KC_PROXY_HEADERS
+      # in docker-compose.yml already tells it to trust nginx's X-Forwarded-*). This is the
+      # public proxy's domain (KEYCLOAK_DOMAIN), not the admin one — that's what ends up in the
+      # `iss` claim clients see.
+      KC_HOSTNAME: https://${KEYCLOAK_DOMAIN}
+      KC_HOSTNAME_STRICT: "true"

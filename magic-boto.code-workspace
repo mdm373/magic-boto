@@ -19,6 +19,22 @@
     {
       "name": "tasks",
       "path": "tasks"
+    },
+    {
+      "name": "keycloak",
+      "path": "keycloak"
+    },
+    {
+      "name": "deploy",
+      "path": "deploy"
+    },
+    {
+      "path": "dev",
+      "name": "dev"
+    },
+    {
+      "path": "nginx",
+      "name": "nginx"
     }
   ],
   "settings": {

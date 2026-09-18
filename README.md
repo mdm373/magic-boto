@@ -89,6 +89,8 @@ Optional: [MCP Inspector](http://localhost:6274) (Compose) to try tools against 
 
 Deck and inventory behavior for agents: [tasks/deck-building-instructions.md](tasks/deck-building-instructions.md).
 
+**Public deployment** (e.g. AWS Lightsail): [docs/LIGHTSAIL-DEPLOY.md](docs/LIGHTSAIL-DEPLOY.md).
+
 ---
 
 ## Repo layout (overview)

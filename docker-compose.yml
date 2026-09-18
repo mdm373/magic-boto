@@ -1,4 +1,9 @@
 # Root stack for magic-boto. See docs/PROJECT-PLAN.md for architecture.
+# Public deployment (Lightsail etc): docker-compose.prod.yml layers on top of this file for the
+# Keycloak prod-mode switch — see docs/LIGHTSAIL-DEPLOY.md. Ingress there is a *native* nginx on
+# the host (not a compose service), which is exactly why every port below is bound to 127.0.0.1:
+# a host-native nginx reaches all of them via localhost regardless, and loopback binding is what
+# keeps them from being reachable from outside that host at all.
 services:
   postgres:
     image: postgres:16-alpine
@@ -9,7 +14,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-magicboto}
       POSTGRES_DB: ${POSTGRES_DB:-magicboto}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - tools_db_postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -23,7 +28,7 @@ services:
     container_name: magic-boto-tools-redis
     restart: unless-stopped
     ports:
-      - "${REDIS_LOCAL_PORT:-6379}:6379"
+      - "127.0.0.1:${REDIS_LOCAL_PORT:-6379}:6379"
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s
@@ -40,7 +45,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
       TOOLS_API_PORT: ${TOOLS_API_PORT:-8000}
     ports:
-      - "${TOOLS_API_LOCAL_PORT:-8000}:${TOOLS_API_PORT:-8000}"
+      - "127.0.0.1:${TOOLS_API_LOCAL_PORT:-8000}:${TOOLS_API_PORT:-8000}"
     volumes:
       - ./tools_api/app:/app/app
       - ./tools_api/cache:/app/cache
@@ -84,7 +89,7 @@ services:
     environment:
       CELERY_REDIS_URL: ${CELERY_REDIS_URL:-redis://redis:6379/0}
     ports:
-      - "${FLOWER_LOCAL_PORT:-5555}:${FLOWER_PORT:-5555}"
+      - "127.0.0.1:${FLOWER_LOCAL_PORT:-5555}:${FLOWER_PORT:-5555}"
     command: [ "sh", "-c", "uv run --no-sync celery -A app.cmd.serve_celery:celery_app flower --address=0.0.0.0 --port=${FLOWER_PORT:-5555}" ]
     depends_on:
       redis:
@@ -101,8 +106,18 @@ services:
       TOOLS_MCP_HOST: ${TOOLS_MCP_HOST:-0.0.0.0}
       TOOLS_MCP_PORT: ${TOOLS_MCP_PORT:-8765}
       CELERY_REDIS_URL: ${CELERY_REDIS_URL:-redis://redis:6379/0}
+      TOOLS_MCP_AUTH_ENABLED: ${TOOLS_MCP_AUTH_ENABLED:-false}
+      TOOLS_MCP_RESOURCE_SERVER_URL: ${TOOLS_MCP_RESOURCE_SERVER_URL:-http://localhost:8765}
+      TOOLS_MCP_REQUIRED_SCOPES: ${TOOLS_MCP_REQUIRED_SCOPES:-}
+      # Must match the issuer clients actually see (they reach Keycloak via the host-mapped
+      # port); this container reaches Keycloak over the compose network instead, hence the
+      # separate KEYCLOAK_JWKS_URL below.
+      KEYCLOAK_ISSUER_URL: ${KEYCLOAK_ISSUER_URL:-http://localhost:8180/realms/magic-boto}
+      KEYCLOAK_JWKS_URL: ${KEYCLOAK_JWKS_URL:-http://keycloak:8180/realms/magic-boto/protocol/openid-connect/certs}
+      KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE:-magic-boto-tools-api}
+      KEYCLOAK_JWKS_CACHE_SECONDS: ${KEYCLOAK_JWKS_CACHE_SECONDS:-300}
     ports:
-      - "${TOOLS_MCP_LOCAL_PORT:-8765}:${TOOLS_MCP_PORT:-8765}"
+      - "127.0.0.1:${TOOLS_MCP_LOCAL_PORT:-8765}:${TOOLS_MCP_PORT:-8765}"
     volumes:
       - ./tools_api/app:/app/app
     command: [ "sh", "-c", "uv run --no-sync uvicorn app.cmd.serve_mcp.asgi:app --host ${TOOLS_MCP_HOST:-0.0.0.0} --port ${TOOLS_MCP_PORT:-8765} --reload" ]
@@ -116,6 +131,87 @@ services:
       postgres:
         condition: service_healthy
 
+  keycloak_postgres:
+    image: postgres:16-alpine
+    container_name: magic-boto-keycloak-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${KEYCLOAK_DB_USER:-keycloak}
+      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-keycloak}
+      POSTGRES_DB: ${KEYCLOAK_DB_NAME:-keycloak}
+    ports:
+      - "127.0.0.1:${KEYCLOAK_DB_LOCAL_PORT:-5433}:5432"
+    volumes:
+      - keycloak_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${KEYCLOAK_DB_USER:-keycloak} -d ${KEYCLOAK_DB_NAME:-keycloak}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.1
+    container_name: magic-boto-keycloak
+    restart: unless-stopped
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://keycloak_postgres:5432/${KEYCLOAK_DB_NAME:-keycloak}
+      KC_DB_USERNAME: ${KEYCLOAK_DB_USER:-keycloak}
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-keycloak}
+      KC_HTTP_PORT: ${KEYCLOAK_PORT:-8180}
+      KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+      # Trust X-Forwarded-* from a TLS-terminating tunnel/proxy (cloudflared/ngrok now, an
+      # ALB or nginx in front of Lightsail later) so issued URLs (incl. the `iss` claim) use
+      # https and the proxy's hostname instead of this container's own http://keycloak:8180.
+      KC_PROXY_HEADERS: xforwarded
+    ports:
+      # Loopback-only: admin console for you, on this machine. Other containers reach
+      # keycloak:8180 over the compose network regardless of this mapping; all outside
+      # ingress (tunnels, LAN, eventually the internet) should go through
+      # keycloak_public_proxy instead, never this port.
+      - "127.0.0.1:${KEYCLOAK_LOCAL_PORT:-8180}:${KEYCLOAK_PORT:-8180}"
+    volumes:
+      # Seed data: any realm export JSON here is imported on startup, but only into an empty
+      # DB (a fresh keycloak_postgres_data volume) — never overwrites an already-provisioned
+      # realm, so this is safe to leave mounted permanently. Re-export after config changes
+      # you want new clones/environments to pick up; see keycloak/realm-import/README.md.
+      - ./keycloak/realm-import:/opt/keycloak/data/import
+    command: start-dev --import-realm
+    healthcheck:
+      # Health/metrics live on Keycloak's separate management interface (port 9000), not the
+      # main HTTP port, since Keycloak 24+.
+      test: [ "CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && echo -e 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 && cat <&3 | grep -q '200 OK'" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    depends_on:
+      keycloak_postgres:
+        condition: service_healthy
+
+  # Public-facing Keycloak proxy: only this port should ever be tunneled/exposed. Blocks
+  # /admin* and /realms/master* (Admin Console, Admin REST API, master-realm auth) while
+  # passing through the app realm's OIDC endpoints. Keycloak's own port (KEYCLOAK_LOCAL_PORT)
+  # stays for local/admin access only.
+  keycloak_public_proxy:
+    image: caddy:2-alpine
+    container_name: magic-boto-keycloak-proxy
+    restart: unless-stopped
+    environment:
+      KEYCLOAK_PORT: ${KEYCLOAK_PORT:-8180}
+      KEYCLOAK_PUBLIC_PORT: ${KEYCLOAK_PUBLIC_PORT:-8181}
+    ports:
+      - "127.0.0.1:${KEYCLOAK_PUBLIC_LOCAL_PORT:-8181}:${KEYCLOAK_PUBLIC_PORT:-8181}"
+    volumes:
+      - ./keycloak/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      keycloak:
+        condition: service_healthy
+
   # MCP Inspector (debug tools_mcp). UI :6274, proxy :6277 — see README in repo root / AGENTS.md.
   # In the Inspector, use Streamable HTTP URL: http://tools_mcp:8765/mcp (Docker DNS from this network).
   # entry point fixes https://github.com/modelcontextprotocol/inspector/issues/1082
@@ -126,8 +222,8 @@ services:
     restart: unless-stopped
     entrypoint: [ "/bin/sh", "-c", "mkdir -p /app/server/static && cp /app/server/build/static/sandbox_proxy.html /app/server/static/ && exec npm start" ]
     ports:
-      - "${MCP_INSPECTOR_CLIENT_PORT:-6274}:6274"
-      - "${MCP_INSPECTOR_SERVER_PORT:-6277}:6277"
+      - "127.0.0.1:${MCP_INSPECTOR_CLIENT_PORT:-6274}:6274"
+      - "127.0.0.1:${MCP_INSPECTOR_SERVER_PORT:-6277}:6277"
     environment:
       HOST: "0.0.0.0"
       MCP_AUTO_OPEN_ENABLED: "false"
@@ -137,3 +233,4 @@ services:
 
 volumes:
   tools_db_postgres_data:
+  keycloak_postgres_data:
