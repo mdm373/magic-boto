@@ -7,8 +7,10 @@
     Run from anywhere on your Windows dev machine (e.g. .\deploy\lightsail\deploy.ps1 from the
     repo root). Works on a totally fresh box — it doesn't require the repo to already be cloned
     on the server. Needs an SSH destination it can reach non-interactively (host alias from
-    ~/.ssh/config, or user@host) with `scp` support and, on the server, SSH access to -RepoUrl
-    (e.g. an already-loaded deploy key) — see docs/LIGHTSAIL-DEPLOY.md.
+    ~/.ssh/config, or user@host) with `scp` support. -RepoUrl defaults to the public HTTPS clone
+    URL, so no server-side credentials are needed for that; pass an SSH remote instead if you
+    fork this to a private repo (needs a deploy key already loaded on the box) — see
+    docs/LIGHTSAIL-DEPLOY.md.
 
 .PARAMETER SshHost
     SSH destination for the server, e.g. an alias from your ~/.ssh/config.
@@ -36,7 +38,7 @@ param(
     [Parameter(Mandatory)] [string]$Domain,
     [Parameter(Mandatory)] [string]$AdminIp,
     [string]$RemotePath = "~/magic-boto",
-    [string]$RepoUrl = "git@github.com:mdm373/magic-boto.git",
+    [string]$RepoUrl = "https://github.com/mdm373/magic-boto.git",
     [int]$PostgresAppPort = 55432,
     [int]$PostgresKeycloakPort = 55433,
     [string]$CertbotEmail = ""

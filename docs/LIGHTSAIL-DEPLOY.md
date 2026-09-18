@@ -36,8 +36,10 @@ single fetched file on a fresh box (`sudo bash install.sh --repo-path ~/magic-bo
 A plain Debian 12 Lightsail instance, possibly already serving other sites via nginx —
 `bootstrap.sh` only ever touches `/etc/nginx/conf.d/magicboto.conf` and
 `/etc/nginx/stream.conf.d/magicboto-postgres.conf`, and appends a `stream {}` include to
-`nginx.conf` if one isn't already there. It never touches other vhosts. SSH access to `-RepoUrl`
-(e.g. a deploy key already loaded on the box) is required for the clone/pull step.
+`nginx.conf` if one isn't already there. It never touches other vhosts. `-RepoUrl` defaults to
+the public HTTPS clone URL, so the clone/pull step needs no credentials on the box; only override
+it with an SSH remote if you fork this to a private repo (then a deploy key needs to already be
+loaded there).
 
 **First time only**: DNS — A records for `magicboto-mcp.<domain>`, `magicboto-keycloak.<domain>`,
 `magicboto-keycloak-admin.<domain>`, and `magicboto-flower.<domain>` pointing at the instance —

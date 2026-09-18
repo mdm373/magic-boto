@@ -11,8 +11,11 @@
 #
 #   sudo bash install.sh --repo-path ~/magic-boto --domain rundotgames.xyz --admin-ip 203.0.113.7
 #
-# Every argument other than --repo-url/--repo-path is forwarded to bootstrap.sh, which runs
-# immediately after — so this is a genuine one-shot either way, not just from deploy.ps1.
+# --repo-url defaults to the public HTTPS clone URL, so no server-side credentials are needed for
+# that step; pass an SSH remote instead if you fork this to a private repo (needs a deploy key
+# already loaded on the box). Every argument other than --repo-url/--repo-path is forwarded to
+# bootstrap.sh, which runs immediately after — so this is a genuine one-shot either way, not just
+# from deploy.ps1.
 #
 # Kept as a separate script from bootstrap.sh because they change at different rates: this one is
 # OS-package (and clone) setup you'll rarely touch again once the box is provisioned;
@@ -24,7 +27,7 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
-REPO_URL="git@github.com:mdm373/magic-boto.git"
+REPO_URL="https://github.com/mdm373/magic-boto.git"
 REPO_PATH="${HOME}/magic-boto"
 BOOTSTRAP_ARGS=()
 
