@@ -12,6 +12,11 @@
     fork this to a private repo (needs a deploy key already loaded on the box) — see
     docs/LIGHTSAIL-DEPLOY.md.
 
+    Your local .env (repo root) is pushed to the server and used as-is — real secrets included —
+    then bootstrap.sh overlays the deploy-topology values (domains, admin IP, ports) on top of
+    it. Fails immediately, before touching the server, if that local .env doesn't exist: there's
+    no server-side fallback to placeholder defaults.
+
 .PARAMETER SshHost
     SSH destination for the server, e.g. an alias from your ~/.ssh/config.
 
@@ -53,19 +58,31 @@ foreach ($tool in @("ssh", "scp")) {
     }
 }
 
+# Repo root is two levels up from this script (deploy/lightsail/deploy.ps1).
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+$localEnvFile = Join-Path $repoRoot ".env"
+if (-not (Test-Path $localEnvFile)) {
+    Write-Error "No .env at $localEnvFile — copy .env.example and fill in real secrets first. Nothing was touched on the server."
+    exit 1
+}
+
 $certbotArg = if ($CertbotEmail) { " --certbot-email '$CertbotEmail'" } else { "" }
 
 # install.sh is self-contained (it clones/pulls the repo itself when run standalone, then execs
-# the freshly-fetched bootstrap.sh) — so all deploy.ps1 needs to do is get that one file onto the
-# box and run it. No dependency on the server already having a clone.
+# the freshly-fetched bootstrap.sh) — so all deploy.ps1 needs to do is get that file and .env onto
+# the box and run it. No dependency on the server already having a clone.
 $localInstallScript = Join-Path $PSScriptRoot "install.sh"
 $remoteInstallPath = "/tmp/magic-boto-install.sh"
+$remoteEnvPath = "/tmp/magic-boto.env"
 
 Write-Host "==> Copying install.sh to ${SshHost}:${remoteInstallPath}" -ForegroundColor Cyan
 scp $localInstallScript "${SshHost}:${remoteInstallPath}"
 
+Write-Host "==> Copying .env to ${SshHost}:${remoteEnvPath}" -ForegroundColor Cyan
+scp $localEnvFile "${SshHost}:${remoteEnvPath}"
+
 $remoteCommand = "sudo bash $remoteInstallPath --repo-url '$RepoUrl' --repo-path '$RemotePath' " +
-    "--domain '$Domain' --admin-ip '$AdminIp' " +
+    "--domain '$Domain' --admin-ip '$AdminIp' --env-file '$remoteEnvPath' " +
     "--postgres-app-port $PostgresAppPort --postgres-keycloak-port $PostgresKeycloakPort$certbotArg"
 
 Write-Host "==> Deploying magic-boto to $SshHost ($Domain)" -ForegroundColor Cyan

@@ -7,13 +7,18 @@ in the repo root:
 .\deploy\lightsail\deploy.ps1 -SshHost rundotgames -Domain rundotgames.xyz -AdminIp 203.0.113.7
 ```
 
-It copies `install.sh` to `-SshHost` via `scp` and runs it there with `sudo`. `install.sh` is
+It reads your local `.env` (repo root — real secrets included) and fails immediately, before
+touching the server at all, if that file doesn't exist. Otherwise it copies both `install.sh` and
+`.env` to `-SshHost` via `scp` and runs `install.sh` there with `sudo`. `install.sh` is
 self-contained: it clones the repo to `-RemotePath` (default `~/magic-boto`) if it isn't there
 yet, or `git pull`s it if it is, installs whatever OS packages are missing (nginx, certbot +
-plugin, Docker, `jq`, `envsubst`), then hands off to `bootstrap.sh` from that same clone. So this
-works on a genuinely fresh box — nothing needs to be pre-cloned. Re-running it after a code
+plugin, Docker, `jq`, `envsubst`), then hands off to `bootstrap.sh` from that same clone, passing
+along the copied `.env`. So this works on a genuinely fresh box — nothing needs to be pre-cloned,
+nothing needs to be manually edited on the server. Re-running it after a code change, a secrets
 change, an IP change, or a fresh `keycloak/realm-import/realm-export.json` export is the same one
-command — everything downstream is idempotent.
+command — everything downstream is idempotent, and your local `.env` stays the single source of
+truth (each run overwrites the server's copy with it, then layers the deploy-topology values on
+top — see below).
 
 ## Layout
 
@@ -29,7 +34,9 @@ You can skip `deploy.ps1` and run directly on the server instead — either from
 clone (`sudo ./deploy/lightsail/install.sh --domain ... --admin-ip ...`, which then just installs
 packages and hands off, no cloning involved since it detects it's already inside one), or as a
 single fetched file on a fresh box (`sudo bash install.sh --repo-path ~/magic-boto --domain ...
---admin-ip ...`, which clones first). Same end result either way.
+--admin-ip ...`, which clones first). Same end result either way. Without `deploy.ps1` there's no
+automatic `.env` push, though: either place a real `.env` in the repo yourself first, or pass
+`--env-file /path/to/your.env`.
 
 ## What it assumes about the instance
 
@@ -43,31 +50,25 @@ loaded there).
 
 **First time only**: DNS — A records for `magicboto-mcp.<domain>`, `magicboto-keycloak.<domain>`,
 `magicboto-keycloak-admin.<domain>`, and `magicboto-flower.<domain>` pointing at the instance —
-needs to be in place before certbot can issue for them. `.env` also needs real secrets before
-`docker compose` ever runs — `deploy.ps1`/`bootstrap.sh` set the deploy-topology values (domains,
-admin IP, ports) but deliberately refuse to invent passwords or API keys. So the very first run
-stops on purpose, right after creating `.env` from `.env.example`:
+needs to be in place before certbot can issue for them. And a real local `.env`, since that's
+what gets pushed:
 
-```bash
-.\deploy\lightsail\deploy.ps1 -SshHost rundotgames -Domain rundotgames.xyz -AdminIp 203.0.113.7
-# ...
-# Created .env from .env.example. Fill in real secrets (POSTGRES_PASSWORD, KEYCLOAK_ADMIN_PASSWORD,
-# KEYCLOAK_DB_PASSWORD, ANTHROPIC_API_KEY, etc.), then re-run.
-```
-
-```bash
-# on the server
-cd ~/magic-boto
-nano .env
+```powershell
+Copy-Item .env.example .env
 # fill in: POSTGRES_PASSWORD, KEYCLOAK_ADMIN_PASSWORD, KEYCLOAK_DB_PASSWORD, ANTHROPIC_API_KEY, etc.
+.\deploy\lightsail\deploy.ps1 -SshHost rundotgames -Domain rundotgames.xyz -AdminIp 203.0.113.7
 ```
 
-Then re-run `deploy.ps1` (or `bootstrap.sh` directly on the box) — this time it proceeds past the
-`.env` check and actually brings the stack up. This ordering matters beyond just "fill in secrets
-eventually": Postgres/Keycloak's DB only apply their password env vars when the data volume is
-first initialized, so a `docker compose up` that ran once on placeholder values would keep those
-credentials baked into the volume even after `.env` is fixed, until the volume is dropped or
-`.env` is put back to match. Stopping before the first `up` ever happens avoids that entirely.
+`deploy.ps1` checks for this file before doing anything else — no server round-trip just to find
+out secrets aren't set. `bootstrap.sh` (whether reached via `deploy.ps1`'s `--env-file`, or run
+directly on the server against a `.env` you placed there yourself) never falls back to
+`.env.example`'s defaults (blank `ANTHROPIC_API_KEY`, `POSTGRES_PASSWORD=magicboto`,
+`KEYCLOAK_ADMIN_PASSWORD=admin`) — it fails outright if neither is available. That matters beyond
+just "secrets should be real": Postgres/Keycloak's DB only apply their password env vars when the
+data volume is first initialized, so a `docker compose up` that ran even once on placeholder
+values would keep those credentials baked into the volume regardless of what `.env` says
+afterward, until the volume is dropped or `.env` is put back to match. Refusing to proceed
+without real secrets avoids ever getting into that state.
 
 ## Subdomains
 

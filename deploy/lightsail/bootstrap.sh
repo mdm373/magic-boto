@@ -19,6 +19,7 @@ ADMIN_ALLOWED_IP=""
 POSTGRES_APP_PUBLIC_PORT="55432"
 POSTGRES_KEYCLOAK_PUBLIC_PORT="55433"
 CERTBOT_EMAIL=""
+ENV_FILE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -27,6 +28,7 @@ while [[ $# -gt 0 ]]; do
     --postgres-app-port) POSTGRES_APP_PUBLIC_PORT="$2"; shift 2 ;;
     --postgres-keycloak-port) POSTGRES_KEYCLOAK_PUBLIC_PORT="$2"; shift 2 ;;
     --certbot-email) CERTBOT_EMAIL="$2"; shift 2 ;;
+    --env-file) ENV_FILE="$2"; shift 2 ;;
     *) echo "Unknown argument: $1" >&2; exit 1 ;;
   esac
 done
@@ -35,7 +37,7 @@ if [[ -z "$DOMAIN" || -z "$ADMIN_ALLOWED_IP" ]]; then
   cat >&2 <<'USAGE'
 Usage: bootstrap.sh --domain <root domain> --admin-ip <ip or CIDR>
                      [--postgres-app-port N] [--postgres-keycloak-port N]
-                     [--certbot-email you@example.com]
+                     [--certbot-email you@example.com] [--env-file path]
 
 Example: --domain rundotgames.xyz derives magicboto-mcp.rundotgames.xyz,
 magicboto-keycloak.rundotgames.xyz, magicboto-keycloak-admin.rundotgames.xyz, and
@@ -74,15 +76,22 @@ done
 docker compose version >/dev/null 2>&1 || { echo "docker compose (v2 plugin) not found. Run deploy/lightsail/install.sh first." >&2; exit 1; }
 
 # ---- .env ---------------------------------------------------------------------------------
-# Deliberately fail rather than silently continuing on .env.example's defaults — those are blank
-# (ANTHROPIC_API_KEY) or well-known (POSTGRES_PASSWORD=magicboto, KEYCLOAK_ADMIN_PASSWORD=admin),
-# and Postgres/Keycloak's DB only apply their password env vars when the data volume is first
-# initialized, so letting `docker compose up` run once on defaults means those defaults are what
-# the running containers keep even after .env is fixed, until the volume is dropped or .env is
-# made to match. Stopping here forces secrets to be real before that first `up` ever happens.
-if [[ ! -f .env ]]; then
-  cp .env.example .env
-  echo "Created .env from .env.example. Fill in real secrets (POSTGRES_PASSWORD, KEYCLOAK_ADMIN_PASSWORD, KEYCLOAK_DB_PASSWORD, ANTHROPIC_API_KEY, etc.), then re-run." >&2
+# Never falls back to .env.example's defaults — those are blank (ANTHROPIC_API_KEY) or
+# well-known (POSTGRES_PASSWORD=magicboto, KEYCLOAK_ADMIN_PASSWORD=admin), and Postgres/
+# Keycloak's DB only apply their password env vars when the data volume is first initialized, so
+# letting `docker compose up` run even once on defaults means those defaults are what the running
+# containers keep even after .env is fixed, until the volume is dropped or .env is made to match.
+# --env-file (deploy.ps1 passes your local .env here) is copied over unconditionally, since it's
+# the actual source of truth; without it, an existing .env here is used as-is (the direct-on-
+# -server path); with neither, this stops rather than inventing one.
+if [[ -n "$ENV_FILE" ]]; then
+  if [[ ! -f "$ENV_FILE" ]]; then
+    echo "--env-file '${ENV_FILE}' not found." >&2
+    exit 1
+  fi
+  cp "$ENV_FILE" .env
+elif [[ ! -f .env ]]; then
+  echo "No .env here and no --env-file given. Copy a real .env (with actual secrets, not .env.example's defaults) into place first, or run via deploy.ps1, which pushes your local one automatically." >&2
   exit 1
 fi
 
