@@ -74,10 +74,21 @@ done
 docker compose version >/dev/null 2>&1 || { echo "docker compose (v2 plugin) not found. Run deploy/lightsail/install.sh first." >&2; exit 1; }
 
 # ---- .env ---------------------------------------------------------------------------------
+# Deliberately fail rather than silently continuing on .env.example's defaults — those are blank
+# (ANTHROPIC_API_KEY) or well-known (POSTGRES_PASSWORD=magicboto, KEYCLOAK_ADMIN_PASSWORD=admin),
+# and Postgres/Keycloak's DB only apply their password env vars when the data volume is first
+# initialized, so letting `docker compose up` run once on defaults means those defaults are what
+# the running containers keep even after .env is fixed, until the volume is dropped or .env is
+# made to match. Stopping here forces secrets to be real before that first `up` ever happens.
 if [[ ! -f .env ]]; then
-  echo "==> No .env — copying .env.example. Passwords/ANTHROPIC_API_KEY still need real values."
   cp .env.example .env
+  echo "Created .env from .env.example. Fill in real secrets (POSTGRES_PASSWORD, KEYCLOAK_ADMIN_PASSWORD, KEYCLOAK_DB_PASSWORD, ANTHROPIC_API_KEY, etc.), then re-run." >&2
+  exit 1
 fi
+
+# Self-heal CRLF line endings — a .env saved by a Windows editor breaks `source` below
+# (`$'\r': command not found`).
+sed -i 's/\r$//' .env
 
 set_env_var() {
   local key="$1" value="$2"

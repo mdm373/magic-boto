@@ -43,22 +43,31 @@ loaded there).
 
 **First time only**: DNS — A records for `magicboto-mcp.<domain>`, `magicboto-keycloak.<domain>`,
 `magicboto-keycloak-admin.<domain>`, and `magicboto-flower.<domain>` pointing at the instance —
-needs to be in place before certbot can issue for them. `.env` needs real secrets before the
-first `bootstrap.sh` run too (see below); `deploy.ps1`/`bootstrap.sh` set the deploy-topology
-values but never invent passwords or API keys, so after the first run (which creates `.env` from
-`.env.example` if it doesn't exist yet):
+needs to be in place before certbot can issue for them. `.env` also needs real secrets before
+`docker compose` ever runs — `deploy.ps1`/`bootstrap.sh` set the deploy-topology values (domains,
+admin IP, ports) but deliberately refuse to invent passwords or API keys. So the very first run
+stops on purpose, right after creating `.env` from `.env.example`:
 
 ```bash
-# once, on the server, after the first deploy.ps1/install.sh run has created ~/magic-boto/.env
+.\deploy\lightsail\deploy.ps1 -SshHost rundotgames -Domain rundotgames.xyz -AdminIp 203.0.113.7
+# ...
+# Created .env from .env.example. Fill in real secrets (POSTGRES_PASSWORD, KEYCLOAK_ADMIN_PASSWORD,
+# KEYCLOAK_DB_PASSWORD, ANTHROPIC_API_KEY, etc.), then re-run.
+```
+
+```bash
+# on the server
 cd ~/magic-boto
 nano .env
-# fill in: POSTGRES_PASSWORD, KEYCLOAK_ADMIN_PASSWORD, KEYCLOAK_DB_PASSWORD, ANTHROPIC_API_KEY,
-# etc. — then re-run deploy.ps1 (or bootstrap.sh directly) to apply them. Do this before the
-# *first* real `docker compose up`, though, since Postgres/Keycloak's DB only apply their
-# password env vars when the data volume is first initialized — if you let the first run create
-# the containers with default/blank passwords and only fix .env afterward, the running containers
-# keep the old credentials until you either match .env back to them or drop the data volumes.
+# fill in: POSTGRES_PASSWORD, KEYCLOAK_ADMIN_PASSWORD, KEYCLOAK_DB_PASSWORD, ANTHROPIC_API_KEY, etc.
 ```
+
+Then re-run `deploy.ps1` (or `bootstrap.sh` directly on the box) — this time it proceeds past the
+`.env` check and actually brings the stack up. This ordering matters beyond just "fill in secrets
+eventually": Postgres/Keycloak's DB only apply their password env vars when the data volume is
+first initialized, so a `docker compose up` that ran once on placeholder values would keep those
+credentials baked into the volume even after `.env` is fixed, until the volume is dropped or
+`.env` is put back to match. Stopping before the first `up` ever happens avoids that entirely.
 
 ## Subdomains
 
