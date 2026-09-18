@@ -1,0 +1,5 @@
+# This repo is authored on Windows but deployed to Linux (deploy/lightsail/*.sh) and has files
+# bash directly `source`s (.env, built from .env.example) — a CRLF line ending there is a hard
+# failure (`$'\r': command not found`), not just cosmetic. Normalize every text file to LF
+# unconditionally rather than picking files off one at a time.
+* text=auto eol=lf

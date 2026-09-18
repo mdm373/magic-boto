@@ -27,8 +27,18 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
+# $HOME is /root under sudo, not the invoking (e.g. SSH-login) user's actual home — resolve a
+# leading "~" against the real one via $SUDO_USER instead, so `--repo-path ~/magic-boto` (passed
+# single-quoted through ssh, so the remote shell never gets a chance to expand it itself) lands
+# somewhere sensible instead of literally creating a directory named "~".
+if [[ -n "${SUDO_USER:-}" ]]; then
+  REAL_HOME="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
+else
+  REAL_HOME="$HOME"
+fi
+
 REPO_URL="https://github.com/mdm373/magic-boto.git"
-REPO_PATH="${HOME}/magic-boto"
+REPO_PATH="${REAL_HOME}/magic-boto"
 BOOTSTRAP_ARGS=()
 
 while [[ $# -gt 0 ]]; do
@@ -38,6 +48,8 @@ while [[ $# -gt 0 ]]; do
     *) BOOTSTRAP_ARGS+=("$1"); shift ;;
   esac
 done
+
+REPO_PATH="${REPO_PATH/#\~/$REAL_HOME}"
 
 apt-get update -qq
 
@@ -88,7 +100,9 @@ echo "==> Done. Repo at ${REPO_ROOT}"
 
 if [[ ${#BOOTSTRAP_ARGS[@]} -gt 0 ]]; then
   echo "==> Handing off to bootstrap.sh ${BOOTSTRAP_ARGS[*]}"
-  exec "${REPO_ROOT}/deploy/lightsail/bootstrap.sh" "${BOOTSTRAP_ARGS[@]}"
+  # Invoked via `bash` explicitly rather than relying on the file's own +x bit and shebang —
+  # git on Windows doesn't reliably track the executable bit, so a fresh clone can lose it.
+  exec bash "${REPO_ROOT}/deploy/lightsail/bootstrap.sh" "${BOOTSTRAP_ARGS[@]}"
 else
   echo "Run ${REPO_ROOT}/deploy/lightsail/bootstrap.sh next (or re-run this with --domain/--admin-ip to chain it)."
 fi
