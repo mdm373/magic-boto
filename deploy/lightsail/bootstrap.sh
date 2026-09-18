@@ -126,8 +126,16 @@ set +a
 COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.prod.yml)
 
 # ---- app stack ----------------------------------------------------------------------------
+# tools_api and mcp_inspector deliberately aren't in this list: nothing routes to tools_api
+# (nginx only reaches tools_mcp and keycloak_public_proxy) and nothing internally calls it either
+# (tools_mcp never does — same DB, no HTTP dependency between them), so on a memory-constrained
+# instance it's a full extra Python process for no reason. mcp_inspector is debug-only; use an
+# SSH tunnel when you need it. Both still run locally via plain `docker compose up` (no -f
+# docker-compose.prod.yml), since local dev isn't memory-constrained.
+PROD_SERVICES=(postgres redis tools_mcp tools_celery_worker flower keycloak_postgres keycloak keycloak_public_proxy)
+
 echo "==> Bringing up the compose stack"
-"${COMPOSE[@]}" up -d --build
+"${COMPOSE[@]}" up -d --build "${PROD_SERVICES[@]}"
 
 echo "==> Waiting for postgres"
 until "${COMPOSE[@]}" exec -T postgres pg_isready -U "${POSTGRES_USER:-magicboto}" >/dev/null 2>&1; do
@@ -135,7 +143,8 @@ until "${COMPOSE[@]}" exec -T postgres pg_isready -U "${POSTGRES_USER:-magicboto
 done
 
 echo "==> Running migrations"
-"${COMPOSE[@]}" exec -T tools_api uv run invoke migrate
+# Via tools_mcp, not tools_api — same image/code, and tools_mcp is the one actually running here.
+"${COMPOSE[@]}" exec -T tools_mcp uv run invoke migrate
 
 # ---- keycloak: realm client secrets ----------------------------------------------------------
 # keycloak/realm-import/realm-export.json ships client "secret" fields masked as "**********"

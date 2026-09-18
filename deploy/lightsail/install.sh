@@ -96,6 +96,25 @@ echo "==> jq, gettext-base (envsubst)"
 command -v jq >/dev/null 2>&1 || apt-get install -y jq
 command -v envsubst >/dev/null 2>&1 || apt-get install -y gettext-base
 
+echo "==> swap"
+# This stack is tuned tight for a small instance (see docker-compose.prod.yml), but tuning alone
+# doesn't guarantee it never exceeds RAM — swap is what turns "briefly over budget" into "a bit
+# slow" instead of the OOM-killer thrashing the box into an unresponsive freeze (which is what
+# happened without it). Low swappiness so it's a backstop, not the default: prefer actual RAM
+# whenever it's available rather than swapping proactively.
+if [[ $(swapon --show --noheadings | wc -l) -eq 0 ]]; then
+  echo "    No swap active — creating a 1G swapfile"
+  fallocate -l 1G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=1024
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+else
+  echo "    Swap already active — leaving as-is"
+fi
+grep -q '^vm.swappiness' /etc/sysctl.conf || echo 'vm.swappiness=10' >> /etc/sysctl.conf
+sysctl -w vm.swappiness=10 >/dev/null
+
 echo "==> Done. Repo at ${REPO_ROOT}"
 
 if [[ ${#BOOTSTRAP_ARGS[@]} -gt 0 ]]; then

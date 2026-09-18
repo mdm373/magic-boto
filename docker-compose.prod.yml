@@ -6,7 +6,40 @@
 # docs/LIGHTSAIL-DEPLOY.md and nginx/. Every service port in docker-compose.yml is already
 # 127.0.0.1-bound, which is exactly what a host-native nginx needs: it reaches all of them via
 # localhost, nothing outside the host can.
+#
+# Memory tuning lives here, not in the base file, because it's a 512MB-instance concession, not
+# something local dev needs. Postgres's stock shared_buffers is 128MB *per instance* — two
+# instances at defaults is 256MB gone before either does real work, so both get tuned down
+# hard for what's genuinely a low-traffic personal deployment. Keycloak's JVM gets an explicit
+# -Xmx instead of letting Quarkus guess. mem_limit on every service is a backstop, not the
+# primary fix: if this tuning is still wrong somewhere, one container gets OOM-killed and
+# restarts instead of the whole box freezing again. Even with all of this, expect the instance to
+# lean on swap sometimes (see lightsail/install.sh) rather than have comfortable headroom —
+# that's the honest tradeoff of fitting this stack in 512MB.
 services:
+  postgres:
+    command: postgres -c shared_buffers=32MB -c max_connections=20 -c work_mem=4MB
+    mem_limit: 80m
+
+  keycloak_postgres:
+    command: postgres -c shared_buffers=16MB -c max_connections=20 -c work_mem=4MB
+    mem_limit: 64m
+
+  redis:
+    mem_limit: 32m
+
+  tools_mcp:
+    mem_limit: 150m
+
+  tools_celery_worker:
+    mem_limit: 150m
+
+  flower:
+    mem_limit: 64m
+
+  keycloak_public_proxy:
+    mem_limit: 32m
+
   keycloak:
     command: start --import-realm
     environment:
@@ -17,3 +50,8 @@ services:
       # `iss` claim clients see.
       KC_HOSTNAME: https://${KEYCLOAK_DOMAIN}
       KC_HOSTNAME_STRICT: "true"
+      # Explicit heap cap — the single biggest consumer on this box otherwise. Low enough to
+      # leave room for everything else, low enough that GC will work harder than on a bigger
+      # instance, which is an acceptable trade for a low-traffic personal realm.
+      JAVA_OPTS_APPEND: "-Xms64m -Xmx224m"
+    mem_limit: 300m
