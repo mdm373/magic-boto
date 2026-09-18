@@ -44,8 +44,7 @@ param(
     [Parameter(Mandatory)] [string]$AdminIp,
     [string]$RemotePath = "~/magic-boto",
     [string]$RepoUrl = "https://github.com/mdm373/magic-boto.git",
-    [int]$PostgresAppPort = 55432,
-    [int]$PostgresKeycloakPort = 55433,
+    [int]$PostgresPort = 55432,
     [string]$CertbotEmail = ""
 )
 
@@ -83,7 +82,7 @@ scp $localEnvFile "${SshHost}:${remoteEnvPath}"
 
 $remoteCommand = "sudo bash $remoteInstallPath --repo-url '$RepoUrl' --repo-path '$RemotePath' " +
     "--domain '$Domain' --admin-ip '$AdminIp' --env-file '$remoteEnvPath' " +
-    "--postgres-app-port $PostgresAppPort --postgres-keycloak-port $PostgresKeycloakPort$certbotArg"
+    "--postgres-port $PostgresPort$certbotArg"
 
 Write-Host "==> Deploying magic-boto to $SshHost ($Domain)" -ForegroundColor Cyan
 ssh -t $SshHost $remoteCommand

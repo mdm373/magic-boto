@@ -3,11 +3,7 @@
 # dev/ tunnel script logs
 dev/.tunnel-logs/
 
-# rendered nginx config (envsubst output) — the .template sources are what's tracked
-nginx/conf.d/magicboto.conf
-nginx/stream.conf.d/magicboto-postgres.conf
-
-# regenerated Keycloak client secrets (deploy/lightsail-deploy.sh) — never commit these
+# regenerated Keycloak client secrets (deploy/lightsail/bootstrap.sh) — never commit these
 .keycloak-client-secrets
 
 # tools-ui build artifacts

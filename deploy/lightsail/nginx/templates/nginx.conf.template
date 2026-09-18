@@ -1,0 +1,115 @@
+# Rendered from this template by render-and-run.sh (envsubst) into /etc/nginx/nginx.conf inside
+# the `nginx` container (docker-compose.prod.yml). See docs/LIGHTSAIL-DEPLOY.md.
+#
+# Reaches every backend by compose service name over the Docker network — this container is on
+# the same network as tools_mcp/keycloak/flower/postgres, so no host-loopback hop needed the way
+# a host-native nginx would require.
+#
+# ssl_certificate paths assume one cert (SAN covering all four subdomains) issued with
+# `certbot certonly --cert-name magicboto ...` — see bootstrap.sh, which also drops a temporary
+# self-signed cert at this same path before nginx's first start, since nginx won't start at all
+# with ssl_certificate pointing at a file that doesn't exist yet (chicken-and-egg with the
+# webroot ACME challenge, which needs nginx already serving port 80).
+worker_processes auto;
+events {
+    worker_connections 1024;
+}
+
+http {
+    include      /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    sendfile     on;
+    proxy_read_timeout 300s;
+
+    server {
+        listen 80;
+        server_name ${MCP_DOMAIN} ${KEYCLOAK_DOMAIN} ${KEYCLOAK_ADMIN_DOMAIN} ${FLOWER_DOMAIN};
+
+        location /.well-known/acme-challenge/ {
+            root /var/www/certbot;
+        }
+
+        location / {
+            return 301 https://$host$request_uri;
+        }
+    }
+
+    # Public — no IP restriction. keycloak_public_proxy already blocks /admin* and
+    # /realms/master* itself (see keycloak/Caddyfile).
+    server {
+        listen 443 ssl;
+        server_name ${MCP_DOMAIN};
+        ssl_certificate     /etc/letsencrypt/live/magicboto/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/magicboto/privkey.pem;
+
+        location / {
+            proxy_pass http://tools_mcp:8765;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-Proto https;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_buffering off;
+        }
+    }
+
+    server {
+        listen 443 ssl;
+        server_name ${KEYCLOAK_DOMAIN};
+        ssl_certificate     /etc/letsencrypt/live/magicboto/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/magicboto/privkey.pem;
+
+        location / {
+            proxy_pass http://keycloak_public_proxy:8181;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-Proto https;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        }
+    }
+
+    # Admin-only from here down — allow/deny is the only gate. ADMIN_ALLOWED_IP change + re-run
+    # bootstrap.sh recreates this container with the new value baked in.
+    server {
+        listen 443 ssl;
+        server_name ${KEYCLOAK_ADMIN_DOMAIN};
+        ssl_certificate     /etc/letsencrypt/live/magicboto/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/magicboto/privkey.pem;
+        allow ${ADMIN_ALLOWED_IP};
+        deny all;
+
+        location / {
+            proxy_pass http://keycloak:8180; # keycloak's own port: admin console + REST API
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-Proto https;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        }
+    }
+
+    server {
+        listen 443 ssl;
+        server_name ${FLOWER_DOMAIN};
+        ssl_certificate     /etc/letsencrypt/live/magicboto/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/magicboto/privkey.pem;
+        allow ${ADMIN_ALLOWED_IP};
+        deny all;
+
+        location / {
+            proxy_pass http://flower:5555;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        }
+    }
+}
+
+stream {
+    # Raw Postgres passthrough — one shared instance holds both the app and Keycloak databases
+    # (docker-compose.prod.yml), so one port covers both; pick the database with `psql -d`.
+    server {
+        listen ${POSTGRES_PUBLIC_PORT};
+        proxy_pass postgres:5432;
+        allow ${ADMIN_ALLOWED_IP};
+        deny all;
+    }
+}

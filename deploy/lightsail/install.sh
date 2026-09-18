@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # One-time (idempotent) OS package setup for a magic-boto Lightsail host: clones the repo if it
 # isn't already there (or pulls latest if it is, when running standalone — see below), then
-# installs nginx, certbot (+ its nginx plugin), Docker, and the small utilities bootstrap.sh
-# needs (jq, envsubst). Run as root, from inside an existing clone:
+# installs certbot, Docker, and the small utilities bootstrap.sh needs (jq, envsubst, openssl).
+# nginx itself is NOT installed natively here — it runs as a compose service
+# (docker-compose.prod.yml, deploy/lightsail/nginx/) — only certbot (the ACME client) is native,
+# using the webroot method rather than its nginx plugin, since there's no system nginx to plug
+# into. Run as root, from inside an existing clone:
 #
 #   sudo ./deploy/lightsail/install.sh
 #
@@ -77,11 +80,8 @@ else
   REPO_ROOT="$REPO_PATH"
 fi
 
-echo "==> nginx"
-command -v nginx >/dev/null 2>&1 || apt-get install -y nginx
-
 echo "==> certbot"
-command -v certbot >/dev/null 2>&1 || apt-get install -y certbot python3-certbot-nginx
+command -v certbot >/dev/null 2>&1 || apt-get install -y certbot
 
 echo "==> docker"
 if ! command -v docker >/dev/null 2>&1; then
@@ -92,9 +92,10 @@ if ! docker compose version >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "==> jq, gettext-base (envsubst)"
+echo "==> jq, gettext-base (envsubst), openssl"
 command -v jq >/dev/null 2>&1 || apt-get install -y jq
 command -v envsubst >/dev/null 2>&1 || apt-get install -y gettext-base
+command -v openssl >/dev/null 2>&1 || apt-get install -y openssl
 
 echo "==> swap"
 # This stack is tuned tight for a small instance (see docker-compose.prod.yml), but tuning alone
