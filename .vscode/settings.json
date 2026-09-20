@@ -4,10 +4,10 @@
     "tools_api": true,
     "docs": true,
     "tools-ui": true,
-    "keycloak": true,
-    "deploy": true,
-    "nginx": true,
-    "dev": true
+    "authelia": true,
+    "postgres": true,
+    "scripts": true,
+    "redis": true
   },
   "sqltools.connections": [
     {

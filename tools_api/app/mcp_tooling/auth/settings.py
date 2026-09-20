@@ -1,4 +1,4 @@
-"""Env-driven settings for the MCP resource-server auth gate (Keycloak)."""
+"""Env-driven settings for the MCP resource-server auth gate (OIDC — Authelia)."""
 
 from __future__ import annotations
 
@@ -12,8 +12,8 @@ def _env_flag(name: str) -> bool:
 
 
 @dataclass(frozen=True, slots=True)
-class KeycloakAuthSettings:
-    """Resolved config for verifying Keycloak-issued bearer tokens."""
+class OidcAuthSettings:
+    """Resolved config for verifying OIDC-issued bearer tokens."""
 
     issuer_url: str
     jwks_url: str
@@ -23,22 +23,20 @@ class KeycloakAuthSettings:
     jwks_cache_seconds: int
 
 
-def keycloak_auth_settings_from_env() -> KeycloakAuthSettings | None:
+def oidc_auth_settings_from_env() -> OidcAuthSettings | None:
     """Build settings from env, or ``None`` when ``TOOLS_MCP_AUTH_ENABLED`` is unset/false.
 
-    Required when enabled: ``KEYCLOAK_ISSUER_URL`` (realm issuer as embedded in tokens'
-    ``iss`` claim — the URL clients use to reach Keycloak, e.g.
-    ``http://localhost:8180/realms/magic-boto``), ``KEYCLOAK_AUDIENCE`` (expected token
-    audience — the MCP client's ID or a dedicated resource indicator), and
-    ``TOOLS_MCP_RESOURCE_SERVER_URL`` (this server's externally reachable base URL, used for
-    RFC 9728 protected-resource metadata).
+    Required when enabled: ``OIDC_ISSUER_URL`` (the provider's issuer as embedded in tokens'
+    ``iss`` claim — the URL clients use to reach it, e.g. ``https://magic-boto-authelia.fly.dev``
+    in prod or ``http://localhost:9091`` locally), ``OIDC_AUDIENCE`` (expected token audience —
+    the MCP client's ID or a dedicated resource indicator), and ``TOOLS_MCP_RESOURCE_SERVER_URL``
+    (this server's externally reachable base URL, used for RFC 9728 protected-resource metadata).
 
-    ``KEYCLOAK_JWKS_URL`` is optional and defaults to
-    ``{issuer_url}/protocol/openid-connect/certs``. Set it explicitly when this server can't
-    reach Keycloak at its public issuer URL — e.g. in
-    Docker Compose, browsers/clients reach Keycloak at ``http://localhost:8180`` (so that's the
-    ``iss`` this server must validate against), but the ``tools_mcp`` container must fetch keys
-    over the compose network at ``http://keycloak:8180/realms/<realm>/protocol/openid-connect/certs``.
+    ``OIDC_JWKS_URL`` is optional and defaults to ``{issuer_url}/jwks.json`` (Authelia's JWKS
+    path). Set it explicitly when this server can't reach the provider at its public issuer URL —
+    e.g. in Docker Compose, browsers/clients reach Authelia at ``http://localhost:9091`` (so
+    that's the ``iss`` this server must validate against), but the ``tools_mcp`` container must
+    fetch keys over the compose network at ``http://authelia:9091/jwks.json``.
     """
     if not _env_flag("TOOLS_MCP_AUTH_ENABLED"):
         return None
@@ -46,14 +44,14 @@ def keycloak_auth_settings_from_env() -> KeycloakAuthSettings | None:
     scopes_raw = os.environ.get("TOOLS_MCP_REQUIRED_SCOPES", "").strip()
     required_scopes = tuple(s.strip() for s in scopes_raw.split(",") if s.strip())
 
-    issuer_url = os.environ["KEYCLOAK_ISSUER_URL"].rstrip("/")
-    jwks_url = os.environ.get("KEYCLOAK_JWKS_URL", "").strip().rstrip("/")
+    issuer_url = os.environ["OIDC_ISSUER_URL"].rstrip("/")
+    jwks_url = os.environ.get("OIDC_JWKS_URL", "").strip().rstrip("/")
 
-    return KeycloakAuthSettings(
+    return OidcAuthSettings(
         issuer_url=issuer_url,
-        jwks_url=jwks_url or f"{issuer_url}/protocol/openid-connect/certs",
-        audience=os.environ["KEYCLOAK_AUDIENCE"],
+        jwks_url=jwks_url or f"{issuer_url}/jwks.json",
+        audience=os.environ["OIDC_AUDIENCE"],
         resource_server_url=os.environ["TOOLS_MCP_RESOURCE_SERVER_URL"].rstrip("/"),
         required_scopes=required_scopes,
-        jwks_cache_seconds=int(os.environ.get("KEYCLOAK_JWKS_CACHE_SECONDS", "300")),
+        jwks_cache_seconds=int(os.environ.get("OIDC_JWKS_CACHE_SECONDS", "300")),
     )

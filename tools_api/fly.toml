@@ -1,0 +1,74 @@
+# Fly.io app for the tools_api layer — named for the API, not any one transport it happens to
+# serve (it's the same image/codebase as the plain HTTP API and could grow an "http" process
+# group here later). Currently two process groups: "mcp" (public, auth-gated) and "worker"
+# (Celery, fully private). app.cmd.serve_http isn't deployed here yet — MCP is the only
+# externally-facing surface this project needs on Fly right now.
+#
+# "worker" has no [[services]] block whatsoever (not even a private one) — it only ever makes
+# outbound connections to Postgres/Redis, never needs to be reached by anything.
+#
+# `app` below is a placeholder — Fly app names are globally unique. deploy.ps1 passes -a
+# explicitly; edit this only if you run `fly` commands by hand against this config.
+app = "magic-boto-tools-api"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[deploy]
+  release_command = "uv run invoke migrate"
+
+# Scryfall card-image cache (see app/mcp_tooling/cards_tools.py — the only consumer; MCP UI apps
+# can't reach a plain HTTP route, so there's no separate image endpoint here).
+# Scoped to "mcp" only — a volume attaches to one machine at a time, so this pins mcp to a single
+# machine (no standby) in exchange for the cache surviving restarts/redeploys instead of resetting
+# to empty each time. "worker" doesn't mount it: it never serves card images, and the mtgjson
+# fetch pipeline's cache/mtgjson isn't in active use on Fly right now.
+[[mounts]]
+  source = "magic_boto_tools_cache"
+  destination = "/app/cache"
+  processes = ["mcp"]
+
+[env]
+  POSTGRES_HOST = "magic-boto-db.internal"
+  POSTGRES_PORT = "5432"
+  POSTGRES_DB = "magicboto_api"
+  LOG_LEVEL = "INFO"
+  CELERY_REDIS_URL = "redis://magic-boto-redis.internal:6379/0"
+  TOOLS_MCP_HOST = "0.0.0.0"
+  TOOLS_MCP_PORT = "8765"
+  TOOLS_MCP_AUTH_ENABLED = "true"
+  # Stateful mode (the default) keeps every MCP session's transport + background task resident in
+  # process memory (mcp SDK's StreamableHTTPSessionManager._server_instances) until an explicit
+  # client-sent session termination — a session that just goes away (iframe unmount, reconnect)
+  # leaks. json_response is already true here (plain JSON tool responses, no long-lived SSE), so
+  # there's no resumability/session-affinity need to give up by going stateless.
+  TOOLS_MCP_STATELESS_HTTP = "true"
+  TOOLS_MCP_RESOURCE_SERVER_URL = "https://magic-boto-tools-api.fly.dev"
+  OIDC_ISSUER_URL = "https://magic-boto-authelia.fly.dev"
+  OIDC_AUDIENCE = "magic-boto-tools-api"
+
+[processes]
+  mcp = "uv run uvicorn app.cmd.serve_mcp.asgi:app --host 0.0.0.0 --port 8765"
+  worker = "uv run celery -A app.cmd.serve_celery:celery_app worker --loglevel=info"
+
+[[services]]
+  processes = ["mcp"]
+  internal_port = 8765
+  protocol = "tcp"
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+    force_https = true
+
+  [[services.http_checks]]
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "15s"
+    method = "GET"
+    path = "/health"

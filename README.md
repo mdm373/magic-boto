@@ -29,7 +29,7 @@ Connect an MCP-capable agent as in **Setup** below, then talk to it in natural l
 
 ## Setup
 
-**Windows / PowerShell, from the repo root.** You will use **Docker Compose**, a root **`.env`**, **`load-env.ps1`** (dot-sourced), and **Alembic migrations** run from **`tools_api`**.
+**Windows / PowerShell, from the repo root.** You will use **Docker Compose**, a root **`.env`**, **`scripts/load-env.ps1`** (dot-sourced), and **Alembic migrations** run from **`tools_api`**.
 
 **1. Environment file**
 
@@ -41,7 +41,7 @@ Copy-Item .env.example .env
 **2. Dot-source env into your shell** (Compose uses the root `.env` for the stack; dot-sourcing is for **host** commands such as `uv run` in `tools_api`):
 
 ```powershell
-. .\load-env.ps1
+. .\scripts\load-env.ps1
 ```
 
 Use the leading `. ` so variables stay in your session.
@@ -89,8 +89,6 @@ Optional: [MCP Inspector](http://localhost:6274) (Compose) to try tools against 
 
 Deck and inventory behavior for agents: [tasks/deck-building-instructions.md](tasks/deck-building-instructions.md).
 
-**Public deployment** (e.g. AWS Lightsail): [docs/LIGHTSAIL-DEPLOY.md](docs/LIGHTSAIL-DEPLOY.md).
-
 ---
 
 ## Repo layout (overview)
@@ -98,7 +96,8 @@ Deck and inventory behavior for agents: [tasks/deck-building-instructions.md](ta
 ```
 magic-boto/
 ├── docker-compose.yml
-├── load-env.ps1
+├── scripts/
+│   └── load-env.ps1
 ├── .env.example
 ├── AGENTS.md
 ├── docs/

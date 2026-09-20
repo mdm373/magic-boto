@@ -21,21 +21,22 @@
       "path": "tasks"
     },
     {
-      "name": "keycloak",
-      "path": "keycloak"
+      "name": "authelia",
+      "path": "authelia"
     },
     {
-      "name": "deploy",
-      "path": "deploy"
+      "name": "postgres",
+      "path": "postgres"
     },
     {
-      "path": "dev",
-      "name": "dev"
+      "name": "redis",
+      "path": "redis"
     },
     {
-      "path": "nginx",
-      "name": "nginx"
+      "name": "scripts",
+      "path": "scripts"
     }
+
   ],
   "settings": {
     "sqltools.connections": [

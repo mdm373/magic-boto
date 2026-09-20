@@ -1,4 +1,4 @@
-"""``TokenVerifier`` that validates bearer JWTs against a Keycloak realm's JWKS."""
+"""``TokenVerifier`` that validates bearer JWTs against an OIDC provider's JWKS."""
 
 from __future__ import annotations
 
@@ -9,18 +9,18 @@ from jwt import PyJWKClient
 from loguru import logger
 from mcp.server.auth.provider import AccessToken, TokenVerifier
 
-from .settings import KeycloakAuthSettings
+from .settings import OidcAuthSettings
 
 
-class KeycloakAuthProvider(TokenVerifier):
-    """Verifies RS256 access tokens issued by a Keycloak realm (resource-server pattern).
+class OidcAuthProvider(TokenVerifier):
+    """Verifies RS256 access tokens issued by an OIDC provider (resource-server pattern).
 
-    Keycloak remains the authorization server; this MCP server never runs an OAuth flow
-    itself — it only checks that a presented bearer token was signed by the realm, is
+    The OIDC provider (Authelia) remains the authorization server; this MCP server never runs
+    an OAuth flow itself — it only checks that a presented bearer token was signed by it, is
     unexpired, and carries the expected audience.
     """
 
-    def __init__(self, settings: KeycloakAuthSettings) -> None:
+    def __init__(self, settings: OidcAuthSettings) -> None:
         self._settings = settings
         self._jwks_client = PyJWKClient(settings.jwks_url, lifespan=settings.jwks_cache_seconds)
 

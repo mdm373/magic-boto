@@ -1,7 +1,0 @@
-{
-    "mcpServers": {
-      "magic-boto-tools": {
-        "url": "http://localhost:8765/mcp"
-      }
-    }
-  }

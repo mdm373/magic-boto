@@ -19,7 +19,7 @@ from starlette.types import ASGIApp
 
 from app.db import build_async_sqlalchemy_resources, close_pool, get_pool
 
-from .auth import KeycloakAuthProvider, keycloak_auth_settings_from_env
+from .auth import OidcAuthProvider, oidc_auth_settings_from_env
 from .error_middleware import AppMcp
 from .tools import register_tools
 
@@ -98,19 +98,19 @@ def create_mcp_server(*, streamable_http: bool) -> FastMCP[dict[str, Any]]:
     # Bearer-token auth is a resource-server concern (RFC 9728): only meaningful over
     # streamable HTTP, where a client can present an ``Authorization`` header. stdio has
     # no such transport-level credential, so auth stays off there regardless of env.
-    keycloak_settings = keycloak_auth_settings_from_env() if streamable_http else None
-    token_verifier = KeycloakAuthProvider(keycloak_settings) if keycloak_settings else None
+    oidc_settings = oidc_auth_settings_from_env() if streamable_http else None
+    token_verifier = OidcAuthProvider(oidc_settings) if oidc_settings else None
     auth_settings = (
         AuthSettings(
-            issuer_url=keycloak_settings.issuer_url,  # type: ignore[arg-type]
-            resource_server_url=keycloak_settings.resource_server_url,  # type: ignore[arg-type]
-            required_scopes=list(keycloak_settings.required_scopes) or None,
+            issuer_url=oidc_settings.issuer_url,  # type: ignore[arg-type]
+            resource_server_url=oidc_settings.resource_server_url,  # type: ignore[arg-type]
+            required_scopes=list(oidc_settings.required_scopes) or None,
         )
-        if keycloak_settings
+        if oidc_settings
         else None
     )
-    if keycloak_settings:
-        logger.info("MCP auth enabled: issuer={}", keycloak_settings.issuer_url)
+    if oidc_settings:
+        logger.info("MCP auth enabled: issuer={}", oidc_settings.issuer_url)
 
     @asynccontextmanager
     async def mcp_lifespan(_mcp: FastMCP[dict[str, Any]]) -> AsyncIterator[dict[str, Any]]:

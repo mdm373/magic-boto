@@ -1,18 +1,17 @@
 # Root stack for magic-boto. See docs/PROJECT-PLAN.md for architecture.
-# Public deployment (Lightsail etc): docker-compose.prod.yml layers on top of this file for the
-# Keycloak prod-mode switch — see docs/LIGHTSAIL-DEPLOY.md. Ingress there is a *native* nginx on
-# the host (not a compose service), which is exactly why every port below is bound to 127.0.0.1:
-# a host-native nginx reaches all of them via localhost regardless, and loopback binding is what
-# keeps them from being reachable from outside that host at all.
+# Every port below is bound to 127.0.0.1: nothing here is reachable from outside this host.
 services:
   postgres:
-    image: postgres:16-alpine
+    build: ./postgres
     container_name: magic-boto-tools-db
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-magicboto}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-magicboto}
       POSTGRES_DB: ${POSTGRES_DB:-magicboto}
+      # Creates a sibling magicboto_authelia database in this same instance — see
+      # postgres/init-db.sh — same shared-instance pattern Fly uses (postgres/fly.toml).
+      AUTHELIA_DB_NAME: ${AUTHELIA_DB_NAME:-magicboto_authelia}
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
@@ -24,11 +23,13 @@ services:
       retries: 5
 
   redis:
-    image: redis:7-alpine
+    build: ./redis
     container_name: magic-boto-tools-redis
     restart: unless-stopped
     ports:
       - "127.0.0.1:${REDIS_LOCAL_PORT:-6379}:6379"
+    volumes:
+      - tools_redis_data:/data
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s
@@ -109,13 +110,13 @@ services:
       TOOLS_MCP_AUTH_ENABLED: ${TOOLS_MCP_AUTH_ENABLED:-false}
       TOOLS_MCP_RESOURCE_SERVER_URL: ${TOOLS_MCP_RESOURCE_SERVER_URL:-http://localhost:8765}
       TOOLS_MCP_REQUIRED_SCOPES: ${TOOLS_MCP_REQUIRED_SCOPES:-}
-      # Must match the issuer clients actually see (they reach Keycloak via the host-mapped
-      # port); this container reaches Keycloak over the compose network instead, hence the
-      # separate KEYCLOAK_JWKS_URL below.
-      KEYCLOAK_ISSUER_URL: ${KEYCLOAK_ISSUER_URL:-http://localhost:8180/realms/magic-boto}
-      KEYCLOAK_JWKS_URL: ${KEYCLOAK_JWKS_URL:-http://keycloak:8180/realms/magic-boto/protocol/openid-connect/certs}
-      KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE:-magic-boto-tools-api}
-      KEYCLOAK_JWKS_CACHE_SECONDS: ${KEYCLOAK_JWKS_CACHE_SECONDS:-300}
+      # Must match the issuer clients actually see (they reach Authelia via the host-mapped
+      # port); this container reaches Authelia over the compose network instead, hence the
+      # separate OIDC_JWKS_URL below.
+      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-http://localhost:9091}
+      OIDC_JWKS_URL: ${OIDC_JWKS_URL:-http://authelia:9091/jwks.json}
+      OIDC_AUDIENCE: ${OIDC_AUDIENCE:-magic-boto-tools-api}
+      OIDC_JWKS_CACHE_SECONDS: ${OIDC_JWKS_CACHE_SECONDS:-300}
     ports:
       - "127.0.0.1:${TOOLS_MCP_LOCAL_PORT:-8765}:${TOOLS_MCP_PORT:-8765}"
     volumes:
@@ -131,85 +132,50 @@ services:
       postgres:
         condition: service_healthy
 
-  keycloak_postgres:
-    image: postgres:16-alpine
-    container_name: magic-boto-keycloak-db
+  # Unlike Keycloak, Authelia has no separate admin console/API — the login portal and the OIDC
+  # endpoints Claude needs are the same surface, so there's nothing to split into a second proxy
+  # service (contrast the old keycloak/keycloak_public_proxy split). State (sessions, OIDC
+  # grants) lives in the shared `postgres` service's magicboto_authelia database, not its own
+  # container/volume.
+  authelia:
+    build: ./authelia
+    container_name: magic-boto-authelia
     restart: unless-stopped
+    env_file: .env
     environment:
-      POSTGRES_USER: ${KEYCLOAK_DB_USER:-keycloak}
-      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-keycloak}
-      POSTGRES_DB: ${KEYCLOAK_DB_NAME:-keycloak}
+      # Real Authelia config sources — its own env-var binding (`AUTHELIA_<PATH>`, `_FILE` suffix
+      # for secret-shaped keys), documented Authelia behavior. The `_FILE` ones point at the same
+      # paths bind-mounted below.
+      AUTHELIA_SESSION_SECRET_FILE: /secrets/session_secret
+      AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE: /secrets/storage_encryption_key
+      AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET_FILE: /secrets/oidc_hmac_secret
+      AUTHELIA_IDENTITY_PROVIDERS_OIDC_ISSUER_PRIVATE_KEY_FILE: /secrets/oidc_issuer.pem
+      AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET_FILE: /secrets/reset_password_jwt_secret
+      AUTHELIA_STORAGE_POSTGRES_ADDRESS: tcp://postgres:5432
+      AUTHELIA_STORAGE_POSTGRES_USERNAME: ${POSTGRES_USER:-magicboto}
+      AUTHELIA_STORAGE_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-magicboto}
+      # Consumed by docker-entrypoint.sh's template substitution, not Authelia's own config
+      # binding.
+      AUTHELIA_PUBLIC_DOMAIN: localhost
+      AUTHELIA_PUBLIC_URL: http://localhost:${AUTHELIA_LOCAL_PORT:-9091}
     ports:
-      - "127.0.0.1:${KEYCLOAK_DB_LOCAL_PORT:-5433}:5432"
+      - "127.0.0.1:${AUTHELIA_LOCAL_PORT:-9091}:9091"
     volumes:
-      - keycloak_postgres_data:/var/lib/postgresql/data
+      - ./authelia/.secrets/oidc-issuer.pem:/secrets/oidc_issuer.pem:ro
+      - ./authelia/.secrets/claude-connector-client-secret-hash.txt:/secrets/claude_connector_client_secret_hash:ro
+      - ./authelia/.secrets/admin-password-hash.txt:/secrets/admin_password_hash:ro
+      - ./authelia/.secrets/session-secret.txt:/secrets/session_secret:ro
+      - ./authelia/.secrets/storage-encryption-key.txt:/secrets/storage_encryption_key:ro
+      - ./authelia/.secrets/oidc-hmac-secret.txt:/secrets/oidc_hmac_secret:ro
+      - ./authelia/.secrets/reset-password-jwt-secret.txt:/secrets/reset_password_jwt_secret:ro
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${KEYCLOAK_DB_USER:-keycloak} -d ${KEYCLOAK_DB_NAME:-keycloak}" ]
+      test: [ "CMD", "wget", "-q", "--spider", "http://127.0.0.1:9091/api/health" ]
       interval: 5s
       timeout: 5s
       retries: 5
-
-  keycloak:
-    image: quay.io/keycloak/keycloak:26.1
-    container_name: magic-boto-keycloak
-    restart: unless-stopped
-    environment:
-      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
-      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
-      KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://keycloak_postgres:5432/${KEYCLOAK_DB_NAME:-keycloak}
-      KC_DB_USERNAME: ${KEYCLOAK_DB_USER:-keycloak}
-      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-keycloak}
-      KC_HTTP_PORT: ${KEYCLOAK_PORT:-8180}
-      KC_HOSTNAME_STRICT: "false"
-      KC_HTTP_ENABLED: "true"
-      KC_HEALTH_ENABLED: "true"
-      # Trust X-Forwarded-* from a TLS-terminating tunnel/proxy (cloudflared/ngrok now, an
-      # ALB or nginx in front of Lightsail later) so issued URLs (incl. the `iss` claim) use
-      # https and the proxy's hostname instead of this container's own http://keycloak:8180.
-      KC_PROXY_HEADERS: xforwarded
-    ports:
-      # Loopback-only: admin console for you, on this machine. Other containers reach
-      # keycloak:8180 over the compose network regardless of this mapping; all outside
-      # ingress (tunnels, LAN, eventually the internet) should go through
-      # keycloak_public_proxy instead, never this port.
-      - "127.0.0.1:${KEYCLOAK_LOCAL_PORT:-8180}:${KEYCLOAK_PORT:-8180}"
-    volumes:
-      # Seed data: any realm export JSON here is imported on startup, but only into an empty
-      # DB (a fresh keycloak_postgres_data volume) — never overwrites an already-provisioned
-      # realm, so this is safe to leave mounted permanently. Re-export after config changes
-      # you want new clones/environments to pick up; see keycloak/realm-import/README.md.
-      - ./keycloak/realm-import:/opt/keycloak/data/import
-    command: start-dev --import-realm
-    healthcheck:
-      # Health/metrics live on Keycloak's separate management interface (port 9000), not the
-      # main HTTP port, since Keycloak 24+.
-      test: [ "CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && echo -e 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 && cat <&3 | grep -q '200 OK'" ]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
+      start_period: 10s
     depends_on:
-      keycloak_postgres:
-        condition: service_healthy
-
-  # Public-facing Keycloak proxy: only this port should ever be tunneled/exposed. Blocks
-  # /admin* and /realms/master* (Admin Console, Admin REST API, master-realm auth) while
-  # passing through the app realm's OIDC endpoints. Keycloak's own port (KEYCLOAK_LOCAL_PORT)
-  # stays for local/admin access only.
-  keycloak_public_proxy:
-    image: caddy:2-alpine
-    container_name: magic-boto-keycloak-proxy
-    restart: unless-stopped
-    environment:
-      KEYCLOAK_PORT: ${KEYCLOAK_PORT:-8180}
-      KEYCLOAK_PUBLIC_PORT: ${KEYCLOAK_PUBLIC_PORT:-8181}
-    ports:
-      - "127.0.0.1:${KEYCLOAK_PUBLIC_LOCAL_PORT:-8181}:${KEYCLOAK_PUBLIC_PORT:-8181}"
-    volumes:
-      - ./keycloak/Caddyfile:/etc/caddy/Caddyfile:ro
-    depends_on:
-      keycloak:
+      postgres:
         condition: service_healthy
 
   # MCP Inspector (debug tools_mcp). UI :6274, proxy :6277 — see README in repo root / AGENTS.md.
@@ -233,4 +199,4 @@ services:
 
 volumes:
   tools_db_postgres_data:
-  keycloak_postgres_data:
+  tools_redis_data:

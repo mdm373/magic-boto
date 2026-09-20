@@ -1,0 +1,63 @@
+# Fly.io app for magic-boto Authelia
+
+app = "magic-boto-authelia"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  AUTHELIA_SESSION_SECRET_FILE = "/secrets/session_secret"
+  AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE = "/secrets/storage_encryption_key"
+  AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET_FILE = "/secrets/oidc_hmac_secret"
+  AUTHELIA_IDENTITY_PROVIDERS_OIDC_ISSUER_PRIVATE_KEY_FILE = "/secrets/oidc_issuer.pem"
+  AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET_FILE = "/secrets/reset_password_jwt_secret"
+  AUTHELIA_STORAGE_POSTGRES_ADDRESS = "tcp://magic-boto-db.internal:5432"
+  AUTHELIA_PUBLIC_DOMAIN = "magic-boto-authelia.fly.dev"
+  AUTHELIA_PUBLIC_URL = "https://magic-boto-authelia.fly.dev"
+
+[[files]]
+  guest_path = "/secrets/oidc_issuer.pem"
+  local_path = ".secrets/oidc-issuer.pem"
+
+[[files]]
+  guest_path = "/secrets/claude_connector_client_secret_hash"
+  local_path = ".secrets/claude-connector-client-secret-hash.txt"
+
+[[files]]
+  guest_path = "/secrets/admin_password_hash"
+  local_path = ".secrets/admin-password-hash.txt"
+
+[[files]]
+  guest_path = "/secrets/session_secret"
+  local_path = ".secrets/session-secret.txt"
+
+[[files]]
+  guest_path = "/secrets/storage_encryption_key"
+  local_path = ".secrets/storage-encryption-key.txt"
+
+[[files]]
+  guest_path = "/secrets/oidc_hmac_secret"
+  local_path = ".secrets/oidc-hmac-secret.txt"
+
+[[files]]
+  guest_path = "/secrets/reset_password_jwt_secret"
+  local_path = ".secrets/reset-password-jwt-secret.txt"
+
+[[services]]
+  internal_port = 9091
+  protocol = "tcp"
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+    force_https = true
+
+  [[services.tcp_checks]]
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "15s"

@@ -1,0 +1,40 @@
+# Fly.io app for the magic-boto Postgres backend — a single Machine + volume, no managed
+# Postgres cluster (no HA, no automated backups: see postgres/deploy.ps1 / destroy.ps1).
+# Private-network only: no public IP is allocated, so this is reachable only from other apps in
+# the same Fly org via <app>.internal:5432 (direct machine DNS — <app>.flycast, Fly's private
+# load-balanced address, did not resolve for this org/app despite matching Fly's documented
+# pattern), never the public internet.
+#
+# `app` below is a placeholder — Fly app names are globally unique. deploy.ps1/destroy.ps1 pass
+# -a explicitly so the -AppName param is what actually matters; edit this only if you run `fly`
+# commands by hand against this config.
+app = "magic-boto-db"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  # Mount root is /data (Fly volume convention); PGDATA lives in a subdirectory so Postgres
+  # doesn't choke on lost+found/other reserved entries some filesystems create at the mount root.
+  PGDATA = "/data/pgdata"
+  # One instance, two databases (init-db.sh creates the second) — saves paying for a
+  # separate Fly Machine + volume just for Authelia's data.
+  POSTGRES_DB = "magicboto_api"
+  AUTHELIA_DB_NAME = "magicboto_authelia"
+
+[[mounts]]
+  source = "magic_boto_db_data"
+  destination = "/data"
+
+[[services]]
+  internal_port = 5432
+  protocol = "tcp"
+
+  [[services.ports]]
+    port = 5432
+
+  [[services.tcp_checks]]
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "10s"

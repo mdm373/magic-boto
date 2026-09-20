@@ -1,8 +1,21 @@
-.venv
-__pycache__
-*.pyc
-.pytest_cache
-.mypy_cache
-.git
-*.md
-tests
+# Explicit allow-list: deny everything, then re-allow only what the image actually needs to
+# build and run (see Dockerfile's COPY . . and fly.toml's release_command). A build-context WARN
+# ("Build context is 1.3 GB") showed .mtg_json/, pg_dump/, cache/, and debug/ — all local-only
+# runtime/dev artifacts, none of them referenced by the Dockerfile — being uploaded on every
+# `fly deploy`/`docker build`. Local docker-compose dev is unaffected: cache/ and debug/ are
+# bind-mounted over the image at container start (see ../docker-compose.yml), not copied in at
+# build time, so excluding them from the build context doesn't remove them from the running
+# container. A new local-only directory is excluded by default under this scheme — opt a new
+# runtime path in here explicitly instead of remembering to ignore the next one.
+*
+
+!app
+!app/**
+!migrations
+!migrations/**
+!tasks
+!tasks/**
+!alembic.ini
+!pyproject.toml
+!uv.lock
+!settings.py

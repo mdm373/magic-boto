@@ -35,7 +35,14 @@ _FALLBACK_HTML = (
     "<code>tools-ui/</code>.</p></body></html>"
 )
 _SCRYFALL_IMAGE_URL = "https://api.scryfall.com/cards/{scryfall_id}?format=image"
+# Cache stores the base64-encoded MCP payload directly, not raw image bytes — a cache hit is then
+# a plain text read straight into the tool response, with no decode/re-encode of the image on
+# every call. Nothing else consumes this cache (the plain HTTP image route was removed since MCP
+# UI apps can't reach it — see cards_tools.py's get_card_image tool), so the encoded form is fine.
 _IMAGE_CACHE_DIR = SERVICE_ROOT / "cache" / "card_images"
+# Scryfall calls have no timeout otherwise — a stalled connection (e.g. broken egress) hangs the
+# request indefinitely instead of failing fast.
+_SCRYFALL_TIMEOUT_SECONDS = 10.0
 
 _card_service = create_card_service()
 
@@ -50,26 +57,35 @@ def _read_ui(filename: str) -> str:
     return path.read_text(encoding="utf-8") if path.exists() else _FALLBACK_HTML
 
 
-async def _fetch_card_image(scryfall_id: str) -> bytes:
-    """Return image bytes for a Scryfall ID, using the shared cache."""
+async def _fetch_card_image_base64(scryfall_id: str) -> str:
+    """Return the base64-encoded JPEG for a Scryfall ID, using the shared cache."""
     global _scryfall_last_fetch
-    cache_path = _IMAGE_CACHE_DIR / f"{scryfall_id}.jpg"
+    cache_path = _IMAGE_CACHE_DIR / f"{scryfall_id}.b64"
     if cache_path.exists():
-        return cache_path.read_bytes()
+        return await asyncio.to_thread(cache_path.read_text, encoding="ascii")
     async with _SCRYFALL_SEMAPHORE:
         # Re-check cache in case another concurrent call wrote it while we waited.
         if cache_path.exists():
-            return cache_path.read_bytes()
+            return await asyncio.to_thread(cache_path.read_text, encoding="ascii")
         wait = _SCRYFALL_REQUEST_DELAY - (asyncio.get_event_loop().time() - _scryfall_last_fetch)
         if wait > 0:
             await asyncio.sleep(wait)
-        async with httpx.AsyncClient(follow_redirects=True, headers=_SCRYFALL_HEADERS) as client:
+        async with httpx.AsyncClient(
+            follow_redirects=True,
+            headers=_SCRYFALL_HEADERS,
+            timeout=_SCRYFALL_TIMEOUT_SECONDS,
+        ) as client:
             response = await client.get(_SCRYFALL_IMAGE_URL.format(scryfall_id=scryfall_id))
         _scryfall_last_fetch = asyncio.get_event_loop().time()
         response.raise_for_status()
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-        cache_path.write_bytes(response.content)
-    return response.content
+        encoded = base64.standard_b64encode(response.content).decode("ascii")
+
+        def _write_cache() -> None:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(encoded, encoding="ascii")
+
+        await asyncio.to_thread(_write_cache)
+    return encoded
 
 
 def register_cards_tools(app_mcp: AppMcp) -> None:
@@ -137,6 +153,5 @@ def register_cards_tools(app_mcp: AppMcp) -> None:
         description="Fetch JPEG artwork for a Scryfall printing id (UUID).",
     )
     async def show_card_image(scryfall_id: str) -> ImageContent:
-        image_bytes = await _fetch_card_image(scryfall_id)
-        data = base64.standard_b64encode(image_bytes).decode()
+        data = await _fetch_card_image_base64(scryfall_id)
         return ImageContent(type="image", data=data, mimeType="image/jpeg")

@@ -1,0 +1,9 @@
+# A template, not a literal file — see configuration.yml's header comment and
+# authelia/docker-entrypoint.sh. No native Authelia env-var binding reaches a dynamic map key
+# (the username) or values nested under it, so these three are substituted at container start.
+users:
+  "{{ AUTHELIA_ADMIN_USERNAME }}":
+    displayname: "Magic Boto Admin"
+    password: "{{ AUTHELIA_ADMIN_PASSWORD_HASH }}"
+    email: "{{ AUTHELIA_ADMIN_EMAIL }}"
+    groups: []

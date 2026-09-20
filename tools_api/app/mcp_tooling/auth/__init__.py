@@ -1,12 +1,12 @@
-"""Keycloak-backed OAuth resource-server auth for the MCP server."""
+"""OIDC-backed OAuth resource-server auth for the MCP server (Authelia)."""
 
 from __future__ import annotations
 
-from .keycloak_provider import KeycloakAuthProvider
-from .settings import KeycloakAuthSettings, keycloak_auth_settings_from_env
+from .oidc_provider import OidcAuthProvider
+from .settings import OidcAuthSettings, oidc_auth_settings_from_env
 
 __all__ = [
-    "KeycloakAuthProvider",
-    "KeycloakAuthSettings",
-    "keycloak_auth_settings_from_env",
+    "OidcAuthProvider",
+    "OidcAuthSettings",
+    "oidc_auth_settings_from_env",
 ]
