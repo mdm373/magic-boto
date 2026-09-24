@@ -14,6 +14,15 @@ Copy `.env.example` to `.env` at the project root and fill in values. Load it in
 
 The dot (`. `) is required — it loads vars into your current shell. `ANTHROPIC_API_KEY` is only required for tag **sweep** and **audit** flows (`sweep.*`, `audit.*`, and related MCP tools). All other tasks only need the Postgres vars.
 
+## Secrets
+
+**Never let a secret value (API key, client secret, password, private key, token) appear in chat output or a tool-call transcript** — not by printing it, not by piping it through a filter that still leaks it, not by reading a secret file back with `Read`/`cat` "just to confirm it exists." A transcript is not a safe place to hold a secret even transiently: assume anything that appears there is compromised and must be rotated.
+
+- When a script (e.g. `authelia\generate-secrets.ps1`) prints a generated secret as part of its normal output, redirect its output to a file on disk instead of letting it print to the terminal tool's captured stdout/stderr — e.g. `& { .\script.ps1 *> "$env:TEMP\out.log" }`. Note that `Write-Host` output bypasses normal PowerShell stream redirection/piping (`| Select-String`, `2>&1 |`, etc. do not catch it) — only redirecting the whole invocation's streams (`*>`) or running the script such that Write-Host has nowhere else to go actually suppresses it.
+- Point the user at the file path so *they* open it, rather than reading the file yourself and pasting its contents into a reply.
+- If a secret was already echoed into the transcript (by a prior mistake, or before this rule existed), treat it as burned: regenerate/rotate it immediately, and don't just note the leak and move on.
+- This applies everywhere in this repo a secret can be generated or displayed: Authelia's connector client secrets and admin password (`authelia/generate-secrets.ps1`), Fly secrets, DB credentials, API keys, etc.
+
 ## Commands
 
 All commands run from `tools_api/`.
