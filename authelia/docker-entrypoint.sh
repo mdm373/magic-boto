@@ -15,11 +15,12 @@ render() {
 }
 
 export AUTHELIA_CLAUDE_CONNECTOR_CLIENT_SECRET_HASH="$(cat /secrets/claude_connector_client_secret_hash)"
+export AUTHELIA_MUSE_CONNECTOR_CLIENT_SECRET_HASH="$(cat /secrets/muse_connector_client_secret_hash)"
 export AUTHELIA_ADMIN_PASSWORD_HASH="$(cat /secrets/admin_password_hash)"
 
 render /config/configuration.yml.template > /config/configuration.yml
 render /config/users_database.yml.template > /config/users_database.yml
 
-unset AUTHELIA_CLAUDE_CONNECTOR_CLIENT_SECRET_HASH AUTHELIA_ADMIN_PASSWORD_HASH
+unset AUTHELIA_CLAUDE_CONNECTOR_CLIENT_SECRET_HASH AUTHELIA_MUSE_CONNECTOR_CLIENT_SECRET_HASH AUTHELIA_ADMIN_PASSWORD_HASH
 
 exec /app/entrypoint.sh "$@"

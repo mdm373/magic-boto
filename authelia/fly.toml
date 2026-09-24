@@ -25,6 +25,10 @@ primary_region = "iad"
   local_path = ".secrets/claude-connector-client-secret-hash.txt"
 
 [[files]]
+  guest_path = "/secrets/muse_connector_client_secret_hash"
+  local_path = ".secrets/muse-connector-client-secret-hash.txt"
+
+[[files]]
   guest_path = "/secrets/admin_password_hash"
   local_path = ".secrets/admin-password-hash.txt"
 

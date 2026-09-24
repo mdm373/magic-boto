@@ -5,9 +5,10 @@
 
 .DESCRIPTION
     Idempotent — safe to re-run. The generated internal secrets (session/storage/HMAC/reset-
-    password) and the Claude connector's client secret only fill in once, never regenerate. Your
-    admin username/email/password are different: always prompted, so you can change them later —
-    leave a prompt blank (or pass its parameter as "") and it keeps the current value unchanged.
+    password) and the connector client secrets (Claude, Muse) only fill in once, never regenerate.
+    Your admin username/email/password are different: always prompted, so you can change them
+    later — leave a prompt blank (or pass its parameter as "") and it keeps the current value
+    unchanged.
 
     Uses `docker run` against the exact Authelia image tag authelia/Dockerfile builds from, so
     the generated hashes are always produced by the same version that verifies them — no local
@@ -22,6 +23,8 @@
         know these values.
       - claude-connector-client-secret.txt (+ ...-hash.txt): the client secret for Claude's MCP
         connector. Give Claude the plaintext file's contents when configuring the connector.
+      - muse-connector-client-secret.txt (+ ...-hash.txt): the client secret for Muse's MCP
+        connector. Give Muse the plaintext file's contents when configuring the connector.
       - admin-password.txt (+ ...-hash.txt): your login password for Authelia's portal.
       - oidc-issuer.pem: an RSA keypair for OIDC token signing.
 
@@ -215,6 +218,12 @@ $client = Set-SecretPairIfMissing -PlaintextFileName "claude-connector-client-se
     -HashFileName "claude-connector-client-secret-hash.txt" -Generate { New-PasswordAndHash }
 if ($client) {
     Write-Host "==> Paste this into Claude's MCP connector config as the client secret: $($client.Password)" -ForegroundColor Yellow
+}
+
+$museClient = Set-SecretPairIfMissing -PlaintextFileName "muse-connector-client-secret.txt" `
+    -HashFileName "muse-connector-client-secret-hash.txt" -Generate { New-PasswordAndHash }
+if ($museClient) {
+    Write-Host "==> Paste this into Muse's MCP connector config as the client secret: $($museClient.Password)" -ForegroundColor Yellow
 }
 
 $adminPasswordHashPath = Join-Path $SecretsDir "admin-password-hash.txt"

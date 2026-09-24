@@ -163,6 +163,7 @@ services:
     volumes:
       - ./authelia/.secrets/oidc-issuer.pem:/secrets/oidc_issuer.pem:ro
       - ./authelia/.secrets/claude-connector-client-secret-hash.txt:/secrets/claude_connector_client_secret_hash:ro
+      - ./authelia/.secrets/muse-connector-client-secret-hash.txt:/secrets/muse_connector_client_secret_hash:ro
       - ./authelia/.secrets/admin-password-hash.txt:/secrets/admin_password_hash:ro
       - ./authelia/.secrets/session-secret.txt:/secrets/session_secret:ro
       - ./authelia/.secrets/storage-encryption-key.txt:/secrets/storage_encryption_key:ro

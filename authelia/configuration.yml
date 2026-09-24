@@ -75,3 +75,27 @@ identity_providers:
         audience:
           - "magic-boto-tools-api"
         requested_audience_mode: implicit
+      - client_id: "magic-boto-muse-connector"
+        client_name: "Muse Connector"
+        client_secret: "{{ AUTHELIA_MUSE_CONNECTOR_CLIENT_SECRET_HASH }}"
+        public: false
+        token_endpoint_auth_method: client_secret_post
+        access_token_signed_response_alg: RS256
+        authorization_policy: one_factor
+        consent_mode: pre-configured
+        redirect_uris:
+          - "https://agent.meta.ai/api/hatch/oauth/callback"
+        scopes:
+          - openid
+          - profile
+          - email
+          - offline_access
+          - groups
+        grant_types:
+          - authorization_code
+          - refresh_token
+        response_types:
+          - code
+        audience:
+          - "magic-boto-tools-api"
+        requested_audience_mode: implicit
