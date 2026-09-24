@@ -47,10 +47,21 @@ primary_region = "iad"
   TOOLS_MCP_RESOURCE_SERVER_URL = "https://magic-boto-tools-api.fly.dev"
   OIDC_ISSUER_URL = "https://magic-boto-authelia.fly.dev"
   OIDC_AUDIENCE = "magic-boto-tools-api"
+  # A/B switch between card-carousel MCP UI implementations (see app/mcp_tooling/cards_tools.py) —
+  # "v1" (default, paged) or "v2" (embla scroll-snap).
+  CARD_CAROUSEL_VARIANT = "v2"
 
 [processes]
-  mcp = "uv run uvicorn app.cmd.serve_mcp.asgi:app --host 0.0.0.0 --port 8765"
-  worker = "uv run celery -A app.cmd.serve_celery:celery_app worker --loglevel=info"
+  mcp = "uv run --no-dev uvicorn app.cmd.serve_mcp.asgi:app --host 0.0.0.0 --port 8765"
+  # --no-dev: image is built via `uv sync --no-dev` (Dockerfile); without this flag `uv run`
+  # resyncs the full lock (ruff, mypy, pygments, grimp, ...) into the venv on every boot.
+  # --pool=solo: concurrency is 1 anyway, and Celery's default prefork pool forks a child
+  # process per task — Python's refcounting touches nearly every object on any GC pass, so
+  # copy-on-write duplicates most of the parent's resident pages instead of sharing them. On
+  # this machine's 256MB budget that doubling is what OOM-killed a routine 100-card sweep
+  # (see fly logs 2026-09-21T04:03:57Z, "Out of memory: Killed process ... (celery)").
+  # solo runs tasks in-process with no fork, avoiding that duplication entirely.
+  worker = "uv run --no-dev celery -A app.cmd.serve_celery:celery_app worker --loglevel=info --pool=solo"
 
 [[services]]
   processes = ["mcp"]

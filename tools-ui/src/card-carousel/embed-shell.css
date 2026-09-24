@@ -1,18 +1,21 @@
 /**
  * Card carousel entry only (import from card-carousel/main.tsx).
  *
- * global.css sets html/body/#root to height: 100%. In MCP embeds the iframe
- * often has no explicit height, so that chain collapses to ~0. We override to
- * height: auto so #root grows with the carousel, while still clipping horizontal
- * overflow that used to flash scrollbars.
+ * global.css no longer sets a height on html/body/#root (content-based sizing
+ * is required for the host's iframe auto-resize to measure correctly on
+ * mobile, and so a grid with fewer rows shrinks the frame instead of always
+ * filling the host's allotted space). Deliberately no `min-height: 100%`
+ * here either — on the root `<html>` element a percentage min-height
+ * resolves against the viewport itself (its only containing block), which
+ * would force full-viewport height back in regardless of content. This file
+ * only adds the horizontal-overflow clipping the carousel needs beyond
+ * global.css's defaults.
  */
 html,
 body {
   margin: 0;
   padding: 0;
   width: 100%;
-  height: auto;
-  min-height: 100%;
   max-width: 100%;
   overflow-x: clip;
   overscroll-behavior-x: none;
@@ -20,8 +23,6 @@ body {
 
 #root {
   width: 100%;
-  height: auto;
-  min-height: 100%;
   max-width: 100%;
   min-width: 0;
   overflow-x: clip;

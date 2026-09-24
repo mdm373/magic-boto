@@ -4,10 +4,11 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "build": "npm run build:card && npm run build:card-carousel && npm run build:sweep && npm run build:sweep-catchup && npm run build:audit && npm run build:inventory-import && npm run build:mtgjson-fetch",
+    "build": "npm run build:card && npm run build:card-carousel && npm run build:card-carousel-v2 && npm run build:sweep && npm run build:sweep-catchup && npm run build:audit && npm run build:inventory-import && npm run build:mtgjson-fetch",
     "build:inventory-import": "cross-env VITE_BUILD_TARGET=inventory-import vite build",
     "build:card": "cross-env VITE_BUILD_TARGET=card vite build",
     "build:card-carousel": "cross-env VITE_BUILD_TARGET=card-carousel vite build",
+    "build:card-carousel-v2": "cross-env VITE_BUILD_TARGET=card-carousel-v2 vite build",
     "build:sweep": "cross-env VITE_BUILD_TARGET=sweep vite build",
     "build:sweep-catchup": "cross-env VITE_BUILD_TARGET=sweep-catchup vite build",
     "build:audit": "cross-env VITE_BUILD_TARGET=audit vite build",
@@ -16,6 +17,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/ext-apps": "^1.5.0",
+    "embla-carousel": "^8.6.0",
+    "embla-carousel-react": "^8.6.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-markdown": "^9.0.0"

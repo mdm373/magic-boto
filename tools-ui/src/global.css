@@ -22,12 +22,22 @@
   box-sizing: border-box;
 }
 
+/*
+ * No `height: 100%` here on purpose. Host iframe auto-resize (MCP Apps
+ * `setupSizeChangedNotifications`) measures content by temporarily forcing
+ * `documentElement.style.height = "max-content"` and reading its rect. If
+ * `html`/`body`/`#root` are pinned to `height: 100%`, that measurement only
+ * works when the override actually takes effect; some mobile WebKit webviews
+ * don't honor `height: max-content` reliably, so the chain falls back to
+ * 100% of a still-zero iframe and the host locks in a permanent 0px height.
+ * Leaving these auto lets every app's own `minHeight: 100%` size purely from
+ * content, which the resize measurement always reads correctly.
+ */
 html,
 body,
 #root {
   margin: 0;
   padding: 0;
-  height: 100%;
   font-family: var(--font-sans);
   background-color: var(--color-background-tertiary);
   color: var(--color-text-tertiary);

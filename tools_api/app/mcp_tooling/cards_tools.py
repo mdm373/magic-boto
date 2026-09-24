@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import os
 from pathlib import Path
 from typing import cast
 
@@ -50,6 +51,8 @@ _SCRYFALL_SEMAPHORE = asyncio.Semaphore(1)
 _SCRYFALL_REQUEST_DELAY = 1.0  # minimum seconds between image requests
 _scryfall_last_fetch: float = 0.0
 _SCRYFALL_HEADERS = {"User-Agent": "magic-boto/1.0 (personal collection tool)"}
+# "v1" (default, paged/keyframe) or "v2" (embla scroll-snap). See card_carousel_ui() below.
+_CAROUSEL_VARIANT = os.environ.get("CARD_CAROUSEL_VARIANT", "v1")
 
 
 def _read_ui(filename: str) -> str:
@@ -101,7 +104,15 @@ def register_cards_tools(app_mcp: AppMcp) -> None:
         mime_type=_UI_MIME_TYPE,
     )
     def card_carousel_ui() -> str:
-        return _read_ui("pages/card-carousel.html")
+        # A/B switch between carousel implementations. The resource is served as inline HTML
+        # (no navigable URL, no reliable per-viewer storage inside the host's iframe), so the
+        # variant has to be picked here rather than at runtime in the UI itself.
+        filename = (
+            "pages/card-carousel-v2.html"
+            if _CAROUSEL_VARIANT == "v2"
+            else "pages/card-carousel.html"
+        )
+        return _read_ui(filename)
 
     @app_mcp.tool(
         name="search_cards",
