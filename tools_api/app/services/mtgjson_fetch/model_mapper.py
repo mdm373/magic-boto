@@ -44,19 +44,37 @@ class MtgJsonModelMapper:
     """Parse MTGJSON on disk and build ORM rows for ``magic_boto``."""
 
     def map_editions(self, path: Path) -> Sequence[EditionModel]:
-        """Stream ``data[]`` from SetList.json into edition rows.
+        """Stream ``data[]`` from SetList.json into edition rows, excluding partial previews.
 
         Parsed incrementally off the file handle: reading the whole document in first cost
         ~70MB peak on an 11.6MB SetList, more than the Celery worker's entire free budget.
+
+        Sets MTGJSON flags ``isPartialPreview`` are omitted entirely. Their files exist weeks
+        before release holding only the cards spoiled so far and grow daily, so importing one
+        freezes a partial snapshot: ingest only ever adds sets absent from ``editions``, so a
+        set captured mid-spoiler is never revisited (FRA was stuck at 51 of 461 cards this way
+        from 2026-08-27). Waiting for the flag to clear trades a short delay for not needing
+        per-card reconciliation.
         """
         out: list[EditionModel] = []
+        previews: list[str] = []
         with path.open("rb") as fh:
             for raw in ijson.items(fh, "data.item", use_float=True):
                 item = MtgJsonSchema.SetListItem.model_validate(raw)
                 code = item.code.strip()
                 if not code:
                     continue
+                if item.is_partial_preview:
+                    previews.append(code.upper())
+                    continue
                 out.append(EditionModel(set_code=code.upper(), name=item.name))
+        if previews:
+            logger.info(
+                "Skipping {} set(s) still in partial preview (MTGJSON is adding cards to these "
+                "daily until release; they will import once complete): {}",
+                len(previews),
+                ", ".join(sorted(previews)),
+            )
         return out
 
     def iter_set_payloads(

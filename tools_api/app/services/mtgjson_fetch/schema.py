@@ -11,8 +11,13 @@ class MtgJsonSchema:
     """Namespace for MTGJSON v5 document shapes (SetList, per-set payload)."""
 
     class SetListItem(BaseModel):
+        model_config = ConfigDict(populate_by_name=True)
+
         code: str
         name: str | None = None
+        # True while MTGJSON is still spoiling a set: the file exists but holds only the cards
+        # revealed so far, and grows daily until release.
+        is_partial_preview: bool = Field(default=False, alias="isPartialPreview")
 
     class SetListDocument(BaseModel):
         data: Sequence[MtgJsonSchema.SetListItem]
