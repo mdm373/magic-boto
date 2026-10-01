@@ -43,7 +43,7 @@ class MtgJsonModelMapper:
     """Parse MTGJSON on disk and build ORM rows for ``magic_boto``."""
 
     def map_editions(self, path: Path) -> Sequence[EditionModel]:
-        doc = MtgJsonSchema.SetListDocument.model_validate_json(path.read_text(encoding="utf-8"))
+        doc = MtgJsonSchema.SetListDocument.model_validate_json(path.read_bytes())
         return [
             EditionModel(set_code=item.code.strip().upper(), name=item.name)
             for item in doc.data
@@ -51,7 +51,7 @@ class MtgJsonModelMapper:
         ]
 
     def map_set_payload(self, *, path: Path, set_code: str) -> MappedSetPayload:
-        doc = MtgJsonSchema.SetDocument.model_validate_json(path.read_text(encoding="utf-8"))
+        doc = MtgJsonSchema.SetDocument.model_validate_json(path.read_bytes())
         cards: list[CardModel] = []
         types: list[CardTypeModel] = []
         subtypes: list[CardSubtypeModel] = []

@@ -63,6 +63,15 @@ class MtgJsonFetchJob:
         self, edition: EditionModel, set_json_path: Path
     ) -> int:
         """Parse one set JSON and upsert edition + related rows; returns inserted card count."""
+        # TODO(memory): this materializes the whole set's ORM rows before the first insert, so
+        # retained memory scales with set size (SLD: 2796 cards -> 13331 rows, ~14MB retained on
+        # top of the parse). The Fly worker only has ~47MB free over idle Celery, so a set much
+        # larger than SLD will OOM-kill it again (exit 137 -> VM reboot -> acks_late redelivery
+        # loop). Fix is to chunk parse -> insert -> release per N cards instead of building
+        # `MappedSetPayload` in full, which caps retained memory at the chunk size. Deferred
+        # because switching `map_set_payload` to a generator reshapes the mapper's API; the
+        # cheaper `read_bytes` fix in model_mapper.py (parse peak 97MB -> 17MB on SLD) bought
+        # enough headroom to not need this yet.
         payload = self._mapper.map_set_payload(path=set_json_path, set_code=edition.set_code)
         async with self._session.begin():
             await self._editions.insert(self._session, edition)
