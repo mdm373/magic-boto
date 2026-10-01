@@ -12,6 +12,7 @@ from .card_type_repo import CardTypeRepo
 from .edition_repo import EditionRepo
 from .inventory_repo import InventoryRepo
 from .mtgjson_fetch_job_repo import MtgjsonFetchJobRepo, MtgjsonFetchJobWithEditions
+from .page import Page
 from .tag_audit_repo import TagAuditRepo
 from .tag_repo import TagRepo, tag_from_model
 from .tag_sweep_repo import SweepBatchRecord, TagSweepRepo
@@ -33,6 +34,7 @@ __all__ = [
     "InventoryRepo",
     "MtgjsonFetchJobRepo",
     "MtgjsonFetchJobWithEditions",
+    "Page",
     "TagAuditRepo",
     "TagRepo",
     "TagSweepRepo",

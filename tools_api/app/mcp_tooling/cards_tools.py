@@ -6,7 +6,6 @@ import asyncio
 import base64
 import os
 from pathlib import Path
-from typing import cast
 
 import httpx
 from mcp.types import ImageContent, ToolAnnotations
@@ -18,8 +17,8 @@ from app.api_schema import (
     CardSearchFlags,
     CardSearchPagination,
     CardSearchQuery,
-    CardsPage,
 )
+from app.api_schema.card_page import CardsPage, to_cards_page
 from app.errors import NotFoundError
 from app.services import create_card_service
 
@@ -135,8 +134,7 @@ def register_cards_tools(app_mcp: AppMcp) -> None:
     ) -> CardsPage:
         query = CardSearchQuery(filters=filters, pagination=pagination, flags=flags)
         async with app_mcp.session() as session:
-            page = await _card_service.search_cards(session, query)
-            return cast(CardsPage, page)
+            return to_cards_page(await _card_service.search_cards(session, query))
 
     @app_mcp.tool(
         name="get_card",

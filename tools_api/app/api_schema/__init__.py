@@ -5,8 +5,6 @@ from .card_schema import (
     Card,
     CardsListMetadata,
     CardsListResponse,
-    CardsPage,
-    CardsPaginationParams,
 )
 from .card_search import CardSearchFilters, CardSearchFlags, CardSearchPagination, CardSearchQuery
 from .descriptions import allowed_values_description
@@ -36,8 +34,6 @@ __all__ = [
     "CardSearchQuery",
     "CardsListMetadata",
     "CardsListResponse",
-    "CardsPage",
-    "CardsPaginationParams",
     "EditionsQuery",
     "Card",
     "Edition",

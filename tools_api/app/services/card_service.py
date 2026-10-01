@@ -1,15 +1,13 @@
 """Card lookup service for MTGJSON cards API."""
 
 from collections.abc import Sequence
-from typing import Any, cast
 
-from fastapi_pagination.bases import AbstractPage
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api_schema import Card
 from app.api_schema.card_search import CardSearchQuery
 from app.models import CardModel
-from app.repository import CardRepo
+from app.repository import CardRepo, Page
 from app.services.card_search_query_builder import CardSearchQueryBuilder
 from app.services.mapper import CardMapper
 
@@ -34,7 +32,7 @@ class CardService:
         self,
         session: AsyncSession,
         query: CardSearchQuery,
-    ) -> AbstractPage[Card]:
+    ) -> Page[Card]:
         """List cards."""
         filters = [
             *self._query_builder.build_predicates(query.filters),
@@ -47,11 +45,12 @@ class CardService:
             page_size=query.pagination.page_size,
             inventory_name=query.filters.inventory_name,
         )
-        summary_only = not query.flags.verbose
-        any_page: Any = page
-        new_items = self._map_page_items(any_page.items, summary_only=summary_only)
-        copy_fn = getattr(any_page, "model_copy", None) or getattr(any_page, "copy")
-        return cast(AbstractPage[Card], copy_fn(update={"items": new_items}))
+        return Page(
+            items=self._map_page_items(page.items, summary_only=not query.flags.verbose),
+            total=page.total,
+            page_number=page.page_number,
+            page_size=page.page_size,
+        )
 
     async def query_card(
         self,

@@ -3,34 +3,13 @@
 from collections.abc import Callable
 from typing import Any
 
-from fastapi import Query
-from fastapi_pagination import Page, Params
-from fastapi_pagination.customization import CustomizedPage, UseParams
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_serializer
+from pydantic import BaseModel, ConfigDict, Field, model_serializer
 
-from app.api_schema.card_pagination_limits import CARD_CATALOG_MAX_PAGE_SIZE
 from app.models.card_rarity import CardRarity
 from app.models.card_side import CardSide
 from app.models.card_supertype import CardSupertype
 from app.models.card_type import CardType
 from app.models.color_identity import ColorIdentity
-
-
-class CardsPaginationParams(Params):
-    """Pagination params for cards endpoints."""
-
-    size: int = Query(
-        default=100,
-        ge=1,
-        description=f"Page size; values above {CARD_CATALOG_MAX_PAGE_SIZE} are capped.",
-    )
-
-    @field_validator("size", mode="after")
-    @classmethod
-    def _clamp_size(cls, value: int) -> int:
-        if value > CARD_CATALOG_MAX_PAGE_SIZE:
-            return CARD_CATALOG_MAX_PAGE_SIZE
-        return value
 
 
 class Card(BaseModel):
@@ -113,6 +92,3 @@ class CardsListResponse(BaseModel):
 
     metadata: CardsListMetadata
     cards: list[Card]
-
-
-CardsPage = CustomizedPage[Page[Card], UseParams(CardsPaginationParams)]

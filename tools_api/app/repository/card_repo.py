@@ -3,11 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import cast
 
 import sqlalchemy as sa
-from fastapi_pagination.bases import AbstractPage
-from fastapi_pagination.ext.sqlalchemy import paginate
 from sqlalchemy import and_, func, select, true
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,9 +12,9 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.sql import Select
 from sqlalchemy.sql.elements import ColumnElement
 
-from app.api_schema.card_schema import CardsPaginationParams
 from app.models import CardModel, InventoryCardModel, InventoryModel
 
+from .page import Page
 from .pg_bulk_upsert import orm_columns_dict
 
 # asyncpg rejects queries whose total bind parameters exceed 32767; chunk IN lists.
@@ -38,24 +35,15 @@ def _apply_ordering(
 class CardRepo:
     """Pure ORM access for ``magic_boto.cards``."""
 
-    async def search_cards(
+    def _build_search_stmt(
         self,
-        session: AsyncSession,
         *,
         filters: Sequence[ColumnElement[bool]],
         distinct_oracle: bool,
-        page_number: int,
-        page_size: int,
-        inventory_name: str | None = None,
-    ) -> AbstractPage[CardModel]:
-        """Paginated card search. Returns a page of CardModel instances."""
-        base = select(CardModel).options(
-            selectinload(CardModel.card_types),
-            selectinload(CardModel.subtypes),
-            selectinload(CardModel.keywords),
-            selectinload(CardModel.supertypes),
-            selectinload(CardModel.meta),
-        )
+        inventory_name: str | None,
+    ) -> Select[tuple[CardModel]]:
+        """Filters, joins and ordering for a card search -- no eager loaders, no window."""
+        base = select(CardModel)
         if inventory_name is not None:
             base = base.join(
                 InventoryCardModel,
@@ -68,14 +56,41 @@ class CardRepo:
                 ),
             )
         base = base.where(and_(*filters) if filters else true())
-        stmt = _apply_ordering(base, distinct_oracle=distinct_oracle)
-        return cast(
-            AbstractPage[CardModel],
-            await paginate(
-                session,
-                stmt,
-                params=CardsPaginationParams(page=page_number, size=page_size),
-            ),
+        return _apply_ordering(base, distinct_oracle=distinct_oracle)
+
+    async def search_cards(
+        self,
+        session: AsyncSession,
+        *,
+        filters: Sequence[ColumnElement[bool]],
+        distinct_oracle: bool,
+        page_number: int,
+        page_size: int,
+        inventory_name: str | None = None,
+    ) -> Page[CardModel]:
+        """Paginated card search. ``LIMIT``/``OFFSET`` and ``COUNT`` both run in Postgres."""
+        stmt = self._build_search_stmt(
+            filters=filters,
+            distinct_oracle=distinct_oracle,
+            inventory_name=inventory_name,
+        )
+        total = await session.scalar(select(func.count()).select_from(stmt.subquery()))
+        rows = await session.scalars(
+            stmt.options(
+                selectinload(CardModel.card_types),
+                selectinload(CardModel.subtypes),
+                selectinload(CardModel.keywords),
+                selectinload(CardModel.supertypes),
+                selectinload(CardModel.meta),
+            )
+            .limit(page_size)
+            .offset((page_number - 1) * page_size)
+        )
+        return Page(
+            items=rows.all(),
+            total=total or 0,
+            page_number=page_number,
+            page_size=page_size,
         )
 
     async def fetch_by_oracle_ids(
@@ -193,12 +208,13 @@ class CardRepo:
         if not rows:
             return
 
-        param_rows = [orm_columns_dict(row) for row in rows]
         index_elements = ("scryfall_id", "side")
 
-        for start in range(0, len(param_rows), batch_size):
-            chunk = param_rows[start : start + batch_size]
-            insert_stmt = pg_insert(CardModel).values(list(chunk))
+        # Convert per batch rather than building every dict up front: during catalog ingest the
+        # caller's ORM instances and their dict copies would otherwise be resident simultaneously.
+        for start in range(0, len(rows), batch_size):
+            chunk = [orm_columns_dict(row) for row in rows[start : start + batch_size]]
+            insert_stmt = pg_insert(CardModel).values(chunk)
             excluded = insert_stmt.excluded
 
             # Columns we will overwrite from EXCLUDED on conflict.

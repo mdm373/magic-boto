@@ -3,10 +3,10 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path
-from fastapi_pagination.bases import AbstractPage
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api_schema import Card, CardSearchQuery, CardsPage
+from app.api_schema import Card, CardSearchQuery
+from app.api_schema.card_page import CardsPage, to_cards_page
 from app.db import get_async_session
 from app.services import create_card_service
 
@@ -30,9 +30,9 @@ def create_card_router() -> APIRouter:
     async def search_cards(
         session: Annotated[AsyncSession, Depends(get_async_session)],
         body: CardSearchQuery,
-    ) -> AbstractPage[Card]:
+    ) -> CardsPage:
         """Run :meth:`CardService.search_cards` with explicit filters + pagination."""
-        return await service.search_cards(session, body)
+        return to_cards_page(await service.search_cards(session, body))
 
     @router.get(
         "/{card_id}",
