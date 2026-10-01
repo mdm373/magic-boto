@@ -60,14 +60,34 @@ Deploy-FlyApp -AppName $AppName -Region $Region -VolumeName "magic_boto_db_data"
 
 # init-db.sh (see postgres/Dockerfile) only runs once, on a brand-new volume — it never re-runs
 # on a redeploy against an already-initialized one, so a sibling database added to fly.toml after
-# the volume already existed would otherwise silently never get created. `createdb` here is
-# idempotent in effect (best-effort: it errors "already exists" on every later run, which we
-# don't treat as fatal) and runs on every deploy regardless of volume age.
+# the volume already existed would otherwise silently never get created. Hence ensuring it here
+# on every deploy, regardless of volume age.
+#
+# Check-then-create, rather than running createdb and ignoring the failure: `try { fly ... }
+# catch {}` cannot swallow this. flyctl is a native command, and a native non-zero exit only
+# raises a catchable error when $PSNativeCommandUseErrorActionPreference is $true — it defaults
+# to $false (verified on PowerShell 7.6.6). The old form therefore printed createdb's "database
+# already exists" plus flyctl's "Error: ssh shell: Process exited with status 1" on every
+# re-run, and left $LASTEXITCODE at 1, making a successful deploy look broken.
 $flyTomlContent = Get-Content (Join-Path $PSScriptRoot "fly.toml") -Raw
 if ($flyTomlContent -match 'AUTHELIA_DB_NAME\s*=\s*"([^"]+)"') {
     $autheliaDbName = $Matches[1]
     Write-Host "==> Ensuring database '$autheliaDbName' exists" -ForegroundColor Cyan
-    try { fly ssh console -a $AppName -C "createdb -U $pgUser $autheliaDbName" } catch {}
+    $probe = fly ssh console -a $AppName `
+        -C "psql -U $pgUser -d postgres -tAc ""SELECT 1 FROM pg_database WHERE datname = '$autheliaDbName'"""
+    if ($LASTEXITCODE -eq 0 -and (($probe -join '') -match '1')) {
+        Write-Host "    '$autheliaDbName' already exists." -ForegroundColor DarkGray
+    }
+    else {
+        fly ssh console -a $AppName -C "createdb -U $pgUser $autheliaDbName"
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "Could not create '$autheliaDbName' (exit $LASTEXITCODE) — Authelia will fail to start until it exists."
+        }
+        else {
+            Write-Host "    created '$autheliaDbName'." -ForegroundColor Green
+        }
+    }
+    $global:LASTEXITCODE = 0
 }
 
 Write-Host "==> Done. Reachable from other apps in this org at ${AppName}.internal:5432 (private network only)." -ForegroundColor Green
