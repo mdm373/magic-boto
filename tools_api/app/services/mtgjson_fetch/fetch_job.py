@@ -62,36 +62,41 @@ class MtgJsonFetchJob:
     async def ingest_edition_from_json_path(
         self, edition: EditionModel, set_json_path: Path
     ) -> int:
-        """Parse one set JSON and upsert edition + related rows; returns inserted card count."""
-        # TODO(memory): this materializes the whole set's ORM rows before the first insert, so
-        # retained memory scales with set size (SLD: 2796 cards -> 13331 rows, ~14MB retained on
-        # top of the parse). The Fly worker only has ~47MB free over idle Celery, so a set much
-        # larger than SLD will OOM-kill it again (exit 137 -> VM reboot -> acks_late redelivery
-        # loop). Fix is to chunk parse -> insert -> release per N cards instead of building
-        # `MappedSetPayload` in full, which caps retained memory at the chunk size. Deferred
-        # because switching `map_set_payload` to a generator reshapes the mapper's API; the
-        # cheaper `read_bytes` fix in model_mapper.py (parse peak 97MB -> 17MB on SLD) bought
-        # enough headroom to not need this yet.
-        payload = self._mapper.map_set_payload(path=set_json_path, set_code=edition.set_code)
+        """Parse one set JSON and upsert edition + related rows; returns inserted card count.
+
+        Chunked: the mapper streams cards off disk and this inserts each chunk before taking
+        the next, so resident memory is bounded by ``batch_size`` cards rather than the whole
+        set. Still one transaction for the whole set, so a mid-set failure rolls the edition
+        back rather than leaving it half-ingested.
+        """
+        inserted = 0
         async with self._session.begin():
             await self._editions.insert(self._session, edition)
-            await self._cards.insert_many(self._session, payload.cards, batch_size=self._batch_size)
-            await self._card_types.insert_many(
-                self._session, payload.card_types, batch_size=self._batch_size
-            )
-            await self._card_subtypes.insert_many(
-                self._session, payload.card_subtypes, batch_size=self._batch_size
-            )
-            await self._card_supertypes.insert_many(
-                self._session, payload.card_supertypes, batch_size=self._batch_size
-            )
-            await self._card_keywords.insert_many(
-                self._session, payload.card_keywords, batch_size=self._batch_size
-            )
-            await self._card_meta.insert_many(
-                self._session, payload.card_meta, batch_size=self._batch_size
-            )
-        return len(payload.cards)
+            for payload in self._mapper.iter_set_payloads(
+                path=set_json_path,
+                set_code=edition.set_code,
+                chunk_size=self._batch_size,
+            ):
+                await self._cards.insert_many(
+                    self._session, payload.cards, batch_size=self._batch_size
+                )
+                await self._card_types.insert_many(
+                    self._session, payload.card_types, batch_size=self._batch_size
+                )
+                await self._card_subtypes.insert_many(
+                    self._session, payload.card_subtypes, batch_size=self._batch_size
+                )
+                await self._card_supertypes.insert_many(
+                    self._session, payload.card_supertypes, batch_size=self._batch_size
+                )
+                await self._card_keywords.insert_many(
+                    self._session, payload.card_keywords, batch_size=self._batch_size
+                )
+                await self._card_meta.insert_many(
+                    self._session, payload.card_meta, batch_size=self._batch_size
+                )
+                inserted += len(payload.cards)
+        return inserted
 
     async def run(self) -> list[str]:
         """Ingest new sets and optionally re-ingest cache-busted sets.
