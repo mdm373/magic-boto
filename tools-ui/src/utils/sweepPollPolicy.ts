@@ -6,7 +6,7 @@ const TERMINAL_AUDIT_STATUSES: ReadonlySet<AuditStatusValue> = new Set([
 ]);
 
 /**
- * Whether to schedule another `get_sweep_status` poll after this payload.
+ * Whether to schedule another `ui_get_sweep_status` poll after this payload.
  *
  * - If an audit row exists: keep polling until the audit is `complete` or `failed`.
  * - If there is no audit: keep polling only while the sweep is still `pending` or
@@ -20,7 +20,7 @@ export function shouldContinuePollingSweepView(data: SweepStatusResponse): boole
 }
 
 /**
- * Keep polling `list_sweeps` while any row would still need updates in the single-sweep view.
+ * Keep polling `ui_list_sweeps` while any row would still need updates in the single-sweep view.
  */
 export function shouldContinuePollingSweepList(rows: readonly SweepStatusResponse[]): boolean {
   if (rows.length === 0) {

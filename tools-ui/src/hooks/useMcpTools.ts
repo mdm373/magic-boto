@@ -81,7 +81,7 @@ export function useGetSweepStatus(app: App | null) {
   const callTool = useServerTool(app);
   return useCallback(
     (sweepId: string) =>
-      callTool<SweepStatusResponse>("get_sweep_status", { sweep_id: sweepId }),
+      callTool<SweepStatusResponse>("ui_get_sweep_status", { sweep_id: sweepId }),
     [callTool],
   );
 }
@@ -89,7 +89,7 @@ export function useGetSweepStatus(app: App | null) {
 export function useListSweeps(app: App | null) {
   const callTool = useServerTool(app);
   return useCallback(
-    () => callTool<ListSweepsResponse>("list_sweeps", {}),
+    () => callTool<ListSweepsResponse>("ui_list_sweeps", {}),
     [callTool],
   );
 }
@@ -97,7 +97,7 @@ export function useListSweeps(app: App | null) {
 export function useGetTagAudit(app: App | null) {
   const callTool = useServerTool(app);
   return useCallback(
-    (auditId: string) => callTool<AuditResponse>("get_tag_audit", { audit_id: auditId }),
+    (auditId: string) => callTool<AuditResponse>("ui_get_tag_audit", { audit_id: auditId }),
     [callTool],
   );
 }

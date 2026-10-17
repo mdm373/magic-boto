@@ -45,7 +45,7 @@ def register_audit_tools(app_mcp: AppMcp) -> None:
         return _read_ui("pages/audit.html")
 
     @app_mcp.tool(
-        name="get_tag_audit",
+        name="ui_get_tag_audit",
         description=(
             "Fetch one audit by ``audit_id`` or the latest audit for ``tag_name`` (one required)."
         ),

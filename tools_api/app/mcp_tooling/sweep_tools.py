@@ -43,7 +43,7 @@ _FALLBACK_HTML = (
 )
 _SWEEP_RESOURCE_URI = "ui://magic-boto/sweep"
 _SWEEP_CATCHUP_RESOURCE_URI = "ui://magic-boto/sweep-catchup"
-# Same semantics as ``enqueue_tag_sweep``: 0 = all incremental-eligible cards per tag.
+# Same semantics as ``ui_enqueue_tag_sweep``: 0 = all incremental-eligible cards per tag.
 _GLOBAL_SWEEP_CATCHUP_CARD_LIMIT = 0
 
 _sweep_repo = TagSweepRepo()
@@ -179,7 +179,7 @@ def register_sweep_tools(app_mcp: AppMcp) -> None:
         return _read_ui("pages/sweep-catchup.html")
 
     @app_mcp.tool(
-        name="enqueue_tag_sweep",
+        name="ui_enqueue_tag_sweep",
         description=(
             "Start an async tag sweep over eligible catalog cards. "
             "``limit`` must be chosen explicitly (0 = all eligible)."
@@ -259,7 +259,7 @@ def register_sweep_tools(app_mcp: AppMcp) -> None:
         )
 
     @app_mcp.tool(
-        name="get_sweep_status",
+        name="ui_get_sweep_status",
         description=(
             "Current status of one sweep; pass exactly one of ``sweep_id`` or ``tag_name``."
         ),
@@ -305,7 +305,7 @@ def register_sweep_tools(app_mcp: AppMcp) -> None:
             )
 
     @app_mcp.tool(
-        name="list_sweeps",
+        name="ui_list_sweeps",
         description="Status snapshot for every tag that has a sweep run recorded.",
         annotations=ToolAnnotations(
             readOnlyHint=True,
@@ -330,7 +330,7 @@ def register_sweep_tools(app_mcp: AppMcp) -> None:
             return SweepListResponse(rows=rows)
 
     @app_mcp.tool(
-        name="enqueue_global_sweep_catchup",
+        name="ui_enqueue_global_sweep_catchup",
         description=(
             "For each tag with a sweep row: prune side tags and sweep/audit artifacts, then "
             "re-queue full incremental-eligible catch-up per tag "

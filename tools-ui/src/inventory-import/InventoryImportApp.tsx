@@ -77,7 +77,7 @@ export function InventoryImportApp() {
         if (fileInputRef.current) fileInputRef.current.value = "";
       };
 
-      // open_inventory_import provides existing names and optional pre-fill.
+      // ui_open_inventory_import provides existing names and optional pre-fill.
       // Errors are silently ignored — the form is already usable without them.
       createdApp.ontoolresult = createOnToolResult<OpenInventoryImportResult>(
         (data) => {

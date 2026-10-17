@@ -127,13 +127,17 @@ def create_mcp_server(*, streamable_http: bool) -> FastMCP[dict[str, Any]]:
     mcp = FastMCP(
         "Magic Boto Tools",
         instructions=(
-            "MTG catalog: cards, editions, inventories, tags, sweeps, audits, MTGJSON fetch jobs.\n\n"
+            "MTG catalog: cards, editions, inventories, tags, sweeps, audits, "
+            "MTGJSON fetch jobs.\n\n"
             "## Interactive UI tools\n"
-            "Any tool whose definition includes `meta.ui` renders a full interactive UI directly in "
-            "the client. When you call one of these tools, the structured JSON it returns is consumed "
-            "by that UI — **do not repeat or summarise the raw JSON to the user**. Simply invoke the "
-            "tool; the interface handles the rest. You may add a short one-sentence note about what "
-            "was opened if helpful, but the JSON payload itself does not need to be shown."
+            "Every tool named `ui_*` renders a full interactive UI directly in the client; no "
+            "other tool does. When you call one, the structured JSON it returns is consumed by "
+            "that UI — **do not repeat or summarise the raw JSON to the user**. Simply invoke "
+            "the tool; the interface handles the rest. You may add a short one-sentence note "
+            "about what was opened if helpful, but the JSON payload itself does not need to be "
+            "shown. Call a `ui_*` tool only when the user should see the result: for card "
+            "searches you are running for your own reasoning, use `search_cards` (data only) "
+            "rather than `ui_search_cards`."
         ),
         lifespan=mcp_lifespan,
         host=host,

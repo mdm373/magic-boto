@@ -51,7 +51,7 @@ def register_mtgjson_fetch_tools(app_mcp: AppMcp) -> None:
         return _read_ui("pages/mtgjson-fetch.html")
 
     @app_mcp.tool(
-        name="begin_mtgjson_fetch",
+        name="ui_begin_mtgjson_fetch",
         description="Return ``{ready: true}`` as the fetch-job tool bundle entrypoint.",
         annotations=ToolAnnotations(
             readOnlyHint=True,

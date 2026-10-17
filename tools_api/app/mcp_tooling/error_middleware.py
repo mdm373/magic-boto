@@ -32,6 +32,9 @@ MCP_NOT_FOUND = -32001
 _UI_DESCRIPTION_SUFFIX = (
     " Renders an interactive UI — do not summarise or repeat the JSON response to the user."
 )
+# Every tool that renders a UI is named with this prefix (and no other tool is), so agents and
+# users can tell from the name alone which calls will show a widget.
+_UI_TOOL_PREFIX = "ui_"
 
 
 class AppMcp:
@@ -93,7 +96,13 @@ def app_mcp_tool(
 ) -> RegisterMcpTool:
     """Combine :meth:`FastMCP.tool` registration with :func:`map_app_errors`."""
 
-    if meta and "ui" in meta and description is not None:
+    has_ui = bool(meta and "ui" in meta)
+    if name is not None and has_ui != name.startswith(_UI_TOOL_PREFIX):
+        raise ValueError(
+            f"MCP tool {name!r}: tools with meta.ui must be named {_UI_TOOL_PREFIX}*, "
+            "and only those tools"
+        )
+    if has_ui and description is not None:
         description = description + _UI_DESCRIPTION_SUFFIX
 
     tool_decorator = mcp.tool(

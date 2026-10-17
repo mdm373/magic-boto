@@ -24,7 +24,6 @@ from app.services import create_card_service
 
 from .error_middleware import AppMcp
 
-CARD_RESOURCE_URI = "ui://magic-boto/card"
 CARD_CAROUSEL_RESOURCE_URI = "ui://magic-boto/card-carousel"
 
 _UI_DIST = Path(__file__).parent / "ui_dist"
@@ -52,6 +51,13 @@ _scryfall_last_fetch: float = 0.0
 _SCRYFALL_HEADERS = {"User-Agent": "magic-boto/1.0 (personal collection tool)"}
 # "v1" (default, paged/keyframe) or "v2" (embla scroll-snap). See card_carousel_ui() below.
 _CAROUSEL_VARIANT = os.environ.get("CARD_CAROUSEL_VARIANT", "v1")
+
+_READ_ONLY = ToolAnnotations(
+    readOnlyHint=True,
+    destructiveHint=False,
+    idempotentHint=True,
+    openWorldHint=False,
+)
 
 
 def _read_ui(filename: str) -> str:
@@ -93,10 +99,6 @@ async def _fetch_card_image_base64(scryfall_id: str) -> str:
 def register_cards_tools(app_mcp: AppMcp) -> None:
     """Register card MCP tools and bundled UI resources."""
 
-    @app_mcp.mcp.resource(CARD_RESOURCE_URI, name="card_ui", mime_type=_UI_MIME_TYPE)
-    def card_ui() -> str:
-        return _read_ui("pages/card.html")
-
     @app_mcp.mcp.resource(
         CARD_CAROUSEL_RESOURCE_URI,
         name="card_carousel_ui",
@@ -113,28 +115,49 @@ def register_cards_tools(app_mcp: AppMcp) -> None:
         )
         return _read_ui(filename)
 
+    async def _search_cards(
+        filters: CardSearchFilters,
+        pagination: CardSearchPagination,
+        flags: CardSearchFlags,
+    ) -> CardsPage:
+        query = CardSearchQuery(filters=filters, pagination=pagination, flags=flags)
+        async with app_mcp.session() as session:
+            return to_cards_page(await _card_service.search_cards(session, query))
+
+    # Same search twice: ui_search_cards renders the carousel for the user; search_cards returns
+    # data only, so an agent can search repeatedly without a widget per call.
     @app_mcp.tool(
         name="search_cards",
         description=(
             "Search the catalog with optional filters (AND). "
-            "Use flags.verbose=true for full card fields; default is a minimal card row."
+            "Use flags.verbose=true for full card fields; default is a minimal card row. "
+            "Returns data only (no UI) — use ui_search_cards to show results to the user."
         ),
-        annotations=ToolAnnotations(
-            readOnlyHint=True,
-            destructiveHint=False,
-            idempotentHint=True,
-            openWorldHint=False,
-        ),
-        meta={"ui": {"resourceUri": CARD_CAROUSEL_RESOURCE_URI}},
+        annotations=_READ_ONLY,
     )
     async def search_cards(
         filters: CardSearchFilters = CardSearchFilters(),
         pagination: CardSearchPagination = CardSearchPagination(),
         flags: CardSearchFlags = CardSearchFlags(),
     ) -> CardsPage:
-        query = CardSearchQuery(filters=filters, pagination=pagination, flags=flags)
-        async with app_mcp.session() as session:
-            return to_cards_page(await _card_service.search_cards(session, query))
+        return await _search_cards(filters, pagination, flags)
+
+    @app_mcp.tool(
+        name="ui_search_cards",
+        description=(
+            "Search the catalog with optional filters (AND) and show the results to the user as "
+            "a card carousel. Same arguments as search_cards; use search_cards instead for "
+            "exploratory searches the user doesn't need to see."
+        ),
+        annotations=_READ_ONLY,
+        meta={"ui": {"resourceUri": CARD_CAROUSEL_RESOURCE_URI}},
+    )
+    async def ui_search_cards(
+        filters: CardSearchFilters = CardSearchFilters(),
+        pagination: CardSearchPagination = CardSearchPagination(),
+        flags: CardSearchFlags = CardSearchFlags(),
+    ) -> CardsPage:
+        return await _search_cards(filters, pagination, flags)
 
     @app_mcp.tool(
         name="get_card",
@@ -142,13 +165,7 @@ def register_cards_tools(app_mcp: AppMcp) -> None:
             "Get one card by internal ``card_id`` (one row per printing). "
             "Use verbose=true for full fields; default is minimal."
         ),
-        annotations=ToolAnnotations(
-            readOnlyHint=True,
-            destructiveHint=False,
-            idempotentHint=True,
-            openWorldHint=False,
-        ),
-        meta={"ui": {"resourceUri": CARD_RESOURCE_URI}},
+        annotations=_READ_ONLY,
     )
     async def get_card(card_id: str, verbose: bool = False) -> Card:
         async with app_mcp.session() as session:

@@ -40,7 +40,7 @@ _inv_repo = InventoryRepo()
 
 
 class OpenInventoryImportResult(TypedDict):
-    """JSON shape returned by ``open_inventory_import``."""
+    """JSON shape returned by ``ui_open_inventory_import``."""
 
     inventory_name: str
     existing_names: list[str]
@@ -153,7 +153,7 @@ def register_inventory_tools(app_mcp: AppMcp) -> None:
         return _read_ui("pages/inventory-import.html")
 
     @app_mcp.tool(
-        name="open_inventory_import",
+        name="ui_open_inventory_import",
         description=(
             "Return ``inventory_name`` (optional hint) and ``existing_names`` for CSV import flows."
         ),

@@ -12,7 +12,8 @@ Treat the **Magic Boto MCP** as the **only** supported interface for **catalog l
 
 Typical tools:
 
-- **`search_cards`** – filter and paginate catalog cards; this is the main way to discover and narrow candidates. Optional **`flags.verbose`** returns full card payloads; **`flags.distinct_oracle`** returns at most one printing per oracle id when paging the catalog.
+- **`search_cards`** – filter and paginate catalog cards; this is the main way to discover and narrow candidates. Optional **`flags.verbose`** returns full card payloads; **`flags.distinct_oracle`** returns at most one printing per oracle id when paging the catalog. Returns data only — use it for exploratory searches.
+- **`ui_search_cards`** – same arguments as `search_cards`, but shows the results to the user as a card carousel. Use it only when the user should see the cards; tools prefixed `ui_` all render a widget.
 - **`get_card`** – one printing by **internal catalog id** (`card_id` from search results), with optional **`verbose`** for a full payload.
 - **`get_card_image`** – JPEG artwork by **Scryfall printing id** (UUID) when you need the picture.
 - **Edition tools** – set/edition lookup as exposed by the server.
