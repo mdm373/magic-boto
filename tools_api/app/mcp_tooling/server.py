@@ -5,13 +5,14 @@ from __future__ import annotations
 import logging
 import os
 import sys
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Callable
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import Any
 
 from loguru import logger
 from mcp.server.auth.settings import AuthSettings
 from mcp.server.fastmcp import FastMCP
+from starlette.applications import Starlette
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -83,8 +84,26 @@ def _env_flag(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
 
 
-def create_mcp_server(*, streamable_http: bool) -> FastMCP[dict[str, Any]]:
-    """Construct FastMCP with tool registration and DB lifespan."""
+@asynccontextmanager
+async def _db_resources(app_mcp: AppMcp) -> AsyncIterator[None]:
+    """Own the asyncpg pool and SQLAlchemy engine for the life of the process."""
+    await get_pool()
+    app_mcp.sqlalchemy = build_async_sqlalchemy_resources()
+    try:
+        yield
+    finally:
+        await app_mcp.sqlalchemy.engine.dispose()
+        app_mcp.sqlalchemy = None
+        await close_pool()
+
+
+def _build_mcp_server(
+    *,
+    streamable_http: bool,
+    lifespan: Callable[[FastMCP[dict[str, Any]]], AbstractAsyncContextManager[dict[str, Any]]]
+    | None,
+) -> tuple[FastMCP[dict[str, Any]], AppMcp]:
+    """Construct FastMCP with tool registration; the caller decides who owns DB resources."""
     ensure_mcp_logging()
     host = os.environ.get("TOOLS_MCP_HOST", "127.0.0.1")
     port = int(os.environ.get("TOOLS_MCP_PORT", "8765"))
@@ -92,8 +111,6 @@ def create_mcp_server(*, streamable_http: bool) -> FastMCP[dict[str, Any]]:
     # restart, ``--reload``, or another worker → HTTP 404 + JSON-RPC "Session not found".
     # Stateless mode handles each POST independently (no session header required).
     stateless_http = streamable_http and _env_flag("TOOLS_MCP_STATELESS_HTTP")
-
-    app_mcp: AppMcp | None = None
 
     # Bearer-token auth is a resource-server concern (RFC 9728): only meaningful over
     # streamable HTTP, where a client can present an ``Authorization`` header. stdio has
@@ -112,18 +129,6 @@ def create_mcp_server(*, streamable_http: bool) -> FastMCP[dict[str, Any]]:
     if oidc_settings:
         logger.info("MCP auth enabled: issuer={}", oidc_settings.issuer_url)
 
-    @asynccontextmanager
-    async def mcp_lifespan(_mcp: FastMCP[dict[str, Any]]) -> AsyncIterator[dict[str, Any]]:
-        nonlocal app_mcp
-        await get_pool()
-        assert app_mcp is not None
-        app_mcp.sqlalchemy = build_async_sqlalchemy_resources()
-        yield {}
-        assert app_mcp.sqlalchemy is not None
-        await app_mcp.sqlalchemy.engine.dispose()
-        app_mcp.sqlalchemy = None
-        await close_pool()
-
     mcp = FastMCP(
         "Magic Boto Tools",
         instructions=(
@@ -132,7 +137,7 @@ def create_mcp_server(*, streamable_http: bool) -> FastMCP[dict[str, Any]]:
             "the user something, and don't repeat their JSON output. Use the plain tools for "
             "research."
         ),
-        lifespan=mcp_lifespan,
+        lifespan=lifespan,
         host=host,
         port=port,
         json_response=streamable_http,
@@ -143,4 +148,38 @@ def create_mcp_server(*, streamable_http: bool) -> FastMCP[dict[str, Any]]:
     app_mcp = AppMcp(mcp)
     register_tools(app_mcp)
     _register_health_route(mcp)
+    return mcp, app_mcp
+
+
+def create_stdio_mcp_server() -> FastMCP[dict[str, Any]]:
+    """FastMCP for stdio: one server run per process, so its lifespan owns DB resources."""
+    app_mcp: AppMcp | None = None
+
+    @asynccontextmanager
+    async def mcp_lifespan(_mcp: FastMCP[dict[str, Any]]) -> AsyncIterator[dict[str, Any]]:
+        assert app_mcp is not None
+        async with _db_resources(app_mcp):
+            yield {}
+
+    mcp, app_mcp = _build_mcp_server(streamable_http=False, lifespan=mcp_lifespan)
     return mcp
+
+
+def create_streamable_http_app() -> ASGIApp:
+    """MCP streamable HTTP ASGI app with DB resources tied to the ASGI app lifespan.
+
+    FastMCP re-enters its own ``lifespan`` for every stateless HTTP request, so DB setup and
+    teardown can't live there: concurrent requests would dispose a shared engine out from
+    under each other. The Starlette app lifespan runs exactly once per process instead.
+    """
+    mcp, app_mcp = _build_mcp_server(streamable_http=True, lifespan=None)
+    starlette_app: Starlette = mcp.streamable_http_app()
+    inner_lifespan = starlette_app.router.lifespan_context
+
+    @asynccontextmanager
+    async def app_lifespan(app: Starlette) -> AsyncIterator[None]:
+        async with _db_resources(app_mcp), inner_lifespan(app):
+            yield
+
+    starlette_app.router.lifespan_context = app_lifespan
+    return wrap_streamable_http_app_with_cors(starlette_app)

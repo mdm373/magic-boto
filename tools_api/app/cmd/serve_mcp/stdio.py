@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from app.mcp_tooling.server import create_mcp_server, ensure_mcp_logging
+from app.mcp_tooling.server import create_stdio_mcp_server, ensure_mcp_logging
 
 
 def main() -> None:
     ensure_mcp_logging()
-    server = create_mcp_server(streamable_http=False)
+    server = create_stdio_mcp_server()
     server.run(transport="stdio")
 
 
