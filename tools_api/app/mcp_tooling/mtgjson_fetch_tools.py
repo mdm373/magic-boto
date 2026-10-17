@@ -65,7 +65,7 @@ def register_mtgjson_fetch_tools(app_mcp: AppMcp) -> None:
         return OpenMtgjsonFetchUiResponse()
 
     @app_mcp.tool(
-        name="enqueue_ui_triggered_mtgjson_fetch",
+        name="app_enqueue_mtgjson_fetch",
         description="Start an MTGJSON catalog fetch job (called by the catalog update UI).",
         annotations=ToolAnnotations(
             readOnlyHint=False,
@@ -73,8 +73,9 @@ def register_mtgjson_fetch_tools(app_mcp: AppMcp) -> None:
             idempotentHint=False,
             openWorldHint=False,
         ),
+        meta={"ui": {"visibility": ["app"]}},
     )
-    async def enqueue_ui_triggered_mtgjson_fetch(
+    async def app_enqueue_mtgjson_fetch(
         requested_set_codes: Annotated[
             str,
             Field(
@@ -96,7 +97,7 @@ def register_mtgjson_fetch_tools(app_mcp: AppMcp) -> None:
         return EnqueueMtgjsonFetchResponse(job_id=str(job_id))
 
     @app_mcp.tool(
-        name="get_mtgjson_fetch_job",
+        name="app_get_mtgjson_fetch_job",
         description="Get an MTGJSON fetch job's status (called by the catalog update UI).",
         annotations=ToolAnnotations(
             readOnlyHint=True,
@@ -104,11 +105,12 @@ def register_mtgjson_fetch_tools(app_mcp: AppMcp) -> None:
             idempotentHint=True,
             openWorldHint=False,
         ),
+        meta={"ui": {"visibility": ["app"]}},
     )
-    async def get_mtgjson_fetch_job(
+    async def app_get_mtgjson_fetch_job(
         job_id: Annotated[
             str,
-            Field(description="Job UUID from ``enqueue_ui_triggered_mtgjson_fetch``."),
+            Field(description="Job UUID from ``app_enqueue_mtgjson_fetch``."),
         ],
     ) -> MtgjsonFetchJobStatusResponse:
         from uuid import UUID

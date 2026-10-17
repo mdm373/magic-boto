@@ -55,7 +55,7 @@ export function CardApp() {
             if (data.scryfall_id) {
               setCard({ imageDataUrl: null, status: "loading" });
               const imgResult = await app.callServerTool({
-                name: "get_card_image",
+                name: "app_get_card_image",
                 arguments: { scryfall_id: data.scryfall_id },
               });
               const imgContent = imgResult.content as readonly ImageToolContentPart[];

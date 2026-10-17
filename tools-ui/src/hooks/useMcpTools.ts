@@ -119,7 +119,7 @@ export function useEnqueueMtgjsonFetch(app: App | null) {
   const callTool = useServerTool(app);
   return useCallback(
     (requested_set_codes: string) =>
-      callTool<Readonly<{ job_id: string; status: string }>>("enqueue_ui_triggered_mtgjson_fetch", {
+      callTool<Readonly<{ job_id: string; status: string }>>("app_enqueue_mtgjson_fetch", {
         requested_set_codes: requested_set_codes,
       }),
     [callTool],
@@ -129,7 +129,7 @@ export function useEnqueueMtgjsonFetch(app: App | null) {
 export function useGetMtgjsonFetchJob(app: App | null) {
   const callTool = useServerTool(app);
   return useCallback(
-    (jobId: string) => callTool<MtgjsonFetchJobStatus>("get_mtgjson_fetch_job", { job_id: jobId }),
+    (jobId: string) => callTool<MtgjsonFetchJobStatus>("app_get_mtgjson_fetch_job", { job_id: jobId }),
     [callTool],
   );
 }

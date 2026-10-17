@@ -146,7 +146,7 @@ export function CardCarouselApp() {
       if (fetchedRef.current.has(card.card_id)) continue;
       fetchedRef.current.add(card.card_id);
       void currentApp
-        .callServerTool({ name: "get_card_image", arguments: { scryfall_id: card.scryfall_id } })
+        .callServerTool({ name: "app_get_card_image", arguments: { scryfall_id: card.scryfall_id } })
         .then((result) => {
           const imgContent = result.content as readonly ImageContent[];
           const img = imgContent.find((c) => c.type === "image");

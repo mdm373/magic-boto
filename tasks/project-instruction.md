@@ -12,7 +12,7 @@ Every tool is one of three kinds, and the name tells you which:
 
 - **Plain tools** (e.g. `search_cards`, `get_card`) return data to you. Use them for research and for gathering what you need to answer. The user doesn't see their output.
 - **UI tools** (named `ui_*`) open an interactive view for the user, such as a card carousel or a sweep progress panel. Use one when the user asks to be **shown** something ("show me…", "let me see…", "pull up…") or explicitly asks to open a UI. The view displays the result, so don't repeat or summarise its JSON output. A one-line note on what you opened is enough.
-- **App-only tools** are called by the UI views themselves, not by you. Don't call them, even if they appear in your tool list.
+- **App-only tools** (named `app_*`) are called by the UI views themselves, not by you. Don't call them, even if they appear in your tool list.
 
 **Rule of thumb:** research with plain tools, then present with a `ui_*` tool. For example, to answer "what are the best green ramp creatures I own?", run as many `search_cards` calls as you need to narrow it down. Then call `ui_search_cards` once with the final filters so the user sees the answer as cards. Never call a `ui_*` tool just to read data for yourself; each call puts a new view in front of the user.
 
@@ -24,7 +24,7 @@ Every tool is one of three kinds, and the name tells you which:
 | `ui_search_cards` | UI | Showing search results to the user as a card carousel. Same arguments as `search_cards`. |
 | `get_card` | plain | One printing by `card_id` (from a search result). |
 | `list_editions` / `get_edition` | plain | Looking up sets by code or name. |
-| `get_card_image` | app-only | Used by the card views to load artwork. |
+| `app_get_card_image` | app-only | Used by the card views to load artwork. |
 
 **Search tips:**
 
@@ -92,7 +92,7 @@ A **sweep** uses Claude (through the Anthropic Batch API) to work through the ca
 | Tool | Kind | Use for |
 | --- | --- | --- |
 | `ui_begin_mtgjson_fetch` | UI | Opening the catalog update view, where the user picks sets to fetch from MTGJSON. |
-| `enqueue_ui_triggered_mtgjson_fetch` / `get_mtgjson_fetch_job` | app-only | Used by the catalog update view to start and track fetch jobs. |
+| `app_enqueue_mtgjson_fetch` / `app_get_mtgjson_fetch_job` | app-only | Used by the catalog update view to start and track fetch jobs. |
 
 If the catalog seems to be missing a recent set, suggest the user open the catalog update view.
 

@@ -37,7 +37,7 @@ _SCRYFALL_IMAGE_URL = "https://api.scryfall.com/cards/{scryfall_id}?format=image
 # Cache stores the base64-encoded MCP payload directly, not raw image bytes — a cache hit is then
 # a plain text read straight into the tool response, with no decode/re-encode of the image on
 # every call. Nothing else consumes this cache (the plain HTTP image route was removed since MCP
-# UI apps can't reach it — see cards_tools.py's get_card_image tool), so the encoded form is fine.
+# UI apps can't reach it — see the app_get_card_image tool), so the encoded form is fine.
 _IMAGE_CACHE_DIR = SERVICE_ROOT / "cache" / "card_images"
 # Scryfall calls have no timeout otherwise — a stalled connection (e.g. broken egress) hangs the
 # request indefinitely instead of failing fast.
@@ -164,12 +164,10 @@ def register_cards_tools(app_mcp: AppMcp) -> None:
             return card
 
     @app_mcp.tool(
-        name="get_card_image",
+        name="app_get_card_image",
         description="Fetch a card printing's artwork (called by the card widgets).",
-        # MCP Apps tool visibility: callable by the card widgets via callServerTool, but hosts
-        # that honor it leave it out of the model's tool list (saves agent context).
         meta={"ui": {"visibility": ["app"]}},
     )
-    async def show_card_image(scryfall_id: str) -> ImageContent:
+    async def app_get_card_image(scryfall_id: str) -> ImageContent:
         data = await _fetch_card_image_base64(scryfall_id)
         return ImageContent(type="image", data=data, mimeType="image/jpeg")

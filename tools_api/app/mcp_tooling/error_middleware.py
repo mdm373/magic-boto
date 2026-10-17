@@ -30,6 +30,17 @@ MCP_NOT_FOUND = -32001
 # Every tool that renders a UI is named with this prefix (and no other tool is), so agents and
 # users can tell from the name alone which calls will show a widget.
 _UI_TOOL_PREFIX = "ui_"
+# Likewise for app-only tools: called by the UI widgets via callServerTool, never by the agent.
+# MCP Apps tool visibility ["app"] lets hosts that honor it hide them from the model entirely.
+_APP_TOOL_PREFIX = "app_"
+
+
+def _check_prefix(name: str, prefix: str, has_marker: bool, marker: str) -> None:
+    """Require ``prefix`` on exactly the tools that carry ``marker``."""
+    if has_marker != name.startswith(prefix):
+        raise ValueError(
+            f"MCP tool {name!r}: tools with {marker} must be named {prefix}*, and only those tools"
+        )
 
 
 class AppMcp:
@@ -91,13 +102,14 @@ def app_mcp_tool(
 ) -> RegisterMcpTool:
     """Combine :meth:`FastMCP.tool` registration with :func:`map_app_errors`."""
 
-    # Keyed on resourceUri, not just meta.ui: an app-only tool also carries meta.ui (for
-    # visibility) but renders nothing itself.
-    has_ui = bool(meta and "resourceUri" in meta.get("ui", {}))
-    if name is not None and has_ui != name.startswith(_UI_TOOL_PREFIX):
-        raise ValueError(
-            f"MCP tool {name!r}: tools with meta.ui must be named {_UI_TOOL_PREFIX}*, "
-            "and only those tools"
+    ui_meta = (meta or {}).get("ui", {})
+    if name is not None:
+        _check_prefix(name, _UI_TOOL_PREFIX, "resourceUri" in ui_meta, "meta.ui.resourceUri")
+        _check_prefix(
+            name,
+            _APP_TOOL_PREFIX,
+            ui_meta.get("visibility") == ["app"],
+            'meta.ui.visibility == ["app"]',
         )
 
     tool_decorator = mcp.tool(
