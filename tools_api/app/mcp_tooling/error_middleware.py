@@ -96,7 +96,9 @@ def app_mcp_tool(
 ) -> RegisterMcpTool:
     """Combine :meth:`FastMCP.tool` registration with :func:`map_app_errors`."""
 
-    has_ui = bool(meta and "ui" in meta)
+    # Keyed on resourceUri, not just meta.ui: an app-only tool also carries meta.ui (for
+    # visibility) but renders nothing itself.
+    has_ui = bool(meta and "resourceUri" in meta.get("ui", {}))
     if name is not None and has_ui != name.startswith(_UI_TOOL_PREFIX):
         raise ValueError(
             f"MCP tool {name!r}: tools with meta.ui must be named {_UI_TOOL_PREFIX}*, "

@@ -177,6 +177,9 @@ def register_cards_tools(app_mcp: AppMcp) -> None:
     @app_mcp.tool(
         name="get_card_image",
         description="Fetch JPEG artwork for a Scryfall printing id (UUID).",
+        # MCP Apps tool visibility: callable by the card widgets via callServerTool, but hosts
+        # that honor it leave it out of the model's tool list (saves agent context).
+        meta={"ui": {"visibility": ["app"]}},
     )
     async def show_card_image(scryfall_id: str) -> ImageContent:
         data = await _fetch_card_image_base64(scryfall_id)
