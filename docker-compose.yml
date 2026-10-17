@@ -1,5 +1,6 @@
 # Root stack for magic-boto. See docs/PROJECT-PLAN.md for architecture.
 # Every port below is bound to 127.0.0.1: nothing here is reachable from outside this host.
+# Authelia isn't part of the local stack (auth is Fly-only), so tools_mcp runs with auth off.
 services:
   postgres:
     build: ./postgres
@@ -9,9 +10,6 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-magicboto}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-magicboto}
       POSTGRES_DB: ${POSTGRES_DB:-magicboto}
-      # Creates a sibling magicboto_authelia database in this same instance — see
-      # postgres/init-db.sh — same shared-instance pattern Fly uses (postgres/fly.toml).
-      AUTHELIA_DB_NAME: ${AUTHELIA_DB_NAME:-magicboto_authelia}
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
@@ -43,6 +41,7 @@ services:
     env_file: .env
     environment:
       POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432 # container port; .env's POSTGRES_PORT is the host-mapped one
       LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
       TOOLS_API_PORT: ${TOOLS_API_PORT:-8000}
     ports:
@@ -69,6 +68,7 @@ services:
     env_file: .env
     environment:
       POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432 # container port; .env's POSTGRES_PORT is the host-mapped one
       LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
       CELERY_REDIS_URL: ${CELERY_REDIS_URL:-redis://redis:6379/0}
     volumes:
@@ -103,20 +103,14 @@ services:
     env_file: .env
     environment:
       POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432 # container port; .env's POSTGRES_PORT is the host-mapped one
       LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
       TOOLS_MCP_HOST: ${TOOLS_MCP_HOST:-0.0.0.0}
       TOOLS_MCP_PORT: ${TOOLS_MCP_PORT:-8765}
       CELERY_REDIS_URL: ${CELERY_REDIS_URL:-redis://redis:6379/0}
-      TOOLS_MCP_AUTH_ENABLED: ${TOOLS_MCP_AUTH_ENABLED:-false}
-      TOOLS_MCP_RESOURCE_SERVER_URL: ${TOOLS_MCP_RESOURCE_SERVER_URL:-http://localhost:8765}
-      TOOLS_MCP_REQUIRED_SCOPES: ${TOOLS_MCP_REQUIRED_SCOPES:-}
-      # Must match the issuer clients actually see (they reach Authelia via the host-mapped
-      # port); this container reaches Authelia over the compose network instead, hence the
-      # separate OIDC_JWKS_URL below.
-      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-http://localhost:9091}
-      OIDC_JWKS_URL: ${OIDC_JWKS_URL:-http://authelia:9091/jwks.json}
-      OIDC_AUDIENCE: ${OIDC_AUDIENCE:-magic-boto-tools-api}
-      OIDC_JWKS_CACHE_SECONDS: ${OIDC_JWKS_CACHE_SECONDS:-300}
+      # Hard-coded, not ${...}: .env's TOOLS_MCP_AUTH_ENABLED is for Fly-style runs and would
+      # otherwise turn auth on here with no local OIDC provider to back it.
+      TOOLS_MCP_AUTH_ENABLED: "false"
     ports:
       - "127.0.0.1:${TOOLS_MCP_LOCAL_PORT:-8765}:${TOOLS_MCP_PORT:-8765}"
     volumes:
@@ -124,53 +118,6 @@ services:
     command: [ "sh", "-c", "uv run --no-sync uvicorn app.cmd.serve_mcp.asgi:app --host ${TOOLS_MCP_HOST:-0.0.0.0} --port ${TOOLS_MCP_PORT:-8765} --reload" ]
     healthcheck:
       test: [ "CMD-SHELL", "python -c \"import os, urllib.request; p=os.environ.get('TOOLS_MCP_PORT', '8765'); urllib.request.urlopen(f'http://127.0.0.1:{p}/health')\" || exit 1" ]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  # Unlike Keycloak, Authelia has no separate admin console/API — the login portal and the OIDC
-  # endpoints Claude needs are the same surface, so there's nothing to split into a second proxy
-  # service (contrast the old keycloak/keycloak_public_proxy split). State (sessions, OIDC
-  # grants) lives in the shared `postgres` service's magicboto_authelia database, not its own
-  # container/volume.
-  authelia:
-    build: ./authelia
-    container_name: magic-boto-authelia
-    restart: unless-stopped
-    env_file: .env
-    environment:
-      # Real Authelia config sources — its own env-var binding (`AUTHELIA_<PATH>`, `_FILE` suffix
-      # for secret-shaped keys), documented Authelia behavior. The `_FILE` ones point at the same
-      # paths bind-mounted below.
-      AUTHELIA_SESSION_SECRET_FILE: /secrets/session_secret
-      AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE: /secrets/storage_encryption_key
-      AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET_FILE: /secrets/oidc_hmac_secret
-      AUTHELIA_IDENTITY_PROVIDERS_OIDC_ISSUER_PRIVATE_KEY_FILE: /secrets/oidc_issuer.pem
-      AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET_FILE: /secrets/reset_password_jwt_secret
-      AUTHELIA_STORAGE_POSTGRES_ADDRESS: tcp://postgres:5432
-      AUTHELIA_STORAGE_POSTGRES_USERNAME: ${POSTGRES_USER:-magicboto}
-      AUTHELIA_STORAGE_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-magicboto}
-      # Consumed by docker-entrypoint.sh's template substitution, not Authelia's own config
-      # binding.
-      AUTHELIA_PUBLIC_DOMAIN: localhost
-      AUTHELIA_PUBLIC_URL: http://localhost:${AUTHELIA_LOCAL_PORT:-9091}
-    ports:
-      - "127.0.0.1:${AUTHELIA_LOCAL_PORT:-9091}:9091"
-    volumes:
-      - ./authelia/.secrets/oidc-issuer.pem:/secrets/oidc_issuer.pem:ro
-      - ./authelia/.secrets/claude-connector-client-secret-hash.txt:/secrets/claude_connector_client_secret_hash:ro
-      - ./authelia/.secrets/muse-connector-client-secret-hash.txt:/secrets/muse_connector_client_secret_hash:ro
-      - ./authelia/.secrets/admin-password-hash.txt:/secrets/admin_password_hash:ro
-      - ./authelia/.secrets/session-secret.txt:/secrets/session_secret:ro
-      - ./authelia/.secrets/storage-encryption-key.txt:/secrets/storage_encryption_key:ro
-      - ./authelia/.secrets/oidc-hmac-secret.txt:/secrets/oidc_hmac_secret:ro
-      - ./authelia/.secrets/reset-password-jwt-secret.txt:/secrets/reset_password_jwt_secret:ro
-    healthcheck:
-      test: [ "CMD", "wget", "-q", "--spider", "http://127.0.0.1:9091/api/health" ]
       interval: 5s
       timeout: 5s
       retries: 5
