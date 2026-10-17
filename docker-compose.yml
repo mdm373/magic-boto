@@ -41,7 +41,6 @@ services:
     env_file: .env
     environment:
       POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432 # container port; .env's POSTGRES_PORT is the host-mapped one
       LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
       TOOLS_API_PORT: ${TOOLS_API_PORT:-8000}
     ports:
@@ -68,7 +67,6 @@ services:
     env_file: .env
     environment:
       POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432 # container port; .env's POSTGRES_PORT is the host-mapped one
       LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
       CELERY_REDIS_URL: ${CELERY_REDIS_URL:-redis://redis:6379/0}
     volumes:
@@ -103,7 +101,6 @@ services:
     env_file: .env
     environment:
       POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432 # container port; .env's POSTGRES_PORT is the host-mapped one
       LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
       TOOLS_MCP_HOST: ${TOOLS_MCP_HOST:-0.0.0.0}
       TOOLS_MCP_PORT: ${TOOLS_MCP_PORT:-8765}
