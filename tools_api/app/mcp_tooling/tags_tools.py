@@ -24,7 +24,7 @@ def register_tags_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="list_tags",
-        description="List tags with names, descriptions, and sweep filter settings.",
+        description="List all card tags.",
         annotations=ToolAnnotations(
             readOnlyHint=True,
             destructiveHint=False,
@@ -38,7 +38,7 @@ def register_tags_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="get_tag",
-        description="Retrieve a single tag by name.",
+        description="Get one card tag by name.",
         annotations=ToolAnnotations(
             readOnlyHint=True,
             destructiveHint=False,
@@ -57,7 +57,7 @@ def register_tags_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="create_tag",
-        description="Create a tag (name stored trimmed/lowercase; error if it already exists).",
+        description="Create a new card tag.",
         annotations=ToolAnnotations(
             readOnlyHint=False,
             destructiveHint=False,
@@ -107,11 +107,7 @@ def register_tags_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="update_tag",
-        description=(
-            "Update a tag's description and optionally sweep include filters "
-            "(name matched case-insensitively). Omit sweep lists to leave them unchanged; "
-            "pass an empty list to clear a filter (no restriction)."
-        ),
+        description="Update a card tag's description or sweep filters.",
         annotations=ToolAnnotations(
             readOnlyHint=False,
             destructiveHint=False,
@@ -166,7 +162,7 @@ def register_tags_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="tag_cards",
-        description="Attach a tag to oracle ids (from card search when verbose).",
+        description="Apply a tag to cards by oracle id.",
         annotations=ToolAnnotations(
             readOnlyHint=False,
             destructiveHint=False,
@@ -191,7 +187,7 @@ def register_tags_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="untag_cards",
-        description="Remove a tag from oracle ids (oracle identity, all printings).",
+        description="Remove a tag from cards by oracle id.",
         annotations=ToolAnnotations(
             readOnlyHint=False,
             destructiveHint=True,

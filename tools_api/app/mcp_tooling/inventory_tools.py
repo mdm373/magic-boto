@@ -69,7 +69,7 @@ def register_inventory_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="list_inventory_names",
-        description="List inventory (collection) names; use with card search ``inventory_name``.",
+        description="List the names of the user's card inventories.",
         annotations=ToolAnnotations(
             readOnlyHint=True,
             destructiveHint=False,
@@ -83,10 +83,7 @@ def register_inventory_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="create_inventory",
-        description=(
-            "Get or create a named inventory. Names are trimmed and lowercased; "
-            "``_default`` is reserved and cannot be created here."
-        ),
+        description="Get or create a named inventory, such as a deck list.",
         annotations=ToolAnnotations(
             readOnlyHint=False,
             destructiveHint=False,
@@ -113,10 +110,7 @@ def register_inventory_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="add_inventory_cards",
-        description=(
-            "Add copies by Scryfall printing id (one per list element; duplicates add quantity). "
-            "``_default`` is not allowed."
-        ),
+        description="Add card copies to a named inventory by Scryfall printing id.",
         annotations=ToolAnnotations(
             readOnlyHint=False,
             destructiveHint=False,
@@ -154,9 +148,7 @@ def register_inventory_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="ui_open_inventory_import",
-        description=(
-            "Return ``inventory_name`` (optional hint) and ``existing_names`` for CSV import flows."
-        ),
+        description="Open the CSV inventory import UI.",
         annotations=ToolAnnotations(
             readOnlyHint=True,
             destructiveHint=False,
@@ -177,11 +169,7 @@ def register_inventory_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="import_inventory_csv",
-        description=(
-            "Import UTF-8 CSV from a server path into an inventory. "
-            "Requires a Scryfall id column; optional ``count``/``quantity`` (default 1 per row). "
-            "Unknown ids are skipped and listed in ``unknown_scryfall_ids`` (server cap applies)."
-        ),
+        description="Import cards into an inventory from a CSV file on the server.",
         annotations=ToolAnnotations(
             readOnlyHint=False,
             destructiveHint=False,
@@ -227,10 +215,7 @@ def register_inventory_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="import_inventory_csv_content",
-        description=(
-            "Import UTF-8 CSV text into an inventory. "
-            "Same column rules as ``import_inventory_csv``; unknown ids skipped and reported."
-        ),
+        description="Import cards into an inventory from CSV text.",
         annotations=ToolAnnotations(
             readOnlyHint=False,
             destructiveHint=False,
@@ -271,10 +256,7 @@ def register_inventory_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="remove_inventory_cards",
-        description=(
-            "Remove copies by Scryfall printing id (one per list element). "
-            "Quantities do not go below zero. ``_default`` is not allowed."
-        ),
+        description="Remove card copies from a named inventory by Scryfall printing id.",
         annotations=ToolAnnotations(
             readOnlyHint=False,
             destructiveHint=True,

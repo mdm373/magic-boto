@@ -128,11 +128,7 @@ def register_cards_tools(app_mcp: AppMcp) -> None:
     # data only, so an agent can search repeatedly without a widget per call.
     @app_mcp.tool(
         name="search_cards",
-        description=(
-            "Search the catalog with optional filters (AND). "
-            "Use flags.verbose=true for full card fields; default is a minimal card row. "
-            "Returns data only (no UI) — use ui_search_cards to show results to the user."
-        ),
+        description="Search the card catalog and return matching cards as data (no UI).",
         annotations=_READ_ONLY,
     )
     async def search_cards(
@@ -144,11 +140,7 @@ def register_cards_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="ui_search_cards",
-        description=(
-            "Search the catalog with optional filters (AND) and show the results to the user as "
-            "a card carousel. Same arguments as search_cards; use search_cards instead for "
-            "exploratory searches the user doesn't need to see."
-        ),
+        description="Search the card catalog and show the results to the user as a card carousel.",
         annotations=_READ_ONLY,
         meta={"ui": {"resourceUri": CARD_CAROUSEL_RESOURCE_URI}},
     )
@@ -161,10 +153,7 @@ def register_cards_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="get_card",
-        description=(
-            "Get one card by internal ``card_id`` (one row per printing). "
-            "Use verbose=true for full fields; default is minimal."
-        ),
+        description="Get one card printing by its catalog card_id.",
         annotations=_READ_ONLY,
     )
     async def get_card(card_id: str, verbose: bool = False) -> Card:
@@ -176,7 +165,7 @@ def register_cards_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="get_card_image",
-        description="Fetch JPEG artwork for a Scryfall printing id (UUID).",
+        description="Fetch a card printing's artwork (called by the card widgets).",
         # MCP Apps tool visibility: callable by the card widgets via callServerTool, but hosts
         # that honor it leave it out of the model's tool list (saves agent context).
         meta={"ui": {"visibility": ["app"]}},

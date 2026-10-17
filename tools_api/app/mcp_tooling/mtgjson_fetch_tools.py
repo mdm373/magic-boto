@@ -52,7 +52,7 @@ def register_mtgjson_fetch_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="ui_begin_mtgjson_fetch",
-        description="Return ``{ready: true}`` as the fetch-job tool bundle entrypoint.",
+        description="Open the MTGJSON catalog update UI.",
         annotations=ToolAnnotations(
             readOnlyHint=True,
             destructiveHint=False,
@@ -66,10 +66,7 @@ def register_mtgjson_fetch_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="enqueue_ui_triggered_mtgjson_fetch",
-        description=(
-            "Create an MTGJSON fetch job from comma-separated set codes "
-            "(empty → SLD) and enqueue processing."
-        ),
+        description="Start an MTGJSON catalog fetch job (called by the catalog update UI).",
         annotations=ToolAnnotations(
             readOnlyHint=False,
             destructiveHint=False,
@@ -100,7 +97,7 @@ def register_mtgjson_fetch_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="get_mtgjson_fetch_job",
-        description="Fetch job status and per-edition rows; poll until ``ended_at`` is set.",
+        description="Get an MTGJSON fetch job's status (called by the catalog update UI).",
         annotations=ToolAnnotations(
             readOnlyHint=True,
             destructiveHint=False,

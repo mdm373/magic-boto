@@ -180,10 +180,7 @@ def register_sweep_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="ui_enqueue_tag_sweep",
-        description=(
-            "Start an async tag sweep over eligible catalog cards. "
-            "``limit`` must be chosen explicitly (0 = all eligible)."
-        ),
+        description="Start an automated tagging sweep for a tag and show its progress UI.",
         annotations=ToolAnnotations(
             readOnlyHint=False,
             destructiveHint=False,
@@ -231,10 +228,7 @@ def register_sweep_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="clean_reset_tag_sweep",
-        description=(
-            "Clear tag assignments, side tags, audits, and sweep state for a tag so a fresh "
-            "sweep can run. Does not change the main tag description."
-        ),
+        description="Clear a tag's assignments and sweep history so it can be swept fresh.",
         annotations=ToolAnnotations(
             readOnlyHint=False,
             destructiveHint=True,
@@ -260,9 +254,7 @@ def register_sweep_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="ui_get_sweep_status",
-        description=(
-            "Current status of one sweep; pass exactly one of ``sweep_id`` or ``tag_name``."
-        ),
+        description="Show the status UI for one tag sweep.",
         annotations=ToolAnnotations(
             readOnlyHint=True,
             destructiveHint=False,
@@ -306,7 +298,7 @@ def register_sweep_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="ui_list_sweeps",
-        description="Status snapshot for every tag that has a sweep run recorded.",
+        description="Show the status UI for all tag sweeps.",
         annotations=ToolAnnotations(
             readOnlyHint=True,
             destructiveHint=False,
@@ -331,11 +323,7 @@ def register_sweep_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="ui_enqueue_global_sweep_catchup",
-        description=(
-            "For each tag with a sweep row: prune side tags and sweep/audit artifacts, then "
-            "re-queue full incremental-eligible catch-up per tag "
-            "(no audit; no new unsure/excluded)."
-        ),
+        description="Re-run catch-up sweeps for every swept tag and show the progress UI.",
         annotations=ToolAnnotations(
             readOnlyHint=False,
             destructiveHint=False,

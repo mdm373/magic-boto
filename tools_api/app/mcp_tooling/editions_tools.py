@@ -17,7 +17,7 @@ def register_editions_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="list_editions",
-        description="List MTG editions (sets); filter by exact set_code and/or fuzzy name.",
+        description="List Magic editions (sets), optionally filtered by set code or name.",
     )
     async def list_editions(query: EditionsQuery) -> list[Edition]:
         query = _edition_validator.validate_edition_query(query)

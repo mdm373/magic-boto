@@ -46,9 +46,7 @@ def register_audit_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="ui_get_tag_audit",
-        description=(
-            "Fetch one audit by ``audit_id`` or the latest audit for ``tag_name`` (one required)."
-        ),
+        description="Show the review UI for a tag's sweep audit.",
         annotations=ToolAnnotations(
             readOnlyHint=True,
             destructiveHint=False,
@@ -116,10 +114,7 @@ def register_audit_tools(app_mcp: AppMcp) -> None:
 
     @app_mcp.tool(
         name="apply_audit",
-        description=(
-            "Apply the latest completed audit: set tag description from the suggestion, clear "
-            "assignments per flags, and drop any open sweep run."
-        ),
+        description="Apply a tag's latest completed sweep audit.",
         annotations=ToolAnnotations(
             readOnlyHint=False,
             destructiveHint=True,
