@@ -107,6 +107,8 @@ def _build_identifier_filters(filters: CardSearchFilters) -> Sequence[ColumnElem
     out: list[ColumnElement[bool]] = []
     if filters.scryfall_id is not None:
         out.append(CardModel.scryfall_id == str(filters.scryfall_id))
+    if filters.scryfall_id_one_of:
+        out.append(CardModel.scryfall_id.in_([str(sid) for sid in filters.scryfall_id_one_of]))
     if filters.oracle_id is not None:
         out.append(CardModel.oracle_id == str(filters.oracle_id))
     return out

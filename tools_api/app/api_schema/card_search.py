@@ -101,6 +101,11 @@ class CardSearchFilters(BaseModel):
         title="Scryfall Id",
         description="Exact Scryfall printing id.",
     )
+    scryfall_id_one_of: list[uuid.UUID] | None = Field(
+        default=None,
+        title="Scryfall Id (One Of)",
+        description="Scryfall printing id is one of these (OR).",
+    )
     oracle_id: uuid.UUID | None = Field(
         default=None,
         title="Oracle Id",
@@ -339,6 +344,7 @@ class CardSearchFilters(BaseModel):
         return _normalize_inventory_name(value)
 
     @field_validator(
+        "scryfall_id_one_of",
         "color_identity_one_of",
         "color_identity_all_of",
         "color_identity_only_of",

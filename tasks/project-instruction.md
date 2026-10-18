@@ -37,7 +37,7 @@ Every tool is one of three kinds, and the name tells you which:
 **Card identifiers.** Each tool takes a specific one, so check which:
 
 - `card_id`: this catalog's internal id for one printing. Used by `get_card`.
-- `scryfall_id`: Scryfall's id for one printing. Used to add or remove inventory cards and to filter search.
+- `scryfall_id`: Scryfall's id for one printing. Used to add or remove inventory cards and to filter search (`scryfall_id`, or `scryfall_id_one_of` for a list).
 - `oracle_id`: the card itself, across all its printings. Used for tagging. Only returned when `verbose` is set.
 
 ## The user's collection (inventories)
