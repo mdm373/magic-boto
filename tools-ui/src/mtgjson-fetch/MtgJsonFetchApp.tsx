@@ -138,8 +138,12 @@ export function MtgJsonFetchApp() {
         <div style={{ fontWeight: 600, fontSize: "1.1rem" }}>Async fetch</div>
       </div>
 
+      <label style={{ display: "block", fontSize: "0.8rem", marginBottom: 2 }}>
+        Every run always ingests all sets not yet in the catalog.
+      </label>
       <label style={{ display: "block", fontSize: "0.8rem", marginBottom: 6 }}>
-        Comma-separated set codes to force a re-import. Empty defaults to SLD.
+        This field only force re-imports sets you already have synced (e.g. to pick up Secret
+        Lair drops added after the fact). Comma-separated set codes; empty defaults to SLD.
       </label>
       <div
         style={{
