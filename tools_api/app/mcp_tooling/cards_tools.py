@@ -33,12 +33,19 @@ _FALLBACK_HTML = (
     "<p>UI not built. Run <code>npm run build</code> inside "
     "<code>tools-ui/</code>.</p></body></html>"
 )
-_SCRYFALL_IMAGE_URL = "https://api.scryfall.com/cards/{scryfall_id}?format=image"
+# "normal" (488x680) is plenty for the card widgets and roughly half the bytes of Scryfall's
+# default "large" — and every image is copied several times in memory on its way out as a tool
+# response, so that halving applies to each copy.
+_SCRYFALL_IMAGE_VERSION = "normal"
+_SCRYFALL_IMAGE_URL = (
+    "https://api.scryfall.com/cards/{scryfall_id}?format=image&version=" + _SCRYFALL_IMAGE_VERSION
+)
 # Cache stores the base64-encoded MCP payload directly, not raw image bytes — a cache hit is then
 # a plain text read straight into the tool response, with no decode/re-encode of the image on
 # every call. Nothing else consumes this cache (the plain HTTP image route was removed since MCP
 # UI apps can't reach it — see the app_get_card_image tool), so the encoded form is fine.
-_IMAGE_CACHE_DIR = SERVICE_ROOT / "cache" / "card_images"
+# Keyed by image version so changing it never serves stale entries of another size.
+_IMAGE_CACHE_DIR = SERVICE_ROOT / "cache" / "card_images" / _SCRYFALL_IMAGE_VERSION
 # Scryfall calls have no timeout otherwise — a stalled connection (e.g. broken egress) hangs the
 # request indefinitely instead of failing fast.
 _SCRYFALL_TIMEOUT_SECONDS = 10.0
@@ -167,6 +174,9 @@ def register_cards_tools(app_mcp: AppMcp) -> None:
         name="app_get_card_image",
         description="Fetch a card printing's artwork (called by the card widgets).",
         meta={"ui": {"visibility": ["app"]}},
+        # The ImageContent return type otherwise makes FastMCP infer an output schema and echo
+        # the whole base64 payload a second time as structuredContent; widgets only read content.
+        structured_output=False,
     )
     async def app_get_card_image(scryfall_id: str) -> ImageContent:
         data = await _fetch_card_image_base64(scryfall_id)
