@@ -304,6 +304,9 @@ export function CardCarouselAppV2() {
           width: "100%",
           maxWidth: "100%",
           minWidth: 0,
+          // Drag-to-scroll otherwise paints the browser's text/image selection tint over cards.
+          userSelect: "none",
+          WebkitUserSelect: "none",
         }}
       >
         <div
