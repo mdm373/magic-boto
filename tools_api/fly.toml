@@ -11,6 +11,8 @@
 # explicitly; edit this only if you run `fly` commands by hand against this config.
 app = "magic-boto-tools-api"
 primary_region = "iad"
+# Safety net for the 256MB machines: memory pressure slows down instead of OOM-killing the process.
+swap_size_mb = 512
 
 [build]
   dockerfile = "Dockerfile"
@@ -55,16 +57,16 @@ primary_region = "iad"
   MALLOC_ARENA_MAX = "2"
 
 [processes]
-  mcp = "uv run --no-dev uvicorn app.cmd.serve_mcp.asgi:app --host 0.0.0.0 --port 8765"
-  # --no-dev: image is built via `uv sync --no-dev` (Dockerfile); without this flag `uv run`
-  # resyncs the full lock (ruff, mypy, pygments, grimp, ...) into the venv on every boot.
+  # Venv binaries directly, not `uv run`: the image's venv is already synced (`uv sync --no-dev`
+  # in the Dockerfile), and `uv run` would stay resident as a ~7MB parent process.
+  mcp = "/app/.venv/bin/uvicorn app.cmd.serve_mcp.asgi:app --host 0.0.0.0 --port 8765"
   # --pool=solo: concurrency is 1 anyway, and Celery's default prefork pool forks a child
   # process per task — Python's refcounting touches nearly every object on any GC pass, so
   # copy-on-write duplicates most of the parent's resident pages instead of sharing them. On
   # this machine's 256MB budget that doubling is what OOM-killed a routine 100-card sweep
   # (see fly logs 2026-09-21T04:03:57Z, "Out of memory: Killed process ... (celery)").
   # solo runs tasks in-process with no fork, avoiding that duplication entirely.
-  worker = "uv run --no-dev celery -A app.cmd.serve_celery:celery_app worker --loglevel=info --pool=solo"
+  worker = "/app/.venv/bin/celery -A app.cmd.serve_celery:celery_app worker --loglevel=info --pool=solo"
 
 [[services]]
   processes = ["mcp"]
