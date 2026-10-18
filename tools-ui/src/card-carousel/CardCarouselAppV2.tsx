@@ -81,26 +81,16 @@ export function CardCarouselAppV2() {
   const nextPageNumberRef = useRef(2);
   const fetchInFlightRef = useRef(false);
 
-  // Grid sized to the narrower peeking slide, not the full container — on a borderline-width
-  // desktop screen this can cost a column (same tradeoff peeking already makes on mobile).
   const { cols, cardWidth, cardHeight, rowsPerPage, pageSize } = useGridLayout(
     hostContext,
     SLIDE_WIDTH_FRACTION,
   );
 
-  // Center align + a sub-100% slide basis (below) is what makes the previous/next page peek in
-  // at both edges as a swipe hint; the track's `gap` (below) keeps a clean gutter between pages
-  // instead of the peeking neighbor's card ending up flush against the current page's edge card.
-  //
-  // containScroll: false (embla's own internal default is "trimSnaps", *not* falsy — merely
-  // omitting the option still gets trimSnaps). trimSnaps/keepSnaps unconditionally force the
-  // first/last snap flush to the scroll bounds (fine — that's the intended edge behavior) but
-  // *also* merge any snap within a small tolerance of a bound into that bound, discarding it.
-  // With a wide slide (small peek zone) that tolerance check swallows most non-edge pages too,
-  // so they never resolve to their true centered position and render with no peek on either
-  // side. Explicitly disabling it uses the raw centered snap for every page; the tradeoff is
-  // the very first/last page can show a sliver of dead space instead of being pinned flush —
-  // acceptable since it only affects the two ends, not every page in between.
+  // align: "center" + each slide's own content width (below) is what makes the previous/next
+  // page peek in at both edges as a swipe hint. containScroll must be explicit `false` — embla's
+  // internal default is "trimSnaps" (omitting the option doesn't disable it), which forces
+  // snaps near either scroll bound flush to that bound and can suppress peek on more than just
+  // the true first/last page.
   const [emblaRef, emblaApi] = useEmblaCarousel({
     loop: false,
     align: "center",

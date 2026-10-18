@@ -45,30 +45,19 @@ export const SINGLE_ROW_VERTICAL_INSET_PX = 28;
 export const GAP_PX = 16;
 
 /**
- * Embla variant only: fraction of the scroller's width used to size the grid itself (via
- * `useGridLayout`'s `gridWidthFraction`) — i.e. peeking is allowed to cost a column on a
- * borderline-width desktop screen, same as it already does on mobile, rather than fighting to
- * preserve one. This is *only* a budget for column/card-size math, not the slide's own CSS
- * width — see `gridContentWidthPx`/the slide's inline width in `CardCarouselAppV2`. Sizing the
- * slide box itself to this fraction (instead of the grid's actual resulting content width)
- * previously left empty margin between the grid and its own slide edge whenever the grid didn't
- * fully use the budget (e.g. after a column drop) — `justifyContent: "center"` then centered
- * the cards inside that oversized box, so the peeking sliver near the boundary could land
- * entirely in that empty margin: blank space instead of the neighbor's actual cards.
+ * Embla variant only: budget (fraction of scroller width) for `useGridLayout`'s column/card-size
+ * math, reserving room for a peek — so a borderline-width desktop screen can drop a column for
+ * the peek, same tradeoff mobile already makes. Each slide's actual CSS width is its resulting
+ * grid's real content size (`gridContentWidthPx`), not this fraction directly, so there's never
+ * empty margin between the cards and their own slide edge.
  */
 export const SLIDE_WIDTH_FRACTION = 0.8;
 
-/**
- * Embla variant only: real blank gap (CSS `gap` on the slide track, not padding/margin on each
- * slide) between every pair of adjacent pages. Without an explicit gap, the peeking neighbor's
- * card can end up flush against the current page's edge card with no breathing room, reading as
- * an overlap rather than a clean partial-card peek.
- */
+/** Embla variant only: blank gap (CSS `gap` on the slide track) between adjacent pages. */
 export const PAGE_GUTTER_PX = 20;
 
-/** Natural width of a fixed-`cols` grid at `cardWidth` — used to size each embla slide to its
- *  actual content instead of a fixed fraction, so there's no empty margin inside the slide
- *  between the cards and the slide's own edge (see `SLIDE_WIDTH_FRACTION` above). */
+/** Natural width of a fixed-`cols` grid at `cardWidth` — sizes each embla slide to its actual
+ *  content (see `SLIDE_WIDTH_FRACTION`). */
 export function gridContentWidthPx(cols: number, cardWidth: number): number {
   return cols * cardWidth + (cols - 1) * GAP_PX;
 }
