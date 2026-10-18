@@ -19,6 +19,8 @@ Typical tools:
 
 Card search supports an **`inventory_name`** filter (trimmed, lowercased). Use it whenever the question is about **quantities tied to a named collection** in this project.
 
+To look up specific printings by **Scryfall printing id**, filter with **`scryfall_id`** (one id) or **`scryfall_id_one_of`** (a list, matched as OR). This is the way to fetch details for a batch of known printings in one call, e.g. checking a deck list's cards or confirming which of them are in `_default`.
+
 ## Tags
 
 Cards can be tagged with user-defined labels (e.g. `ramp`, `removal`, `draw`, `finisher`). Tags are a first-class way to group cards by **role or intent** across inventories and decks.
