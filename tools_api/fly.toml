@@ -50,12 +50,9 @@ primary_region = "iad"
   # A/B switch between card-carousel MCP UI implementations (see app/mcp_tooling/cards_tools.py) —
   # "v1" (default, paged) or "v2" (embla scroll-snap).
   CARD_CAROUSEL_VARIANT = "v2"
-  # glibc otherwise keeps the high-water mark of every concurrent burst (one malloc arena per
-  # thread, freed pages never returned), so mcp's RSS ratchets up with each burst of
-  # app_get_card_image calls until the 256MB machine OOMs (fly logs 2026-10-18T03:19:57Z). With
-  # these, a local 96-call burst settled back to ~boot RSS instead of holding +45MB.
+  # 256MB machines: cap glibc's per-thread malloc arenas so freed memory is shared across threads
+  # instead of each holding its own — common practice for Python in memory-limited containers.
   MALLOC_ARENA_MAX = "2"
-  MALLOC_TRIM_THRESHOLD_ = "131072"
 
 [processes]
   mcp = "uv run --no-dev uvicorn app.cmd.serve_mcp.asgi:app --host 0.0.0.0 --port 8765"
