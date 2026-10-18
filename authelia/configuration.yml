@@ -50,6 +50,15 @@ identity_providers:
       access_token: 5m
       id_token: 1h
       refresh_token: 720h # 30 days
+    # Browser-based clients (e.g. MCP Inspector) exchange the code via fetch(), so the token endpoint
+    # needs CORS; origins are derived from each client's redirect_uris rather than listed twice.
+    cors:
+      endpoints:
+        - token
+        - revocation
+        - introspection
+        - userinfo
+      allowed_origins_from_client_redirect_uris: true
     clients:
       - client_id: "magic-boto-claude-connector"
         client_name: "Claude Connector"
@@ -61,6 +70,7 @@ identity_providers:
         consent_mode: pre-configured
         redirect_uris:
           - "https://claude.ai/api/mcp/auth_callback"
+          - "http://127.0.0.1:6274/oauth/callback"
         scopes:
           - openid
           - profile
