@@ -8,9 +8,9 @@ import {
   COUNTER_STYLE,
   type CardMeta,
   type CardsPageResult,
+  GAP_PX,
   type ImageContent,
-  PAGE_GUTTER_PX,
-  SLIDE_WIDTH_FRACTION,
+  PEEK_RESERVED_WIDTH_PX,
   chunkIntoPages,
   fixedCardFrameHeightPx,
   gridContentWidthPx,
@@ -81,11 +81,6 @@ export function CardCarouselAppV2() {
   const nextPageNumberRef = useRef(2);
   const fetchInFlightRef = useRef(false);
 
-  const { cols, cardWidth, cardHeight, rowsPerPage, pageSize } = useGridLayout(
-    hostContext,
-    SLIDE_WIDTH_FRACTION,
-  );
-
   // align: "center" + each slide's own content width (below) is what makes the previous/next
   // page peek in at both edges as a swipe hint. containScroll must be explicit `false` — embla's
   // internal default is "trimSnaps" (omitting the option doesn't disable it), which forces
@@ -95,6 +90,29 @@ export function CardCarouselAppV2() {
     loop: false,
     align: "center",
     containScroll: false,
+  });
+
+  // Measure the real scroller width (host containerDimensions includes page padding and may be
+  // only a cap) so the reserved peek is exact rather than whatever width happens to be left over.
+  const [viewportEl, setViewportEl] = useState<HTMLDivElement | null>(null);
+  const [viewportWidth, setViewportWidth] = useState(0);
+  const viewportRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      emblaRef(node);
+      setViewportEl(node);
+    },
+    [emblaRef],
+  );
+  useEffect(() => {
+    if (!viewportEl) return;
+    const observer = new ResizeObserver(([entry]) => setViewportWidth(entry.contentRect.width));
+    observer.observe(viewportEl);
+    return () => observer.disconnect();
+  }, [viewportEl]);
+
+  const { cols, cardWidth, cardHeight, rowsPerPage, pageSize } = useGridLayout(hostContext, {
+    measuredWidthPx: viewportWidth,
+    reservedWidthPx: PEEK_RESERVED_WIDTH_PX,
   });
 
   const { app, isConnected, error } = useApp({
@@ -280,7 +298,7 @@ export function CardCarouselAppV2() {
   return (
     <div style={pageStyle}>
       <div
-        ref={emblaRef}
+        ref={viewportRef}
         style={{
           overflow: "hidden",
           width: "100%",
@@ -292,7 +310,8 @@ export function CardCarouselAppV2() {
           style={{
             display: "flex",
             flexDirection: "row",
-            gap: PAGE_GUTTER_PX,
+            // Same gap as between cards, so the whole track reads as one evenly spaced grid.
+            gap: GAP_PX,
             height: cardFramePx,
           }}
         >

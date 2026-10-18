@@ -45,19 +45,19 @@ export const SINGLE_ROW_VERTICAL_INSET_PX = 28;
 export const GAP_PX = 16;
 
 /**
- * Embla variant only: budget (fraction of scroller width) for `useGridLayout`'s column/card-size
- * math, reserving room for a peek — so a borderline-width desktop screen can drop a column for
- * the peek, same tradeoff mobile already makes. Each slide's actual CSS width is its resulting
- * grid's real content size (`gridContentWidthPx`), not this fraction directly, so there's never
- * empty margin between the cards and their own slide edge.
+ * Embla variant only: minimum visible width of the previous/next page at each edge. Pages are
+ * spaced by the same `GAP_PX` as cards within a page, so the track reads as one evenly spaced
+ * grid; `useGridLayout` reserves `GAP_PX + PAGE_PEEK_MIN_PX` per side out of the *measured*
+ * scroller width before picking a column count — a borderline-width desktop drops a column to
+ * keep the peek, same tradeoff mobile already makes.
  */
-export const SLIDE_WIDTH_FRACTION = 0.8;
+export const PAGE_PEEK_MIN_PX = 56;
 
-/** Embla variant only: blank gap (CSS `gap` on the slide track) between adjacent pages. */
-export const PAGE_GUTTER_PX = 20;
+/** Width the embla variant holds back from its scroller for the peek at both edges. */
+export const PEEK_RESERVED_WIDTH_PX = 2 * (GAP_PX + PAGE_PEEK_MIN_PX);
 
 /** Natural width of a fixed-`cols` grid at `cardWidth` — sizes each embla slide to its actual
- *  content (see `SLIDE_WIDTH_FRACTION`). */
+ *  content, so there's never empty margin between the cards and their own slide edge. */
 export function gridContentWidthPx(cols: number, cardWidth: number): number {
   return cols * cardWidth + (cols - 1) * GAP_PX;
 }
@@ -126,13 +126,19 @@ export function resolveContainerSize(
   return { width, height };
 }
 
+export type GridLayoutOptions = Readonly<{
+  /** Actual measured width of the element the grid lives in; preferred over the host's
+   *  container width (which includes page padding, and may be only a cap or missing). */
+  measuredWidthPx?: number;
+  /** Width to hold back from the grid budget — e.g. the embla variant's edge peeks. */
+  reservedWidthPx?: number;
+}>;
+
 /** Resolve container size + grid metrics (cols/card size/rows-per-page/page size) from host
- *  context in one place, so every variant derives the same grid from the same inputs.
- *  `gridWidthFraction` (default 1, i.e. full container) lets a variant size its grid to a
- *  narrower slide than the full scroller width — e.g. the embla variant's peeking pages. */
+ *  context in one place, so every variant derives the same grid from the same inputs. */
 export function useGridLayout(
   hostContext: McpUiHostContext | undefined,
-  gridWidthFraction = 1,
+  { measuredWidthPx = 0, reservedWidthPx = 0 }: GridLayoutOptions = {},
 ): {
   containerWidth: number;
   containerHeight: number;
@@ -146,7 +152,10 @@ export function useGridLayout(
     () => resolveContainerSize(hostContext?.containerDimensions),
     [hostContext?.containerDimensions],
   );
-  const gridWidth = containerWidth * gridWidthFraction;
+  const baseWidth = measuredWidthPx > 0 ? measuredWidthPx : containerWidth;
+  // Unknown width stays 0 so computeGridMetrics applies its fallback; a known width never
+  // drops to <= 0 here (that would also trigger the generous 3-col fallback).
+  const gridWidth = baseWidth > 0 ? Math.max(1, baseWidth - reservedWidthPx) : 0;
   const { cols, cardWidth, cardHeight } = useMemo(
     () => computeGridMetrics(gridWidth),
     [gridWidth],
