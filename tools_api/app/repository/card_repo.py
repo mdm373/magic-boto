@@ -100,9 +100,7 @@ class CardRepo:
     ) -> Sequence[CardModel]:
         """Return one representative card per oracle_id, preserving input order.
 
-        Scalar columns only: relationships raise on access. ``CardModel.edition`` and
-        ``EditionModel.cards`` are both ``selectin``, so loading them here would pull every
-        printing of every touched set (effectively the whole catalog for a full sweep).
+        Scalar columns only; relationships raise on access.
         """
         if not oracle_ids:
             return []

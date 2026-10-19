@@ -103,10 +103,7 @@ class TagSweepInitializer:
     ) -> None:
         """Build chunk rows, outbox payloads, and pending ``batches`` rows for an open sweep.
 
-        Cards are split across several pending batches; after each is flushed the session is
-        expunged so its ORM objects can be freed. Everything stays in the caller's transaction,
-        so the batches still commit (or roll back) together. Objects the caller loaded earlier
-        on ``session`` are detached afterwards — re-query them.
+        Expunges ``session`` between batches; all batches share the caller's transaction.
         """
         tag = await self._tag_repo.require_tag_model(session, tag_name)
         run = await self._sweep_repo.get_open_sweep(session, tag.id)

@@ -61,8 +61,7 @@ def submit_batch_worker(self: Any, batch_ids: list[str], after_poll: str) -> Non
                 logger.info("Batch {} is {}, skipping submit.", batch_id, batch.status)
                 continue
 
-            # Own commit per batch: once Anthropic accepts a batch its ID must be persisted
-            # before the next submit, or a later failure orphans it (billed, never processed).
+            # Commit each submit before the next so a later failure can't orphan accepted batches.
             try:
                 result = await batch_submit_service.submit_to_anthropic(batch)
                 async with worker_session_scope() as session:

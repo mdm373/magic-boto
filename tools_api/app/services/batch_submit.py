@@ -37,11 +37,7 @@ class BatchSubmitService:
         self._batch_serialization = batch_serialization
 
     async def submit_to_anthropic(self, batch: BatchModel) -> BatchSubmitResult:
-        """Submit one outbox batch to Anthropic and return its Anthropic batch ID.
-
-        One batch per call so the caller can commit each Anthropic ID before submitting the
-        next — a later failure must not orphan batches Anthropic already accepted.
-        """
+        """Submit one outbox batch to Anthropic and return its Anthropic batch ID."""
         if batch.anthropic_batch_id is not None:
             raise ValueError(f"Batch {batch.id} already submitted.")
 
