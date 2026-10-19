@@ -12,6 +12,7 @@ from loguru import logger
 from app.cmd.serve_celery import celery_app
 from app.db import worker_session_scope
 from app.log import configure_celery_worker_logging
+from app.models import BatchStatus
 from app.repository import BatchRepo
 from app.services.batch_submit import create_batch_submit_service
 
@@ -50,23 +51,27 @@ def submit_batch_worker(self: Any, batch_ids: list[str], after_poll: str) -> Non
     batch_submit_service = create_batch_submit_service()
 
     async def _body() -> bool:
-        batch_uuids = [uuid.UUID(bid) for bid in batch_ids]
         batch_repo = BatchRepo()
-        async with worker_session_scope() as session:
-            batches = await batch_repo.get_batches_by_ids(session, batch_uuids)
-
-        try:
-            results = await batch_submit_service.submit_to_anthropic(batches)
+        for batch_id in (uuid.UUID(bid) for bid in batch_ids):
             async with worker_session_scope() as session:
-                for result in results:
-                    batch_id = result.batch_uuid
-                    anthropic_batch_id = result.anthropic_batch_id
+                batch = await batch_repo.get_batch(session, batch_id)
+            if batch is None:
+                raise ValueError(f"Batch {batch_id} not found.")
+            if batch.status != BatchStatus.PENDING_SUBMIT:
+                logger.info("Batch {} is {}, skipping submit.", batch_id, batch.status)
+                continue
+
+            # Own commit per batch: once Anthropic accepts a batch its ID must be persisted
+            # before the next submit, or a later failure orphans it (billed, never processed).
+            try:
+                result = await batch_submit_service.submit_to_anthropic(batch)
+                async with worker_session_scope() as session:
                     await batch_repo.apply_outbox_anthropic_batch_id(
-                        session, batch_id, anthropic_batch_id
+                        session, result.batch_uuid, result.anthropic_batch_id
                     )
-        except Exception:
-            logger.exception("failure during batch submission, possibly orphaned: {}", batch_ids)
-            return False
+            except Exception:
+                logger.exception("failure during batch submission, possibly orphaned: {}", batch_id)
+                return False
         return True
 
     success = asyncio.run(_body())

@@ -7,7 +7,6 @@ No flush/commit here — the session owner commits (e.g. ``worker_session`` / ``
 from __future__ import annotations
 
 import uuid
-from collections.abc import Sequence
 from dataclasses import dataclass
 
 from app.models import BatchModel, BatchStatus
@@ -37,28 +36,23 @@ class BatchSubmitService:
         self._batch_api_client = batch_api_client
         self._batch_serialization = batch_serialization
 
-    async def submit_to_anthropic(
-        self, batches: Sequence[BatchModel]
-    ) -> Sequence[BatchSubmitResult]:
-        """
-        Submit a batch to Anthropic from the outboxand return the Anthropic batch ID.
-        """
-        request_batches: list[list[Request]] = []
-        for batch in batches:
-            if batch.anthropic_batch_id is not None:
-                raise ValueError(f"Batch {batch.id} already submitted.")
+    async def submit_to_anthropic(self, batch: BatchModel) -> BatchSubmitResult:
+        """Submit one outbox batch to Anthropic and return its Anthropic batch ID.
 
-            if batch.status != BatchStatus.PENDING_SUBMIT:
-                raise ValueError(f"Batch {batch.id} is not pending submit.")
+        One batch per call so the caller can commit each Anthropic ID before submitting the
+        next — a later failure must not orphan batches Anthropic already accepted.
+        """
+        if batch.anthropic_batch_id is not None:
+            raise ValueError(f"Batch {batch.id} already submitted.")
 
-            if not batch.payload:
-                raise ValueError(f"Batch {batch.id} missing payload.")
-            request_batches.append(self._batch_serialization.deserialize_requests(batch.payload))
-        results: list[BatchSubmitResult] = []
-        for requests in request_batches:
-            anthropic_batch_id = self._batch_api_client.submit_requests(requests)
-            results.append(BatchSubmitResult(batch.id, anthropic_batch_id))
-        return results
+        if batch.status != BatchStatus.PENDING_SUBMIT:
+            raise ValueError(f"Batch {batch.id} is not pending submit.")
+
+        if not batch.payload:
+            raise ValueError(f"Batch {batch.id} missing payload.")
+        requests: list[Request] = self._batch_serialization.deserialize_requests(batch.payload)
+        anthropic_batch_id = self._batch_api_client.submit_requests(requests)
+        return BatchSubmitResult(batch.id, anthropic_batch_id)
 
 
 def create_batch_submit_service() -> BatchSubmitService:

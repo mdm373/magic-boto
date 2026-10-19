@@ -8,7 +8,7 @@ import sqlalchemy as sa
 from sqlalchemy import and_, func, select, true
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import raiseload, selectinload
 from sqlalchemy.sql import Select
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -98,7 +98,12 @@ class CardRepo:
         session: AsyncSession,
         oracle_ids: Sequence[str],
     ) -> Sequence[CardModel]:
-        """Return one representative card per oracle_id, preserving input order."""
+        """Return one representative card per oracle_id, preserving input order.
+
+        Scalar columns only: relationships raise on access. ``CardModel.edition`` and
+        ``EditionModel.cards`` are both ``selectin``, so loading them here would pull every
+        printing of every touched set (effectively the whole catalog for a full sweep).
+        """
         if not oracle_ids:
             return []
         ids = list(oracle_ids)
@@ -110,6 +115,7 @@ class CardRepo:
             unique_chunk = list(dict.fromkeys(chunk))
             rows = await session.execute(
                 select(CardModel)
+                .options(raiseload("*"))
                 .where(CardModel.oracle_id.in_(unique_chunk))
                 .distinct(CardModel.oracle_id)
                 .order_by(CardModel.oracle_id, CardModel.card_id)

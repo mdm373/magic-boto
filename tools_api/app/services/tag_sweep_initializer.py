@@ -101,7 +101,13 @@ class TagSweepInitializer:
         limit: int,
         reenqueue_failed: bool,
     ) -> None:
-        """Build chunk rows, outbox payloads, and pending ``batches`` rows for an open sweep."""
+        """Build chunk rows, outbox payloads, and pending ``batches`` rows for an open sweep.
+
+        Cards are split across several pending batches; after each is flushed the session is
+        expunged so its ORM objects can be freed. Everything stays in the caller's transaction,
+        so the batches still commit (or roll back) together. Objects the caller loaded earlier
+        on ``session`` are detached afterwards — re-query them.
+        """
         tag = await self._tag_repo.require_tag_model(session, tag_name)
         run = await self._sweep_repo.get_open_sweep(session, tag.id)
         if run is None or run.id != sweep_id:
@@ -168,7 +174,7 @@ class TagSweepInitializer:
                 raise RuntimeError("Re-enqueue flagged for run with no failed ids")
 
             logger.info("Re-enqueueing {} failed oracle ID(s).", len(failed_ids))
-            await self._create_pending_batch(session, sweep_id, tag, failed_ids)
+            await self._create_pending_batches(session, sweep_id, tag.description, failed_ids)
             return
 
         eligible = await self._sweep_repo.fetch_eligible_oracle_ids(session, tag, sweep_id, limit)
@@ -176,16 +182,16 @@ class TagSweepInitializer:
             raise RuntimeError("No eligible cards to sweep")
 
         logger.info("{} eligible card(s) to submit.", len(eligible))
-        await self._create_pending_batch(session, sweep_id, tag, eligible)
+        await self._create_pending_batches(session, sweep_id, tag.description, eligible)
 
-    async def _create_pending_batch(
+    async def _create_pending_batches(
         self,
         session: AsyncSession,
         run_id: uuid.UUID,
-        tag: TagModel,
+        tag_description: str,
         oracle_ids: Sequence[str],
     ) -> None:
-        """Persist chunk rows, outbox ``payload``, and a pending ``batches`` row."""
+        """Split cards into CSV chunks, then into pending batches of whole chunks."""
         settings = get_settings()
         chunk_size = settings.tag_sweep_batch_size
         records = [
@@ -195,14 +201,26 @@ class TagSweepInitializer:
             )
             for i in range(0, len(oracle_ids), chunk_size)
         ]
-        if len(records) > settings.batch_api_max_requests:
-            raise RuntimeError(
-                f"Chunk count {len(records)} exceeds batch_api_max_requests "
-                f"({settings.batch_api_max_requests}). Reduce --limit or increase chunk size."
+        chunks_per_batch = min(
+            max(1, settings.tag_sweep_cards_per_batch // chunk_size),
+            settings.batch_api_max_requests,
+        )
+        for i in range(0, len(records), chunks_per_batch):
+            await self._create_pending_batch(
+                session, run_id, tag_description, records[i : i + chunks_per_batch]
             )
+            session.expunge_all()
 
+    async def _create_pending_batch(
+        self,
+        session: AsyncSession,
+        run_id: uuid.UUID,
+        tag_description: str,
+        records: Sequence[SweepBatchRecord],
+    ) -> None:
+        """Persist chunk rows, outbox ``payload``, and a pending ``batches`` row."""
         batch = await self._sweep_repo.record_pending_batch_with_cards(session, run_id, records)
-        requests = await _build_sweep_batch_requests(session, tag.description, records)
+        requests = await _build_sweep_batch_requests(session, tag_description, records)
         await BatchRepo().set_batch_payload(
             session,
             batch,
@@ -211,7 +229,7 @@ class TagSweepInitializer:
         logger.info(
             "queued pending batch {} ({} cards in {} chunk(s)) for Celery submit",
             batch.id,
-            len(oracle_ids),
+            sum(len(r.oracle_ids) for r in records),
             len(records),
         )
 

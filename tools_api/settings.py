@@ -46,6 +46,14 @@ class Settings(BaseSettings):
         ge=1,
         description="Cards per CSV chunk / Anthropic request in the bulk tag sweep.",
     )
+    tag_sweep_cards_per_batch: int = Field(
+        default=5000,
+        ge=1,
+        description=(
+            "Cards per pending Anthropic batch when materializing a sweep. Each batch is built "
+            "and released from the session before the next, bounding worker memory."
+        ),
+    )
     tag_sweep_max_tokens: int = Field(
         default=16_000,
         ge=256,
