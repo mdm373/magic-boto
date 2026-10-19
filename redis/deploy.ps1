@@ -8,7 +8,7 @@
     family docker-compose.yml runs locally).
 
     No secrets to push — this Redis has no password, same as the local Compose service; its only
-    protection is Fly's private network (.internal/WireGuard), same as how magic-boto-db is reached.
+    protection is Fly's private network (.flycast/WireGuard), same as how magic-boto-db is reached.
 
     Requires the `fly` CLI (flyctl) on PATH and you logged in (`fly auth login`).
 
@@ -40,6 +40,6 @@ $AppName = "magic-boto-redis"
 
 Deploy-FlyApp -AppName $AppName -Region $Region -VolumeName "magic_boto_redis_data" `
     -VolumeSizeGb $VolumeSizeGb -WorkingDir $PSScriptRoot `
-    -ConfigPath (Join-Path $PSScriptRoot "fly.toml")
+    -ConfigPath (Join-Path $PSScriptRoot "fly.toml") -Flycast
 
-Write-Host "==> Done. Reachable from other apps in this org at ${AppName}.internal:6379 (private network only)." -ForegroundColor Green
+Write-Host "==> Done. Reachable from other apps in this org at ${AppName}.flycast:6379 (private network only)." -ForegroundColor Green

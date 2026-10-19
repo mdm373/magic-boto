@@ -1,8 +1,8 @@
 # Fly.io app for the magic-boto Redis backend (Celery broker/results) — a single Machine +
-# volume, no managed Redis cluster. Private-network only: no public IP is allocated, so this is
-# reachable only from other apps in the same Fly org via <app>.internal:6379 (direct machine DNS —
-# <app>.flycast, Fly's private load-balanced address, did not resolve for this org/app despite
-# matching Fly's documented pattern), never the public internet.
+# volume, no managed Redis cluster. Private-network only: just a private Flycast IP (allocated by
+# deploy.ps1), so this is reachable only from other apps in the same Fly org via
+# <app>.flycast:6379, never the public internet. Clients must use .flycast, not .internal: only
+# traffic through Fly's proxy auto-starts the Machine after it's stopped (e.g. host maintenance).
 #
 # `app` below is a placeholder — Fly app names are globally unique. deploy.ps1 passes -a
 # explicitly so the -AppName param is what actually matters; edit this only if you run `fly`
@@ -20,6 +20,9 @@ primary_region = "iad"
 [[services]]
   internal_port = 6379
   protocol = "tcp"
+  auto_start_machines = true
+  auto_stop_machines = "off"
+  min_machines_running = 1
 
   [[services.ports]]
     port = 6379

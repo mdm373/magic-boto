@@ -12,7 +12,7 @@ primary_region = "iad"
   AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET_FILE = "/secrets/oidc_hmac_secret"
   AUTHELIA_IDENTITY_PROVIDERS_OIDC_ISSUER_PRIVATE_KEY_FILE = "/secrets/oidc_issuer.pem"
   AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET_FILE = "/secrets/reset_password_jwt_secret"
-  AUTHELIA_STORAGE_POSTGRES_ADDRESS = "tcp://magic-boto-db.internal:5432"
+  AUTHELIA_STORAGE_POSTGRES_ADDRESS = "tcp://magic-boto-db.flycast:5432"
   AUTHELIA_PUBLIC_DOMAIN = "magic-boto-authelia.fly.dev"
   AUTHELIA_PUBLIC_URL = "https://magic-boto-authelia.fly.dev"
 

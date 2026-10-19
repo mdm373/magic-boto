@@ -6,8 +6,12 @@
 
 .DESCRIPTION
     Idempotent — safe to re-run. Creates the Fly app (and volume, if -VolumeName is given) only
-    if they don't already exist, optionally pushes secrets (never written into fly.toml), then
-    deploys.
+    if they don't already exist, allocates a private Flycast IPv6 if -Flycast is given and none
+    exists, optionally pushes secrets (never written into fly.toml), then deploys.
+
+    -Flycast makes the app reachable at <app>.flycast through Fly's proxy, which starts a stopped
+    Machine on the next connection (e.g. after host maintenance). <app>.internal bypasses the
+    proxy, so nothing restarts the Machine for those clients.
 
     Dot-source this file from a deploy script, then call Deploy-FlyApp. From a script under a
     sibling directory (e.g. postgres/):
@@ -21,6 +25,10 @@
     Print your own "Done, reachable at ..." line after calling this — reachability (flycast-only,
     a public domain, etc.) differs per app, so this function stays silent on that.
 
+    -Flycast pairs with auto_start_machines = true / auto_stop_machines = "off" /
+    min_machines_running = 1 in the app's [[services]] block, so the proxy keeps it running and
+    restarts it when needed.
+
     Requires the `fly` CLI (flyctl) on PATH and you logged in (`fly auth login`).
 #>
 
@@ -33,7 +41,8 @@ function Deploy-FlyApp {
         [int]$VolumeSizeGb,
         [Parameter(Mandatory)] [string]$WorkingDir,
         [Parameter(Mandatory)] [string]$ConfigPath,
-        [hashtable]$Secrets
+        [hashtable]$Secrets,
+        [switch]$Flycast
     )
 
     $ErrorActionPreference = "Stop"
@@ -61,6 +70,20 @@ function Deploy-FlyApp {
             if ($LASTEXITCODE -ne 0) { Write-Error "fly volumes create failed."; exit $LASTEXITCODE }
         } else {
             Write-Host "==> Volume already exists, skipping create" -ForegroundColor DarkGray
+        }
+    }
+
+    if ($Flycast) {
+        Write-Host "==> Checking for private Flycast IP" -ForegroundColor Cyan
+        $ipList = fly ips list -a $AppName --json | ConvertFrom-Json
+        $privateIp = $ipList | Where-Object { $_.Type -like "private*" }
+
+        if (-not $privateIp) {
+            Write-Host "==> Allocating private Flycast IPv6" -ForegroundColor Cyan
+            fly ips allocate-v6 --private -a $AppName
+            if ($LASTEXITCODE -ne 0) { Write-Error "fly ips allocate-v6 failed."; exit $LASTEXITCODE }
+        } else {
+            Write-Host "==> Private Flycast IP already allocated, skipping" -ForegroundColor DarkGray
         }
     }
 

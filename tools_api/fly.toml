@@ -32,11 +32,13 @@ swap_size_mb = 512
   processes = ["mcp"]
 
 [env]
-  POSTGRES_HOST = "magic-boto-db.internal"
+  # .flycast (not .internal) so connections go through Fly's proxy, which restarts a stopped
+  # backing Machine.
+  POSTGRES_HOST = "magic-boto-db.flycast"
   POSTGRES_PORT = "5432"
   POSTGRES_DB = "magicboto_api"
   LOG_LEVEL = "INFO"
-  CELERY_REDIS_URL = "redis://magic-boto-redis.internal:6379/0"
+  CELERY_REDIS_URL = "redis://magic-boto-redis.flycast:6379/0"
   TAG_SWEEP_MODEL = "claude-sonnet-5-5"
   TAG_AUDIT_MODEL = "claude-opus-5-5"
   TOOLS_MCP_HOST = "0.0.0.0"

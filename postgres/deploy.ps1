@@ -36,8 +36,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# Not a parameter, deliberately: other apps (authelia/fly.toml, its docstrings) hardcode
-# "magic-boto-db.internal" to reach this instance — an overridable name here would silently break
+# Not a parameter, deliberately: other apps (authelia/fly.toml, tools_api/fly.toml) hardcode
+# "magic-boto-db.flycast" to reach this instance — an overridable name here would silently break
 # that cross-app routing. If "magic-boto-db" is taken on your Fly account, edit this constant AND
 # every place that references it (grep the repo for "magic-boto-db"), don't pass a parameter.
 $AppName = "magic-boto-db"
@@ -56,7 +56,7 @@ $pgPassword = Get-EnvValue -EnvFile $EnvFile -Name "POSTGRES_PASSWORD" -Default 
 Deploy-FlyApp -AppName $AppName -Region $Region -VolumeName "magic_boto_db_data" `
     -VolumeSizeGb $VolumeSizeGb -WorkingDir $PSScriptRoot `
     -ConfigPath (Join-Path $PSScriptRoot "fly.toml") `
-    -Secrets @{ POSTGRES_USER = $pgUser; POSTGRES_PASSWORD = $pgPassword }
+    -Secrets @{ POSTGRES_USER = $pgUser; POSTGRES_PASSWORD = $pgPassword } -Flycast
 
 # init-db.sh (see postgres/Dockerfile) only runs once, on a brand-new volume — it never re-runs
 # on a redeploy against an already-initialized one, so a sibling database added to fly.toml after
@@ -90,5 +90,5 @@ if ($flyTomlContent -match 'AUTHELIA_DB_NAME\s*=\s*"([^"]+)"') {
     $global:LASTEXITCODE = 0
 }
 
-Write-Host "==> Done. Reachable from other apps in this org at ${AppName}.internal:5432 (private network only)." -ForegroundColor Green
+Write-Host "==> Done. Reachable from other apps in this org at ${AppName}.flycast:5432 (private network only)." -ForegroundColor Green
 exit 0
