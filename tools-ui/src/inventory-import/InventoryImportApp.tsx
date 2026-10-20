@@ -63,7 +63,6 @@ export function InventoryImportApp() {
   const [existingNames, setExistingNames] = useState<readonly string[]>([]);
   const [inventoryName, setInventoryName] = useState("");
   const [csvFile, setCsvFile] = useState<File | null>(null);
-  const [csvText, setCsvText] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { app, isConnected, error } = useApp({
@@ -75,7 +74,6 @@ export function InventoryImportApp() {
         setExistingNames([]);
         setInventoryName("");
         setCsvFile(null);
-        setCsvText("");
         if (fileInputRef.current) fileInputRef.current.value = "";
       };
 
@@ -96,18 +94,15 @@ export function InventoryImportApp() {
 
   useHostStyles(app, app?.getHostContext() as McpUiHostContext | undefined);
 
-  const hasCsv = csvFile !== null || csvText.trim().length > 0;
-
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setCsvFile(e.target.files?.[0] ?? null);
   };
 
   const handleImport = async () => {
-    if (!app || !hasCsv || !inventoryName.trim()) return;
+    if (!app || !csvFile || !inventoryName.trim()) return;
     setView({ kind: "importing" });
     try {
-      // A chosen file wins over pasted text.
-      const csvContent = csvFile ? await csvFile.text() : csvText;
+      const csvContent = await csvFile.text();
       const result = await app.callServerTool({
         name: "import_inventory_csv_content",
         arguments: {
@@ -170,7 +165,7 @@ export function InventoryImportApp() {
   }
 
   const isImporting = view.kind === "importing";
-  const canSubmit = isConnected && !isImporting && hasCsv && inventoryName.trim().length > 0;
+  const canSubmit = isConnected && !isImporting && csvFile !== null && inventoryName.trim().length > 0;
 
   return (
     <div style={PAGE_STYLE}>
@@ -224,19 +219,6 @@ export function InventoryImportApp() {
             {csvFile.name}
           </span>
         )}
-      </label>
-
-      {/* Fallback for mobile hosts whose file picker refuses CSVs. */}
-      <label style={LABEL_STYLE}>
-        <span style={LABEL_TEXT_STYLE}>…or paste CSV contents</span>
-        <textarea
-          value={csvText}
-          onChange={(e) => setCsvText(e.target.value)}
-          placeholder="Paste the CSV text here"
-          rows={6}
-          disabled={isImporting || csvFile !== null}
-          style={{ ...INPUT_STYLE, fontFamily: "monospace", fontSize: "0.8125rem", resize: "vertical" }}
-        />
       </label>
 
       <button
