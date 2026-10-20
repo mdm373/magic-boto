@@ -103,7 +103,8 @@ A **sweep** uses Claude (through the Anthropic Batch API) to work through the ca
 | `apply_audit` | plain | Applying the latest completed audit: updates the tag description and optionally clears tagged cards and side tags. |
 | `clean_reset_tag_sweep` | plain | **Destructive:** clears a tag's assignments, side tags, audits and sweep history so it can be swept fresh. |
 
-- `ui_enqueue_tag_sweep` needs an explicit `limit`; 0 means every eligible card, which can be very large. Confirm the limit with the user. Set `audit_after` to run an audit automatically when the sweep finishes.
+- `ui_enqueue_tag_sweep` needs an explicit `limit`; 0 means every eligible card, which can be very large. Confirm the limit with the user.
+- When sweeping a **new tag** (one with no previous sweep), always set `audit_after: true` so an audit runs automatically when the sweep finishes. Leave it off only if the user says they don't want an audit.
 - Confirm with the user before `apply_audit`, `clean_reset_tag_sweep` or `ui_enqueue_global_sweep_catchup`.
 
 ## Catalog updates (MTGJSON)
