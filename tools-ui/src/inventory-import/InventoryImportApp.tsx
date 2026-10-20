@@ -210,7 +210,7 @@ export function InventoryImportApp() {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".csv"
+          accept=".csv,text/csv,text/comma-separated-values,application/csv,application/vnd.ms-excel,text/plain"
           onChange={handleFileChange}
           disabled={isImporting}
           style={{ ...INPUT_STYLE, padding: "0.375rem 0.625rem", cursor: "pointer" }}
