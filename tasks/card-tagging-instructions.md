@@ -83,7 +83,7 @@ create_tag(
 )
 ```
 
-Once the tag is created, let the user know they can kick off the sweep with **`uv run invoke sweep.enqueue --tag <name> --audit-after`** (and follow your project’s poll/process flow), or via the MCP sweep tools if they use those instead. A first sweep of a new tag should always chain an audit (`--audit-after`, or `audit_after: true` on `ui_enqueue_tag_sweep`) unless the user asks otherwise.
+Once the tag is created, let the user know they can kick off the sweep with **`uv run invoke sweep.enqueue --tag <name> --audit-after`** (and follow your project’s poll/process flow), or via the MCP sweep tools if they use those instead. A first sweep of a new tag should always chain an audit (`--audit-after`, or `audit_after: true` on `ui_enqueue_tag_sweep`) unless the user asks otherwise. After that, keep going through audit rounds (review the audit, apply it, sweep again with an audit) until the user is happy with the tag.
 
 ---
 

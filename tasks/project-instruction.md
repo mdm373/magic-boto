@@ -105,6 +105,12 @@ A **sweep** uses Claude (through the Anthropic Batch API) to work through the ca
 
 - `ui_enqueue_tag_sweep` needs an explicit `limit`; 0 means every eligible card, which can be very large. Confirm the limit with the user.
 - When sweeping a **new tag** (one with no previous sweep), always set `audit_after: true` so an audit runs automatically when the sweep finishes. Leave it off only if the user says they don't want an audit.
+- Tuning a tag is a loop, and it usually takes more than one round. Keep going until the user says they're happy with the tag:
+  1. Show the finished audit with `ui_get_tag_audit` and go through the suggested description and borderline cards with the user.
+  2. If they want changes, run `apply_audit` (after they confirm). This updates the description and resets the sweep.
+  3. Sweep again with `audit_after: true`, then go back to step 1.
+
+  Don't treat one audit as the end. After each review, ask whether the user wants another round, and stop only when they're satisfied or tell you to stop.
 - Confirm with the user before `apply_audit`, `clean_reset_tag_sweep` or `ui_enqueue_global_sweep_catchup`.
 
 ## Catalog updates (MTGJSON)
