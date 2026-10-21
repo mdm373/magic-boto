@@ -31,6 +31,13 @@ _reset_service = create_tag_sweep_reset_service()
 _audit_repo = TagAuditRepo()
 _tag_repo = TagRepo()
 
+_READ_ONLY = ToolAnnotations(
+    readOnlyHint=True,
+    destructiveHint=False,
+    idempotentHint=True,
+    openWorldHint=False,
+)
+
 
 def _read_ui(filename: str) -> str:
     path = _UI_DIST / filename
@@ -44,17 +51,6 @@ def register_audit_tools(app_mcp: AppMcp) -> None:
     def audit_ui() -> str:
         return _read_ui("pages/audit.html")
 
-    @app_mcp.tool(
-        name="ui_get_tag_audit",
-        description="Show the review UI for a tag's sweep audit.",
-        annotations=ToolAnnotations(
-            readOnlyHint=True,
-            destructiveHint=False,
-            idempotentHint=True,
-            openWorldHint=False,
-        ),
-        meta={"ui": {"resourceUri": _AUDIT_RESOURCE_URI}},
-    )
     async def get_tag_audit(
         audit_id: Annotated[
             str | None,
@@ -111,6 +107,18 @@ def register_audit_tools(app_mcp: AppMcp) -> None:
                 suggestion=audit.suggestion,
                 triggered_at=audit.triggered_at.isoformat(),
             )
+
+    app_mcp.tool(
+        name="ui_get_tag_audit",
+        description="Show the review UI for a tag's sweep audit.",
+        annotations=_READ_ONLY,
+        meta={"ui": {"resourceUri": _AUDIT_RESOURCE_URI}},
+    )(get_tag_audit)
+    app_mcp.tool(
+        name="get_tag_audit",
+        description="Get a tag's sweep audit: status, report, and suggested description.",
+        annotations=_READ_ONLY,
+    )(get_tag_audit)
 
     @app_mcp.tool(
         name="apply_audit",

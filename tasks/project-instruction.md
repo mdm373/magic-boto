@@ -100,6 +100,7 @@ A **sweep** uses Claude (through the Anthropic Batch API) to work through the ca
 | `ui_list_sweeps` | UI | Showing the status of every sweep. |
 | `ui_enqueue_global_sweep_catchup` | UI | Re-running catch-up sweeps for every swept tag. |
 | `ui_get_tag_audit` | UI | Showing an audit for review (pass `audit_id` **or** `tag_name`, not both). |
+| `get_sweep_status` / `list_sweeps` / `get_tag_audit` | plain | Checking sweep progress or reading an audit's report and suggestion yourself, without showing a UI. Same arguments as the UI versions. |
 | `apply_audit` | plain | Applying the latest completed audit: updates the tag description and optionally clears tagged cards and side tags. |
 | `clean_reset_tag_sweep` | plain | **Destructive:** clears a tag's assignments, side tags, audits and sweep history so it can be swept fresh. |
 

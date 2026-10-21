@@ -52,6 +52,13 @@ _tag_repo = TagRepo()
 _sweep_initializer = create_tag_sweep_initializer()
 _sweep_reset_service = create_tag_sweep_reset_service()
 
+_READ_ONLY = ToolAnnotations(
+    readOnlyHint=True,
+    destructiveHint=False,
+    idempotentHint=True,
+    openWorldHint=False,
+)
+
 
 @dataclass(frozen=True, slots=True)
 class ResolvedSweepForStatus:
@@ -252,17 +259,6 @@ def register_sweep_tools(app_mcp: AppMcp) -> None:
             batches_deleted=result.batches_deleted,
         )
 
-    @app_mcp.tool(
-        name="ui_get_sweep_status",
-        description="Show the status UI for one tag sweep.",
-        annotations=ToolAnnotations(
-            readOnlyHint=True,
-            destructiveHint=False,
-            idempotentHint=True,
-            openWorldHint=False,
-        ),
-        meta={"ui": {"resourceUri": _SWEEP_RESOURCE_URI}},
-    )
     async def get_sweep_status(
         sweep_id: Annotated[
             str | None,
@@ -296,17 +292,6 @@ def register_sweep_tools(app_mcp: AppMcp) -> None:
                 tag_name=resolved.tag_name,
             )
 
-    @app_mcp.tool(
-        name="ui_list_sweeps",
-        description="Show the status UI for all tag sweeps.",
-        annotations=ToolAnnotations(
-            readOnlyHint=True,
-            destructiveHint=False,
-            idempotentHint=True,
-            openWorldHint=False,
-        ),
-        meta={"ui": {"resourceUri": _SWEEP_CATCHUP_RESOURCE_URI}},
-    )
     async def list_sweeps() -> SweepListResponse:
         async with app_mcp.session() as session:
             stmt = (
@@ -320,6 +305,29 @@ def register_sweep_tools(app_mcp: AppMcp) -> None:
                 status_row = await _build_sweep_status_response(session, sweep=sweep, tag_name=name)
                 rows.append(SweepListRow.model_validate(status_row.model_dump()))
             return SweepListResponse(rows=rows)
+
+    app_mcp.tool(
+        name="ui_get_sweep_status",
+        description="Show the status UI for one tag sweep.",
+        annotations=_READ_ONLY,
+        meta={"ui": {"resourceUri": _SWEEP_RESOURCE_URI}},
+    )(get_sweep_status)
+    app_mcp.tool(
+        name="get_sweep_status",
+        description="Get one tag sweep's status, batch counts, and post-sweep audit status.",
+        annotations=_READ_ONLY,
+    )(get_sweep_status)
+    app_mcp.tool(
+        name="ui_list_sweeps",
+        description="Show the status UI for all tag sweeps.",
+        annotations=_READ_ONLY,
+        meta={"ui": {"resourceUri": _SWEEP_CATCHUP_RESOURCE_URI}},
+    )(list_sweeps)
+    app_mcp.tool(
+        name="list_sweeps",
+        description="List every tag sweep with its status, batch counts, and audit status.",
+        annotations=_READ_ONLY,
+    )(list_sweeps)
 
     @app_mcp.tool(
         name="ui_enqueue_global_sweep_catchup",
