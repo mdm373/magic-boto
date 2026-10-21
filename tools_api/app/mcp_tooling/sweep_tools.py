@@ -13,7 +13,7 @@ from pydantic import Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api_schema.audit_schema import AuditStatus, AuditStatusValue
+from app.api_schema.audit_schema import AuditStatus
 from app.api_schema.sweep_schema import (
     BatchCounts,
     CleanTagSweepResetResult,
@@ -28,7 +28,7 @@ from app.api_schema.sweep_schema import (
 from app.errors import InvalidRequestError, NotFoundError
 from app.models import FAILED_BATCH_STATUSES, BatchStatus, SweepRunStatus, TagModel, TagSweepModel
 from app.repository import TagAuditRepo, TagRepo, TagSweepRepo
-from app.services import create_tag_sweep_reset_service
+from app.services import AuditMapper, create_tag_sweep_reset_service
 from app.services.tag_sweep_initializer import SweepKickoffRequest, create_tag_sweep_initializer
 from app.worker import enqueue_materialize_sweep_batches
 
@@ -48,6 +48,7 @@ _GLOBAL_SWEEP_CATCHUP_CARD_LIMIT = 0
 
 _sweep_repo = TagSweepRepo()
 _audit_repo = TagAuditRepo()
+_audit_mapper = AuditMapper()
 _tag_repo = TagRepo()
 _sweep_initializer = create_tag_sweep_initializer()
 _sweep_reset_service = create_tag_sweep_reset_service()
@@ -119,22 +120,9 @@ async def _build_sweep_status_response(
     )
     failed_batches = sum(1 for b in batches if b.batch.status in FAILED_BATCH_STATUSES)
 
-    audit: AuditStatus | None = None
-    audit_status: AuditStatusValue | None = None
-    if audit_model is not None:
-        if audit_model.batch_id is None:
-            audit_status = "pending"
-        elif audit_model.report is not None:
-            audit_status = "complete"
-        elif audit_model.batch is not None and audit_model.batch.status in FAILED_BATCH_STATUSES:
-            audit_status = "failed"
-        else:
-            audit_status = "in_progress"
-        audit = AuditStatus(
-            audit_id=str(audit_model.id),
-            status=audit_status,
-            report=audit_model.report,
-        )
+    audit: AuditStatus | None = (
+        _audit_mapper.to_status(audit_model) if audit_model is not None else None
+    )
 
     overall: SweepStatusValue
     if sweep.status == SweepRunStatus.FAILED:
@@ -142,9 +130,9 @@ async def _build_sweep_status_response(
     elif sweep.status == SweepRunStatus.OPEN:
         overall = "pending" if (pending + submitted) > 0 else "open"
     else:
-        if audit is None or audit_status == "complete":
+        if audit is None or audit.status == "complete":
             overall = "complete"
-        elif audit_status == "failed":
+        elif audit.status == "failed":
             overall = "failed"
         else:
             overall = "auditing"

@@ -18,7 +18,7 @@ from .inventory_csv_parser import CsvInventoryRow, CsvParser
 from .inventory_merger import CsvInventoryRowMerger
 from .inventory_names import DEFAULT_INVENTORY_NAME
 from .inventory_service import InventoryService
-from .mapper import CardMapper, EditionMapper
+from .mapper import AuditMapper, CardMapper, EditionMapper
 from .sweep_audit_poll_providers import (
     AuditPollProvider,
     SweepPollProvider,
@@ -80,6 +80,7 @@ __all__ = [
     "BatchPollOutcome",
     "BatchPoller",
     "BatchPollProvider",
+    "AuditMapper",
     "CardMapper",
     "CardSearchQueryBuilder",
     "CardService",

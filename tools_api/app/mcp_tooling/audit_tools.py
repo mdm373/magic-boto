@@ -9,11 +9,14 @@ from typing import Annotated
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from app.api_schema.audit_schema import ApplyAuditResult, AuditResponse, AuditStatusValue
+from app.api_schema.audit_schema import ApplyAuditResult, AuditResponse
 from app.errors import InvalidRequestError, NotFoundError
-from app.models import FAILED_BATCH_STATUSES
 from app.repository import TagAuditRepo, TagRepo
-from app.services import create_tag_audit_apply_service, create_tag_sweep_reset_service
+from app.services import (
+    AuditMapper,
+    create_tag_audit_apply_service,
+    create_tag_sweep_reset_service,
+)
 
 from .error_middleware import AppMcp
 
@@ -29,6 +32,7 @@ _FALLBACK_HTML = (
 _apply_service = create_tag_audit_apply_service()
 _reset_service = create_tag_sweep_reset_service()
 _audit_repo = TagAuditRepo()
+_audit_mapper = AuditMapper()
 _tag_repo = TagRepo()
 
 _READ_ONLY = ToolAnnotations(
@@ -89,24 +93,7 @@ def register_audit_tools(app_mcp: AppMcp) -> None:
                     raise NotFoundError(f"No audit found for tag '{tag_name_str}'.")
                 resolved_tag_name = tag_name_str
 
-            audit_status: AuditStatusValue
-            if audit.batch_id is None:
-                audit_status = "pending"
-            elif audit.report is not None:
-                audit_status = "complete"
-            elif audit.batch is not None and audit.batch.status in FAILED_BATCH_STATUSES:
-                audit_status = "failed"
-            else:
-                audit_status = "in_progress"
-
-            return AuditResponse(
-                audit_id=str(audit.id),
-                tag_name=resolved_tag_name,
-                status=audit_status,
-                report=audit.report,
-                suggestion=audit.suggestion,
-                triggered_at=audit.triggered_at.isoformat(),
-            )
+            return _audit_mapper.to_response(audit, resolved_tag_name)
 
     app_mcp.tool(
         name="ui_get_tag_audit",
