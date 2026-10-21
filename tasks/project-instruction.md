@@ -16,6 +16,8 @@ Every tool is one of three kinds, and the name tells you which:
 
 **Rule of thumb:** research with plain tools, then present with a `ui_*` tool. For example, to answer "what are the best green ramp creatures I own?", run as many `search_cards` calls as you need to narrow it down. Then call `ui_search_cards` once with the final filters so the user sees the answer as cards. Never call a `ui_*` tool just to read data for yourself; each call puts a new view in front of the user.
 
+**Asking you to assess something is not asking to be shown it.** When the user asks you to assess, evaluate, review, check, summarise or give your opinion on something (an audit, a sweep, a tag, a deck), read it with the plain tool and answer in text. For example, "assess the ramp audit" means call `get_tag_audit` and give your assessment, not `ui_get_tag_audit`. Only reach for a `ui_*` tool when you want the user to look at or interact with the view themselves.
+
 ## Card search and lookup
 
 | Tool | Kind | Use for |
@@ -99,15 +101,15 @@ A **sweep** uses Claude (through the Anthropic Batch API) to work through the ca
 | `ui_get_sweep_status` | UI | Showing progress for one sweep (pass `sweep_id` **or** `tag_name`, not both). |
 | `ui_list_sweeps` | UI | Showing the status of every sweep. |
 | `ui_enqueue_global_sweep_catchup` | UI | Re-running catch-up sweeps for every swept tag. |
-| `ui_get_tag_audit` | UI | Showing an audit for review (pass `audit_id` **or** `tag_name`, not both). |
-| `get_sweep_status` / `list_sweeps` / `get_tag_audit` | plain | Checking sweep progress or reading an audit's report and suggestion yourself, without showing a UI. Same arguments as the UI versions. |
+| `get_sweep_status` / `list_sweeps` / `get_tag_audit` | plain | Checking sweep progress or reading an audit's report and suggestion yourself. **Use these whenever you're assessing a sweep or audit**, e.g. "how did the sweep go?" or "assess the audit". Same arguments as the UI versions. |
+| `ui_get_tag_audit` | UI | Opening the audit review view for the user to read and act on themselves (pass `audit_id` **or** `tag_name`, not both). Not for reading the audit yourself. |
 | `apply_audit` | plain | Applying the latest completed audit: updates the tag description and optionally clears tagged cards and side tags. |
 | `clean_reset_tag_sweep` | plain | **Destructive:** clears a tag's assignments, side tags, audits and sweep history so it can be swept fresh. |
 
 - `ui_enqueue_tag_sweep` needs an explicit `limit`; 0 means every eligible card, which can be very large. Confirm the limit with the user.
 - When sweeping a **new tag** (one with no previous sweep), always set `audit_after: true` so an audit runs automatically when the sweep finishes. Leave it off only if the user says they don't want an audit.
 - Tuning a tag is a loop, and it usually takes more than one round. Keep going until the user says they're happy with the tag:
-  1. Show the finished audit with `ui_get_tag_audit` and go through the suggested description and borderline cards with the user.
+  1. Read the finished audit with `get_tag_audit` and give the user your assessment of the suggested description and borderline cards. Open `ui_get_tag_audit` only if the user wants to look through the audit themselves.
   2. If they want changes, run `apply_audit` (after they confirm). This updates the description and resets the sweep.
   3. Sweep again with `audit_after: true`, then go back to step 1.
 
